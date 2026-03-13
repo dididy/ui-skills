@@ -1,0 +1,36 @@
+{
+  "name": "dididy",
+  "owner": {
+    "name": "YONGJAE LEE"
+  },
+  "plugins": [
+    {
+      "name": "ui-skills",
+      "source": "./",
+      "description": "Reverse-engineer any website into production-ready React + Tailwind code. Extracts DOM structure, computed CSS, JS interactions, responsive breakpoints, and animations from a live URL — then generates a working component.",
+      "version": "1.0.0",
+      "author": {
+        "name": "YONGJAE LEE"
+      },
+      "license": "Apache-2.0",
+      "category": "frontend",
+      "keywords": [
+        "ui",
+        "reverse-engineering",
+        "screenshot-to-code",
+        "transition",
+        "animation",
+        "css",
+        "react",
+        "tailwind",
+        "clone",
+        "scraping",
+        "agent-browser",
+        "webgl",
+        "canvas",
+        "responsive",
+        "component-generation"
+      ]
+    }
+  ]
+}
