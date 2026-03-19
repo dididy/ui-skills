@@ -76,7 +76,8 @@ agent-browser eval "
     Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.href)
   );
 })()"
-# Then download and grep for @keyframes and transition rules
+# Then download and grep for @keyframes and transition rules (HTTPS only)
+# Replace <stylesheet-url> with actual URL — must start with https://
 curl -s --max-time 30 --max-filesize 10485760 --fail -- "<stylesheet-url>" | grep -E '@keyframes|transition'
 ```
 
@@ -201,12 +202,12 @@ agent-browser eval "
   const prop = Object.keys(changed)[0];
   if (prop) {
     const numericValues = frames.map(f => parseFloat(f[prop])).filter(v => !isNaN(v));
-    if (numericValues.length > 0) {
+    if (numericValues.length > 1) {
       const min = numericValues[0], max = numericValues[numericValues.length - 1];
       const range = max - min;
-      changed[prop].easingCurve = numericValues
-        .filter((_, i) => i % 3 === 0)
-        .map((v, i, arr) => ({ t: i / (arr.length - 1), v: range ? (v - min) / range : 0 }));
+      const sampled = numericValues.filter((_, i) => i % 3 === 0);
+      changed[prop].easingCurve = sampled
+        .map((v, i) => ({ t: sampled.length > 1 ? i / (sampled.length - 1) : 0, v: range ? (v - min) / range : 0 }));
     }
   }
 

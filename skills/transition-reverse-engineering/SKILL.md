@@ -1,7 +1,6 @@
 ---
 name: transition-reverse-engineering
 description: Sub-skill for precise animation and transition extraction. Use when ui-reverse-engineering detects complex animations — WAAPI character stagger, canvas/WebGL particle systems, Three.js scenes, scroll-driven animations. Triggers on "extract this animation precisely", "copy this transition", "replicate this canvas effect". Combines WAAPI scrubbing with frame-by-frame visual comparison.
-allowed-tools: Bash(agent-browser:open|close|screenshot|eval|wait|hover|click|scroll|record|set),Bash(curl:--max-filesize|--max-time|--fail|--location|-s|-o),Bash(grep:-E|-e|-c|--include)
 ---
 
 # Transition Reverse Engineering
@@ -12,6 +11,28 @@ Precise extraction of animations and transitions from live sites. Called as a su
 1. Extract actual values. Never guess timing, easing, positions, or counts.
 2. Capture reference frames ONCE. Save to `tmp/ref/<effect-name>/`. Never re-visit.
 3. All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
+4. **Extraction ≠ completion.** Extraction ends when `extracted.json` is saved. Completion requires a passing visual verification cycle (impl frames vs ref frames). Never report done without running Phase B + Phase C.
+5. **Diagnose before fixing.** When a visual mismatch or runtime bug appears, write one sentence identifying the root cause before touching any code. If you cannot name the cause, add `agent-browser eval` instrumentation to find it first.
+
+## Scope
+
+This skill operates in one of two scopes. **Always determine scope before starting.**
+
+| Scope | When to use | What to compare |
+|-------|-------------|-----------------|
+| `element` | "copy this animation", "extract this hover effect" — isolated element behavior | Cropped frames of the target element only |
+| `fullpage` | Page-level transition (route change, modal open/close, page-load sequence) — anything that affects the overall screen state | Full-page screenshots across the entire transition window: before → every intermediate state → after |
+
+**Default scope by caller:**
+- Called directly by user with a specific element target → `element`
+- Called from a ralph worker task (task description contains `/transition-reverse-engineering`) → `fullpage`
+- Ambiguous → ask: "Are you copying an isolated element animation, or a full page transition?"
+
+**`fullpage` scope — mandatory checks:**
+- Capture frames at: T=0 (before trigger), every 100ms during transition, T=end (settled state)
+- For each frame: does the original show a blank screen / loading text / white flash / layout jump? If NO and your implementation does → **FAIL**. Fix before proceeding.
+- "The animation looks right" is not sufficient — intermediate state must also match frame by frame.
+- **Extract pane/layer structure with `getComputedStyle`** — measure `opacity`, `visibility`, `z-index`, `animation` on all pane elements at T=0, mid-transition, and T=end. This reveals how old/new content layers interact (e.g. new pane stays `visibility:hidden` until data is ready — never expose loading state to user).
 
 ## Effect Classification
 
@@ -52,8 +73,13 @@ Problem: `agent-browser open` waits for full load — page-load animations are a
 ```bash
 agent-browser open https://target-site.com
 
-# Inject scrubber — use actual absolute path to this skill directory
-SKILL_DIR="$HOME/.claude/skills/ui-skills/skills/transition-reverse-engineering"
+# Inject scrubber — resolve skill directory from common install locations
+SKILL_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/ui-skills/skills/transition-reverse-engineering"
+# If installed via npx skills or a custom path, override: export CLAUDE_SKILLS_DIR=/your/path
+if [ ! -f "$SKILL_DIR/waapi-scrub-inject.js" ]; then
+  echo "Error: skill not found at $SKILL_DIR — set CLAUDE_SKILLS_DIR to your install path" >&2
+  exit 1
+fi
 agent-browser eval "$(cat "$SKILL_DIR/waapi-scrub-inject.js")"
 
 # Set up animations to scrub (fill in keyframes extracted from css-extraction.md)
@@ -91,7 +117,9 @@ agent-browser eval "$(cat "$SKILL_DIR/waapi-scrub-inject.js")"
 ref frames (saved ONCE) → implement → capture impl frames → visual compare → adjust → repeat
 ```
 
-Frame comparison table:
+### scope: element
+
+Frame comparison table (cropped to element bounds):
 
 | Frame | Time | Ref | Impl | Match? | Issue |
 |-------|------|-----|------|--------|-------|
@@ -100,6 +128,24 @@ Frame comparison table:
 | 15 | 100% | frames/ref-15.png | frames/impl-15.png | ✅/❌ | |
 
 For each ❌: identify exact property → targeted fix → re-capture impl only → compare.
+
+### scope: fullpage
+
+Full-page screenshot comparison across the entire transition window:
+
+| Frame | Time | Ref | Impl | Match? | Issue |
+|-------|------|-----|------|--------|-------|
+| 01 | 0ms (before) | frames/ref-01.png | frames/impl-01.png | ✅/❌ | |
+| 02 | ~100ms | frames/ref-02.png | frames/impl-02.png | ✅/❌ | |
+| ... | every 100ms | ... | ... | | |
+| N | end (settled) | frames/ref-N.png | frames/impl-N.png | ✅/❌ | |
+
+**Additional checks for fullpage:**
+- Any frame where ref shows content but impl shows blank/loading/white → ❌ FAIL
+- Any frame where ref shows smooth transition but impl shows layout jump → ❌ FAIL
+- Intermediate frames (not just start/end) must match — do not skip mid-transition frames
+
+For each ❌: write one sentence naming the root cause before touching code. If you cannot name it, run `agent-browser eval` to inspect computed styles at the exact failing frame. Only after root cause is confirmed → fix → re-capture impl only → compare.
 
 ## Output
 
@@ -128,17 +174,61 @@ Save to `tmp/ref/<effect-name>/extracted.json`:
 |---------|---------|
 | `fill: forwards` finished animations have higher cascade priority than inline styles | `el.style.opacity='0'` won't work. Must call `animation.cancel()` first. The injector handles this. |
 | `element.style.setProperty('opacity','0','important')` blocks new WAAPI | Use `el.style.cssText=''` to clear completely. The injector handles this. |
-| `onComplete` callbacks set `element.style.opacity='1'` after animation | These persist and block scrubbing. The injector's `clearInlineStyles()` removes them. |
+| `onfinish` callbacks set `element.style.opacity='1'` after animation | These persist and block scrubbing. The injector's `clearInlineStyles()` removes them. |
 | Staggered child animations | Pass each child's selector + delay separately in the configs array. |
 | `--selector` screenshot times out | Use full-page `agent-browser screenshot <path>` + crop with `sips`: `sips raw.png --cropOffset <y> <x> --cropToHeightWidth <h> <w> --out cropped.png` |
 | `window.__scrub` disappears mid-capture | Page reloaded. Re-inject using the command above. |
-| CSS class rule outlives WAAPI animation | Text disappears after GC. Use inline styles + `onComplete`, not CSS classes for initial hidden state. |
+| CSS class rule outlives WAAPI animation | Text disappears after GC. Use inline styles + `onfinish` → `anim.cancel()`, not CSS classes for initial hidden state. |
 | Characters flash visible during stagger delay | WAAPI `fill: "forwards"` doesn't set initial state during delay. Set `el.style.opacity = '0'` inline before animating. |
 | Bot detection / blank page | Use `--headed` mode. See ui-reverse-engineering Step 1. |
 | `eval` returns SyntaxError | No top-level `return`. Use IIFE `(() => { ... })()`. |
 | WebGL `readPixels` returns zeros | `preserveDrawingBuffer: false` (default). Use screenshot for colors. |
-| 60+ Next.js chunks | Download all, grep for `canvas\|WebGL\|requestAnimationFrame`. |
+| 60+ JS chunks (Next.js/Nuxt/Vite) | Download all, grep for `canvas\|WebGL\|requestAnimationFrame`. |
 | Canvas is Spline/Rive/Lottie | Check resources for `.splinecode`, `.riv`, `.json`. Data-driven — reference scene URL or recreate with CSS. |
+
+## When called from a ralph worker
+
+If this skill is invoked as part of a ralph task (e.g. task description contains `/transition-reverse-engineering`):
+
+1. **Dismiss any modals or overlays before capturing** — cookie banners, signup prompts, etc. must be closed first
+2. **"Already implemented" is not grounds for skipping** — always capture reference frames and compare against current implementation, even if the transition appears to be done
+3. **Reference frames saved once to `tmp/frames-original/<effect-name>/`** — never re-capture from original site mid-iteration
+4. **Implementation frames to `tmp/frames-ours/<effect-name>/`** after each change
+5. **Repeat until 100% visual match** — do not converge while any frame shows a discrepancy
+6. All timing/easing values must come from extracted measurements — no guessing
+7. **Capture the FULL transition window — including intermediate states.** Frames must cover: before transition starts, every mid-transition state, and after transition ends. If the original shows NO blank screen / loading text / white flash during transition, your implementation must also show none. Any intermediate state present in your implementation but absent in the original is a FAIL — fix before converging.
+
+## Bug Diagnosis Protocol
+
+When a visual bug is reported (white flash, wrong timing, layout jump, etc.):
+
+**Before writing any fix:**
+1. Name the root cause in one sentence: _"The white flash happens because X"_
+2. If you cannot name it, instrument first:
+   ```bash
+   agent-browser eval "
+   (() => {
+     const panes = document.querySelectorAll('[class*=pane], [class*=slot]');
+     return JSON.stringify([...panes].map(el => {
+       const s = getComputedStyle(el);
+       return { cls: el.className, opacity: s.opacity, visibility: s.visibility, zIndex: s.zIndex, position: s.position, height: el.offsetHeight };
+     }));
+   })()"
+   ```
+3. Only after root cause is confirmed → write the fix
+4. After fix → re-capture impl frames → verify the specific bug frame is gone
+
+**Do not iterate on the same approach more than twice.** If two fixes in the same direction don't work, the diagnosis was wrong — re-instrument and re-diagnose.
+
+## Checklist: "Is This Done?"
+
+- [ ] `extracted.json` saved
+- [ ] Implementation written
+- [ ] Phase B impl frames captured (localhost, same trigger sequence as ref)
+- [ ] Phase C comparison table filled — every frame has ✅ or ❌
+- [ ] All ❌ rows fixed and re-verified
+- [ ] No white flash / blank frame / layout jump in any impl frame where ref shows content
+- [ ] Entry points verified: CSS imports loaded (`body { margin: 0 }` etc. in effect), no missing `import` in main entry file
 
 ## Quick Reference
 

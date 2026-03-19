@@ -7,29 +7,30 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Reverse-engineer any website into production-ready React + Tailwind code. Extracts DOM structure, computed CSS, JS interactions, responsive breakpoints, and animations from a live URL — then generates a working component.",
-      "version": "1.0.0",
+      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Includes a sub-skill for precise WAAPI/canvas/WebGL animation extraction with frame-by-frame comparison.",
+      "version": "0.0.1",
       "author": {
         "name": "YONGJAE LEE"
       },
       "license": "Apache-2.0",
       "category": "frontend",
       "keywords": [
-        "ui",
+        "ui-cloning",
         "reverse-engineering",
         "screenshot-to-code",
+        "website-to-code",
         "transition",
         "animation",
         "css",
         "react",
         "tailwind",
         "clone",
-        "scraping",
         "agent-browser",
-        "webgl",
+        "three-js",
         "canvas",
         "responsive",
-        "component-generation"
+        "component",
+        "code-generation"
       ]
     }
   ]

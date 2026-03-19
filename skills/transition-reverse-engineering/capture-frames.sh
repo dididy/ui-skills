@@ -57,6 +57,7 @@ mkdir -p "$OUTPUT_DIR"
 # N_FRAMES-1 intervals to cover 0..TOTAL_MS inclusive
 if [ "$N_FRAMES" -le 1 ]; then
   STEP_MS=0
+  echo "Warning: frames=1 — only the first frame (t=0ms) will be captured" >&2
 else
   STEP_MS=$(( TOTAL_MS / (N_FRAMES - 1) ))
 fi
@@ -65,14 +66,24 @@ echo "Capturing $N_FRAMES frames, 0..${TOTAL_MS}ms, step=${STEP_MS}ms -> $OUTPUT
 
 for i in $(seq 1 "$N_FRAMES"); do
   # $T is computed from validated integers only — no injection risk
-  T=$(( (i - 1) * STEP_MS ))
+  # Last frame is always clamped to TOTAL_MS to avoid integer-division drift
+  if [ "$i" -eq "$N_FRAMES" ]; then
+    T="$TOTAL_MS"
+  else
+    T=$(( (i - 1) * STEP_MS ))
+  fi
   FRAME="$(printf '%02d' "$i")"
   OUTFILE="$OUTPUT_DIR/frame-$FRAME.png"
 
   # Seek animation to time T
   # $T is always a non-negative integer — safe to interpolate directly without encoding
-  if ! agent-browser eval "window.__scrub.seek($T);" > /dev/null 2>&1; then
-    echo "Error: Failed to seek to ${T}ms" >&2
+  # NOTE: agent-browser eval may return exit 0 even on JS runtime errors.
+  # The IIFE checks __scrub presence and returns an ERROR: prefix on failure.
+  # stderr is redirected into the variable so connection errors are also caught.
+  SEEK_RESULT=$(agent-browser eval "(() => typeof window.__scrub !== 'undefined' ? window.__scrub.seek($T) : 'ERROR: __scrub not found')()" 2>&1) || true
+  if echo "$SEEK_RESULT" | grep -q 'ERROR'; then
+    echo "Error: seek failed at ${T}ms — $SEEK_RESULT" >&2
+    echo "Tip: re-inject with: agent-browser eval \"\$(cat waapi-scrub-inject.js)\"" >&2
     exit 1
   fi
 

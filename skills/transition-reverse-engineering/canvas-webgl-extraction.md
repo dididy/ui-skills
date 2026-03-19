@@ -9,7 +9,7 @@ agent-browser eval "
   return JSON.stringify({
     spline: resources.filter(function(u) { return u.indexOf('spline') > -1 || u.indexOf('.splinecode') > -1; }),
     rive: resources.filter(function(u) { return u.indexOf('.riv') > -1 || u.indexOf('rive') > -1; }),
-    lottie: resources.filter(function(u) { return u.indexOf('lottie') > -1 || u.indexOf('.json') > -1; }),
+    lottie: resources.filter(function(u) { return u.indexOf('lottie') > -1 || u.indexOf('bodymovin') > -1; }),
     draco: resources.filter(function(u) { return u.indexOf('draco') > -1 || u.indexOf('.wasm') > -1; }),
     glb: resources.filter(function(u) { return u.indexOf('.glb') > -1 || u.indexOf('.gltf') > -1; })
   }, null, 2);
@@ -34,7 +34,15 @@ agent-browser eval "
 (() => {
   var scripts = Array.from(document.querySelectorAll('script[src]'))
     .map(function(s) { return s.src; })
-    .filter(function(u) { return u.indexOf('/_next/') > -1 || u.indexOf('/chunks/') > -1; });
+    .filter(function(u) {
+      // Next.js, Nuxt, Remix, Vite, and generic chunk patterns
+      return u.indexOf('/_next/') > -1 ||
+             u.indexOf('/chunks/') > -1 ||
+             u.indexOf('/_nuxt/') > -1 ||
+             u.indexOf('/assets/') > -1 ||
+             u.indexOf('/build/') > -1 ||
+             /\.[a-f0-9]{8,}\.js/.test(u);
+    });
   return JSON.stringify(scripts);
 })()
 "
@@ -42,17 +50,27 @@ agent-browser eval "
 
 ```bash
 # Download to project tmp/ref/<effect-name>/bundles/
+# URLS: newline-separated list of script URLs from the eval above.
+# The eval returns a JSON array — parse it with jq, or copy-paste URLs manually:
+#   URLS=$(agent-browser eval "(() => { ... })()" | jq -r '.[]')
 mkdir -p tmp/ref/<effect-name>/bundles
 failed=0
 while IFS= read -r url; do
-  # Validate URL scheme
+  [ -z "$url" ] && continue
+  # Validate URL scheme — only allow https
   if ! [[ "$url" =~ ^https:// ]]; then
     echo "Skipping non-HTTPS URL: $url" >&2
     continue
   fi
-  name=$(echo "$url" | grep -oE '[a-f0-9]{16}')
+  name=$(echo "$url" | grep -oE '[a-f0-9]{16}' | head -1)
   if [ -z "$name" ]; then
-    name=$(echo "$url" | md5sum | cut -c1-16)
+    # md5sum (Linux) or md5 (macOS)
+    name=$(echo "$url" | (md5sum 2>/dev/null || md5) | awk '{print $1}' | cut -c1-16)
+  fi
+  if [ -z "$name" ]; then
+    echo "Error: could not generate filename for $url" >&2
+    failed=$(( failed + 1 ))
+    continue
   fi
   if curl -s --max-time 30 --max-filesize 10485760 --fail --location \
     -o "tmp/ref/<effect-name>/bundles/${name}.js" \

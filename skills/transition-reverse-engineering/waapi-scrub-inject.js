@@ -7,9 +7,9 @@
  * Usage (agent-browser):
  *   agent-browser eval "$(cat waapi-scrub-inject.js)"
  *
- * WARNING: If keyframes use % units (e.g. translateX(-20%)), shell will expand %.
- * Use single quotes around the eval argument or store the script in a temp file:
- *   agent-browser eval "$(cat waapi-scrub-inject.js)"
+ * NOTE: `$(cat waapi-scrub-inject.js)` is safe — shell does not expand % inside command
+ * substitution output. However, if agent-browser itself parses % in its eval argument,
+ * write the script to a temp file and pass the path instead.
  *
  * After injection, window.__scrub is available:
  *   window.__scrub.setup(configs)  — cancel existing anims, create paused ones
@@ -49,18 +49,26 @@
  */
 
 (function () {
-  // Cancel all existing WAAPI on the page (including fill:forwards GC-retained ones)
+  // Cancel ALL existing WAAPI on the page — including fill:forwards GC-retained ones
+  // and any framework-driven animations (Framer Motion, GSAP WAAPI bridge, etc.).
+  // This is intentional: scrubbing requires a clean slate. Side-effects like
+  // UI flicker on cancel are expected — the page state will be restored by seek().
+  // Uses document.getAnimations() when available (Chrome 84+, Firefox 75+, Safari 14+).
+  // Falls back to per-element getAnimations() for older environments.
   function cancelAll() {
+    var anims = document.getAnimations ? document.getAnimations() : null;
+    if (anims) {
+      for (var i = 0; i < anims.length; i++) anims[i].cancel();
+      return;
+    }
     var els = document.querySelectorAll('*');
     for (var i = 0; i < els.length; i++) {
-      var anims = els[i].getAnimations ? els[i].getAnimations() : [];
-      for (var j = 0; j < anims.length; j++) {
-        anims[j].cancel();
-      }
+      var elAnims = els[i].getAnimations ? els[i].getAnimations() : [];
+      for (var j = 0; j < elAnims.length; j++) elAnims[j].cancel();
     }
   }
 
-  // Clear all inline styles on an element (removes onComplete-committed opacity:1 etc.)
+  // Clear all inline styles on an element (removes onfinish-committed opacity:1 etc.)
   function clearInlineStyles(el) {
     el.style.cssText = '';
   }
@@ -85,6 +93,9 @@
         if (total > _totalDuration) _totalDuration = total;
 
         var targets = document.querySelectorAll(cfg.selector);
+        if (targets.length === 0) {
+          console.warn('waapi-scrub: selector matched 0 elements:', cfg.selector);
+        }
         for (var k = 0; k < targets.length; k++) {
           var el = targets[k];
           clearInlineStyles(el);
@@ -92,8 +103,15 @@
           var anim = el.animate(cfg.keyframes, {
             duration: duration,
             delay: delay,
-            fill: 'both',   // shows from-state at currentTime < delay
-            easing: cfg.easing || 'ease',
+            // fill:'both' shows the from-keyframe during the delay period (currentTime < delay)
+            // and holds the to-keyframe after the animation ends.
+            // NOTE: seek(0) will show the from-state even before the delay starts — this is correct
+            // for scrubbing. If you need to see the pre-animation state, seek to a negative value
+            // or read element styles before calling setup().
+            fill: 'both',
+            // NOTE: always extract easing from the live site — do not rely on this default.
+            // Use css-extraction.md → transitionTimingFunction or animationTimingFunction.
+            easing: cfg.easing || 'linear',
           });
           anim.pause();
           anim.currentTime = 0;
@@ -107,7 +125,11 @@
 
     seek: function (ms) {
       for (var i = 0; i < _anims.length; i++) {
-        _anims[i].anim.currentTime = ms;
+        var a = _anims[i].anim;
+        // An animation in 'finished' state throws InvalidStateError on currentTime assignment.
+        // Calling pause() first moves it back to 'paused' regardless of current state.
+        if (a.playState !== 'paused') a.pause();
+        a.currentTime = ms;
       }
       return 'seeked to ' + ms + 'ms';
     },

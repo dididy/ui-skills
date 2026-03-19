@@ -51,23 +51,25 @@ nodes.forEach((node) => {
   node.style.transform = "translateY(40px)";
 });
 
+// Using Web Animations API directly (no library dependency)
 nodes.forEach((node, i) => {
-  const ctrl = to(node, {
-    opacity: { from: 0, to: 1 },
-    blur: { from: 4, to: 0 },
-    y: { from: 40, to: 0 },
-    delay: (i * 15) / 1000,
-    duration: 0.6,
-  });
-  ctrl.onComplete(() => {
+  const anim = node.animate(
+    [
+      { opacity: 0, filter: "blur(4px)", transform: "translateY(40px)" },
+      { opacity: 1, filter: "blur(0)",   transform: "translateY(0)" },
+    ],
+    { delay: i * 15, duration: 600, fill: "forwards", easing: "ease-out" }
+  );
+  anim.onfinish = () => {
     node.style.opacity = "1";
     node.style.filter = "none";
     node.style.transform = "none";
-  });
+    anim.cancel(); // release fill:forwards so GC can collect
+  };
 });
 ```
 
-**Why `onComplete`:** WAAPI animations can be GC'd. Without inline styles on complete, element reverts.
+**Why `onfinish` + `anim.cancel()`:** WAAPI animations with `fill: "forwards"` are GC-retained. Without committing inline styles and calling `cancel()`, the element either reverts or holds a memory-leaking animation object.
 
 **Multi-line continuous stagger:** Maintain `globalCharIndex` across lines — line 2 continues from where line 1 ended.
 
@@ -93,12 +95,12 @@ Use inline styles, not CSS classes, for initial hidden state.
 | `eval` returns SyntaxError | No top-level `return`. Use IIFE `(() => { ... })()`. |
 | WebGL `readPixels` returns zeros | `preserveDrawingBuffer: false` (default). Use screenshot for colors. |
 | `transferSize: 0` for bundles | Cached. Use `document.querySelectorAll('script[src]')`. |
-| 60+ Next.js chunks | Download all, grep for `canvas\|WebGL\|requestAnimationFrame`. |
+| 60+ JS chunks (Next.js/Nuxt/Vite) | Download all, grep for `canvas\|WebGL\|requestAnimationFrame`. |
 | Canvas is Spline/Rive/Lottie | Check resources for `.splinecode`, `.riv`, `.json`. Data-driven. |
 | No frames captured | Wrong selector or animation done. Reload and retry. |
 | Cross-origin stylesheet | `curl` the CSS URL, grep for `@keyframes`. |
 | Characters flash before stagger | WAAPI `fill: "forwards"` doesn't cover delay. Set inline `opacity: 0`. |
-| Text disappears after animation | WAAPI GC'd, CSS rule took over. Use `onComplete` for inline styles. |
+| Text disappears after animation | WAAPI GC'd, CSS rule took over. Use `onfinish` + `anim.cancel()` to commit inline styles. |
 | React `useMotion` cancels animation | Strict mode remount calls cleanup. Use direct `splitText` + `useAnimate`. |
 | Stagger only partial text | Check total char count. Use `globalCharIndex` for continuous stagger. |
 | Re-capturing reference wastes time | Capture ONCE. Compare against saved files. |
