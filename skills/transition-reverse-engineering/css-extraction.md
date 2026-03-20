@@ -78,6 +78,7 @@ agent-browser eval "
 })()"
 # Then download and grep for @keyframes and transition rules (HTTPS only)
 # Replace <stylesheet-url> with actual URL — must start with https://
+if ! [[ "<stylesheet-url>" =~ ^https:// ]]; then echo "Error: stylesheet URL must be HTTPS" >&2; exit 1; fi
 curl -s --max-time 30 --max-filesize 10485760 --fail -- "<stylesheet-url>" | grep -E '@keyframes|transition'
 ```
 

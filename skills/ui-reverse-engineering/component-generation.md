@@ -2,11 +2,16 @@
 
 ## Input checklist before generating
 
-- [ ] `structure.json` — DOM hierarchy
-- [ ] `styles.json` — computed styles per element
-- [ ] Breakpoint styles (mobile / tablet / desktop)
-- [ ] Interaction delta (hover/click states + transition values)
+> **STOP. Do not generate code if ANY of these files are missing. Go back to the extraction step that produces the missing artifact.**
+
+- [ ] `structure.json` — DOM hierarchy (from Step 2)
+- [ ] `styles.json` — computed styles per element (from Step 3)
+- [ ] Breakpoint styles (mobile / tablet / desktop) (from Step 4)
+- [ ] Interaction delta (hover/click states + transition values) (from Step 5)
 - [ ] Keyframes or `extracted.json` from transition-reverse-engineering (if any)
+- [ ] Reference frames exist in `tmp/ref/<component>/frames/ref/` (from Phase 1)
+
+**If you find yourself writing a value that is not in the extracted data, STOP.** You are guessing. Go back and extract it.
 
 ## Generation prompt
 

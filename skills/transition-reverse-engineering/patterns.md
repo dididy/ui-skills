@@ -71,6 +71,17 @@ nodes.forEach((node, i) => {
 
 **Why `onfinish` + `anim.cancel()`:** WAAPI animations with `fill: "forwards"` are GC-retained. Without committing inline styles and calling `cancel()`, the element either reverts or holds a memory-leaking animation object.
 
+**Stagger with hidden parent — correct reveal order:**
+```
+1. Split text into child nodes (spans)
+2. Set initial hidden styles on EACH child (opacity:0, blur, translateY)
+3. THEN clear parent's hiding style — children are individually hidden, so no flash
+4. Animate each child with stagger delay
+5. If the library restores original DOM after animation (revert/cleanup),
+   commit final styles to the parent BEFORE restore, or skip restore on success
+```
+Violating this order causes either: children flash visible (skip step 2), or children stay invisible (skip step 3), or animation result is lost (skip step 5).
+
 **Multi-line continuous stagger:** Maintain `globalCharIndex` across lines — line 2 continues from where line 1 ended.
 
 **CSS class pitfall:**
@@ -101,7 +112,9 @@ Use inline styles, not CSS classes, for initial hidden state.
 | Cross-origin stylesheet | `curl` the CSS URL, grep for `@keyframes`. |
 | Characters flash before stagger | WAAPI `fill: "forwards"` doesn't cover delay. Set inline `opacity: 0`. |
 | Text disappears after animation | WAAPI GC'd, CSS rule took over. Use `onfinish` + `anim.cancel()` to commit inline styles. |
-| React `useMotion` cancels animation | Strict mode remount calls cleanup. Use direct `splitText` + `useAnimate`. |
+| DOM restore kills WAAPI state | Any operation that replaces innerHTML (revert, React re-render, morphdom) destroys in-flight WAAPI animations and their `fill: forwards`. Commit final styles to parent before restoring, or skip restore on success. |
+| Parent opacity hides animated children | CSS opacity multiplies — parent `opacity: 0.001` makes children invisible regardless of their own opacity. When revealing children individually (stagger), clear parent hiding AFTER setting initial hidden styles on each child. |
+| React effect cleanup cancels animation | Strict Mode double-invocation, unstable deps (inline objects/arrays), or HMR can trigger cleanup mid-animation. Guard with refs, stabilize deps, test with Strict Mode on. |
 | Stagger only partial text | Check total char count. Use `globalCharIndex` for continuous stagger. |
 | Re-capturing reference wastes time | Capture ONCE. Compare against saved files. |
 | `--selector` screenshot times out | Use full-page `agent-browser screenshot` + sips crop. |

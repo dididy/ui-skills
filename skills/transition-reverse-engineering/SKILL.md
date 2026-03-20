@@ -34,6 +34,33 @@ This skill operates in one of two scopes. **Always determine scope before starti
 - "The animation looks right" is not sufficient — intermediate state must also match frame by frame.
 - **Extract pane/layer structure with `getComputedStyle`** — measure `opacity`, `visibility`, `z-index`, `animation` on all pane elements at T=0, mid-transition, and T=end. This reveals how old/new content layers interact (e.g. new pane stays `visibility:hidden` until data is ready — never expose loading state to user).
 
+## Step 0: Capture Reference Frames FIRST
+
+> **Before classifying or extracting anything, capture reference frames from the original site. This is your ground truth.**
+
+```bash
+mkdir -p tmp/ref/<effect-name>/frames/{ref,impl}
+
+# For CSS transitions/hover effects:
+agent-browser open https://target-site.com
+agent-browser set viewport 1440 900
+agent-browser screenshot tmp/ref/<effect-name>/frames/ref/before.png
+agent-browser hover <target-selector>
+agent-browser wait 600
+agent-browser screenshot tmp/ref/<effect-name>/frames/ref/after-hover.png
+
+# For page-load / scroll animations — use video:
+agent-browser record start tmp/ref/<effect-name>/ref.webm
+agent-browser wait 3000     # capture the full animation
+agent-browser record stop
+# Extract frames:
+ffmpeg -i tmp/ref/<effect-name>/ref.webm -vf fps=60 tmp/ref/<effect-name>/frames/ref/frame-%04d.png -y
+```
+
+**GATE: `tmp/ref/<effect-name>/frames/ref/` must contain reference frames before proceeding. If empty → repeat Step 0.**
+
+Now classify the effect:
+
 ## Effect Classification
 
 ```bash
@@ -54,15 +81,19 @@ agent-browser eval "
 
 | Signal | Path |
 |--------|------|
-| CSS transition/animation | **CSS Path** → see css-extraction.md |
-| Canvas/WebGL present | **Canvas Path** → see canvas-webgl-extraction.md |
-| Both | **Hybrid** → do both |
+| CSS transition/animation | **CSS Path** → Read `css-extraction.md`, execute |
+| Canvas/WebGL present | **Canvas Path** → Read `canvas-webgl-extraction.md`, execute |
+| Both | **Hybrid** → Read and execute both |
+
+> **GATE: You must run the classification eval above and record the result before choosing a path. Do not guess the effect type — measure it.**
 
 ## Reference Files
 
-- **css-extraction.md** — computed styles, keyframes, hover/scroll/load frame capture
-- **canvas-webgl-extraction.md** — engine ID (Spline/Three.js/Rive/Lottie), bundle download, grep patterns
-- **patterns.md** — CSS/Canvas/WAAPI patterns, character stagger, troubleshooting table
+> **MANDATORY: Use the Read tool to load the relevant `.md` file BEFORE executing each path. These contain the exact commands and procedures — do not improvise from memory.**
+
+- **css-extraction.md** — Read this when Effect Classification → CSS Path. Contains computed style extraction, keyframe capture, hover/scroll/load frame procedures.
+- **canvas-webgl-extraction.md** — Read this when Effect Classification → Canvas Path. Contains engine identification (Spline/Three.js/Rive/Lottie), bundle download, grep patterns.
+- **patterns.md** — Read this when implementing. Contains CSS/Canvas/WAAPI patterns, character stagger recipes, troubleshooting table.
 - **waapi-scrub-inject.js** — browser injector: cancel existing WAAPI, recreate paused, expose `window.__scrub.setup()` / `window.__scrub.seek()`
 - **capture-frames.sh** — steps through `window.__scrub.seek(T)` + screenshot for N frames
 
@@ -83,6 +114,7 @@ fi
 agent-browser eval "$(cat "$SKILL_DIR/waapi-scrub-inject.js")"
 
 # Set up animations to scrub (fill in keyframes extracted from css-extraction.md)
+# selector must be a valid CSS selector string (e.g. '.hero', '#title span')
 agent-browser eval "
 (() => {
   return window.__scrub.setup([

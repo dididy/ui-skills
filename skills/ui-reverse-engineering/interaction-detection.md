@@ -160,6 +160,34 @@ agent-browser eval "
 > Invoke the `transition-reverse-engineering` skill now.
 > Resume here at Step 7 after `tmp/ref/<effect-name>/extracted.json` is saved.
 
+### Save interaction detection results (MANDATORY)
+
+After completing all detection evals above, save a summary of what was found:
+
+```bash
+# Create interactions-detected.json with ALL discovered interactions
+# Fill in actual values from the evals above
+cat > tmp/ref/<component>/interactions-detected.json <<'INTERACTIONS_EOF'
+{
+  "interactions": [
+    {
+      "type": "hover | scroll-trigger | animation | click | auto-timer",
+      "selector": ".actual-selector",
+      "details": "description of what happens",
+      "timing": "transition/animation duration from computed styles"
+    }
+  ]
+}
+INTERACTIONS_EOF
+```
+
+**If zero interactions found**, save:
+```json
+{ "interactions": [], "note": "No interactions detected — static component" }
+```
+
+This file is required by the Phase 2 Extraction Gate and by Step 9 (Interaction Verification).
+
 ---
 
 ## Step 6: JS Bundle Analysis (if needed)

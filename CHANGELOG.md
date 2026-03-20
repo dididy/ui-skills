@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.0.2] - 2026-03-20
+
+### Added
+- **`transition-reverse-engineering`**: Step 0 — mandatory reference frame capture before classification (SKILL.md)
+- **`transition-reverse-engineering`**: stagger with hidden parent — correct reveal order recipe; DOM restore, parent opacity, React effect cleanup troubleshooting entries (patterns.md)
+- **`ui-reverse-engineering`**: three mandatory capture types (C1 static screenshots, C2 scroll video, C3 transition/interaction video) at 60 fps (visual-verification.md)
+- **`ui-reverse-engineering`**: interaction detection results must be saved to `interactions-detected.json` (interaction-detection.md)
+- **`ui-reverse-engineering`**: Phase A / Phase B gates — validation checks before proceeding to extraction or comparison (visual-verification.md, SKILL.md)
+
+### Changed
+- **`ui-reverse-engineering`**: SKILL.md pipeline diagram now includes Phase 1 (reference capture) with gate checks; sub-document references changed from "see X" to "Read X, execute"
+- **`ui-reverse-engineering`**: visual-verification.md restructured — separate C1/C2/C3 comparison tables replace single frame table; 60 fps replaces 2 fps
+- **`ui-reverse-engineering`**: component-generation.md prerequisites now block generation if artifacts are missing
+
+### Fixed
+- README.md: typo fix (`no치t` → `not`)
+- **`transition-reverse-engineering`**: css-extraction.md — added missing HTTPS validation for stylesheet download (consistent with other download commands)
+- **`transition-reverse-engineering`**: SKILL.md — added selector validation guidance for `window.__scrub.setup()`
+
 ## [0.0.1] - 2026-03-19
 
 ### Added

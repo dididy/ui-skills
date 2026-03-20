@@ -62,10 +62,12 @@ Turn this screen recording into a working component
 
 ### How It Works
 
-Steps 1–8 apply to URL input. For screenshot/video input, steps 1–6 are replaced by Claude Vision analysis.
+Steps R–9 apply to URL input. For screenshot/video input, steps 1–6 are replaced by Claude Vision analysis.
 
 ```
 Input URL
+  ↓
+R. Capture Reference    — static screenshots + scroll video + interaction videos (60 fps)
   ↓
 1. Open & Snapshot       — DOM tree, full-page screenshot
   ↓
@@ -83,7 +85,9 @@ Input URL
   ↓
 7. Generate Component    — React + Tailwind, exact values, functional JS
   ↓
-8. Visual Verification   — screenshot comparison, iterate until matched
+8. Visual Verification   — static screenshot + scroll video + interaction video comparison
+  ↓
+9. Iterate               — fix mismatches, re-verify until all three capture types match
 ```
 
 ### Input Modes

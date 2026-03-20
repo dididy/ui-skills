@@ -25,27 +25,188 @@ agent-browser --version           # verify
 
 ## Process
 
+> **MANDATORY: At each numbered step, you MUST use the Read tool to load the referenced `.md` file BEFORE executing that step. Do not proceed from memory or assumptions — the sub-documents contain the exact commands and procedures to follow.**
+
 ```
 Input (URL / screenshot / video)
   ↓
-1. Open & Snapshot        — DOM tree, screenshots          → dom-extraction.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PHASE 1: REFERENCE CAPTURE (before ANY code)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
-2. Extract Structure      — HTML hierarchy, component boundaries → dom-extraction.md
+R. Capture Reference        — Read visual-verification.md, execute Phase A
+  ↓                           Three mandatory captures of ORIGINAL site:
+  ↓                           C1: Full-page static screenshots (5 scroll positions)
+  ↓                           C2: Full-page scroll video (60 fps)
+  ↓                           C3: Per-region transition/interaction videos (60 fps)
   ↓
-3. Extract Styles         — computed CSS, colors, typography, spacing
-  ↓                                                         → style-extraction.md
-4. Extract Responsive     — breakpoint-by-breakpoint styles
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: Run these validation commands.        │
+  ↓  │ ALL must pass before proceeding.            │
+  ↓  │                                              │
+  ↓  │ $ ls -lh tmp/ref/<component>/static/ref/    │
+  ↓  │  □ 5 PNGs, each >50KB                       │
+  ↓  │                                              │
+  ↓  │ $ ls -lh tmp/ref/<component>/ref-scroll.webm│
+  ↓  │  □ exists, >2MB                             │
+  ↓  │                                              │
+  ↓  │ $ ls tmp/ref/<component>/frames/ref/ | wc -l│
+  ↓  │  □ ≥240 PNGs (60fps × 4sec minimum)        │
+  ↓  │                                              │
+  ↓  │ $ ls tmp/ref/<component>/transitions/ref/   │
+  ↓  │  □ ≥60 PNGs per interactive region          │
+  ↓  │                                              │
+  ↓  │ $ ls tmp/ref/<component>/responsive/        │
+  ↓  │  □ ref-mobile.png, ref-tablet.png,          │
+  ↓  │    ref-desktop.png (each >50KB)             │
+  ↓  │                                              │
+  ↓  │ Spot-check: Read top.png — is it the actual │
+  ↓  │ site? (not blank, not bot-detection page)    │
+  ↓  │                                              │
+  ↓  │ If ANY fails → go back to step R.           │
+  ↓  └─────────────────────────────────────────────┘
   ↓
-5. Detect Interactions    — hover/click/scroll, transitions, animations
-  ↓                                                         → interaction-detection.md
-6. Analyze JS (if needed) — bundle grep for complex interactions
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PHASE 2: EXTRACTION (analyze, do not code)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓
+1. Open & Snapshot        — Read dom-extraction.md, execute Step 1
+  ↓
+2. Extract Structure      — Read dom-extraction.md, execute Step 2
+  ↓                         Save → tmp/ref/<component>/structure.json
+  ↓
+3. Extract Styles         — Read style-extraction.md, execute Step 3
+  ↓                         Save → tmp/ref/<component>/styles.json
+  ↓
+4. Extract Responsive     — Read style-extraction.md, execute Step 4
+  ↓
+5. Detect Interactions    — Read interaction-detection.md, execute Step 5
+  ↓
+6. Analyze JS (if needed) — Read interaction-detection.md, execute Step 6
      ↓ complex animation?
      → invoke transition-reverse-engineering skill, then resume at Step 7
   ↓
-7. Generate Component     — React + Tailwind               → component-generation.md
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: Run these validation commands.        │
+  ↓  │ ALL must pass before generating code.       │
+  ↓  │                                              │
+  ↓  │ $ jq '.tag' tmp/ref/<c>/structure.json      │
+  ↓  │  □ Valid JSON, has tag + children keys       │
+  ↓  │                                              │
+  ↓  │ $ jq 'keys | length' tmp/ref/<c>/styles.json│
+  ↓  │  □ ≥3 selectors with ≥2 properties each    │
+  ↓  │                                              │
+  ↓  │ $ jq '.tokens.colors | keys | length'       │
+  ↓  │        tmp/ref/<c>/extracted.json            │
+  ↓  │  □ ≥3 colors extracted                      │
+  ↓  │  □ ≥2 typography styles                     │
+  ↓  │  □ interactions array not all empty         │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/interactions-detected.json │
+  ↓  │  □ Exists (even if 0 interactions found)    │
+  ↓  │                                              │
+  ↓  │ If ANY fails → go back to failing step.     │
+  ↓  └─────────────────────────────────────────────┘
   ↓
-8. Visual Verification    — screenshot comparison, iterate → visual-verification.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PHASE 3: GENERATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓
+7. Generate Component     — Read component-generation.md, execute
+  ↓                         Use ONLY extracted values. No guessing.
+  ↓
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PHASE 4: VERIFICATION (gates completion)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓
+8. Visual Verification    — Read visual-verification.md, execute Phase B + C
+  ↓                         Phase B: capture implementation frames
+  ↓                         Phase C: frame-by-frame comparison table
+  ↓
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: ALL THREE comparison tables must pass. │
+  ↓  │  □ C1 table: static screenshots all ✅       │
+  ↓  │  □ C2 table: scroll frames (60fps) all ✅    │
+  ↓  │  □ C3 table: transition frames (60fps) all ✅│
+  ↓  │                                              │
+  ↓  │ If ANY row in ANY table is ❌:               │
+  ↓  │  1. Name root cause in one sentence         │
+  ↓  │  2. Targeted fix (do NOT rewrite component) │
+  ↓  │  3. Re-run Phase B for that capture type    │
+  ↓  │  4. Compare affected frames only            │
+  ↓  │  5. Max 3 full iterations                   │
+  ↓  │                                              │
+  ↓  │ COMPLETION = C1 ✅ AND C2 ✅ AND C3 ✅.      │
+  ↓  │ Nothing else counts as "done".               │
+  ↓  └─────────────────────────────────────────────┘
+  ↓
+9. Interaction Verification — Read interactions-detected.json, then
+  ↓   for EACH interaction, execute the matching test below on localhost.
+  ↓
+  ↓   HOVER:
+  ↓     agent-browser screenshot tmp/test-hover-before.png
+  ↓     agent-browser hover <selector>
+  ↓     agent-browser wait 600
+  ↓     agent-browser screenshot tmp/test-hover-after.png
+  ↓     → Compare before/after to ref C3 hover frames
+  ↓     → Check transition timing with agent-browser eval
+  ↓
+  ↓   AUTO-TIMER (carousel, slideshow):
+  ↓     agent-browser screenshot tmp/test-timer-t0.png
+  ↓     agent-browser wait <interval-ms>
+  ↓     agent-browser screenshot tmp/test-timer-t1.png
+  ↓     → Content must have changed (different slide)
+  ↓     → Hover carousel → wait → content must NOT change (paused)
+  ↓     → Move mouse away → wait → content must change (resumed)
+  ↓
+  ↓   SCROLL-TRIGGER:
+  ↓     agent-browser eval "(() => window.scrollTo(0, <before-trigger>))()"
+  ↓     agent-browser screenshot tmp/test-scroll-before.png
+  ↓     agent-browser eval "(() => window.scrollTo(0, <trigger-point>))()"
+  ↓     agent-browser wait 600
+  ↓     agent-browser screenshot tmp/test-scroll-after.png
+  ↓     → Element must transition from hidden to visible
+  ↓
+  ↓   CLICK:
+  ↓     agent-browser screenshot tmp/test-click-before.png
+  ↓     agent-browser click <selector>
+  ↓     agent-browser wait 500
+  ↓     agent-browser screenshot tmp/test-click-after.png
+  ↓     → State change must be visible
+  ↓
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: Fill this table from actual test runs. │
+  ↓  │ Do NOT fill from code reading.               │
+  ↓  │                                              │
+  ↓  │ | Interaction | Selector | Pass? | Issue |   │
+  ↓  │ |-------------|----------|-------|-------|   │
+  ↓  │ | hover       | .btn     | ✅/❌ |       |   │
+  ↓  │ | auto-timer  | .slider  | ✅/❌ |       |   │
+  ↓  │ | scroll      | .card    | ✅/❌ |       |   │
+  ↓  │                                              │
+  ↓  │ ALL rows must be ✅.                         │
+  ↓  │ If ANY ❌ → diagnose → fix → re-test.       │
+  ↓  │ Max 3 iterations per interaction.            │
+  ↓  └─────────────────────────────────────────────┘
 ```
+
+## Step Execution Rules
+
+1. **Read before executing.** At each step, use the Read tool to load the referenced `.md` file. The sub-documents contain exact `agent-browser` commands, JS snippets, and output formats. Do not improvise.
+2. **Save artifacts.** Each extraction step produces a JSON file. Save it. The generation step (7) consumes these files.
+3. **No skipping.** If a step seems unnecessary (e.g., "this site has no interactions"), still run the detection commands from `interaction-detection.md` to confirm. Document the null result.
+4. **Reference capture is step ZERO.** Before any extraction or coding, capture the original site's screenshots and video (Phase A of `visual-verification.md`). These are your ground truth for the entire process.
+5. **Test interactions, not just screenshots.** Static visual match is necessary but NOT sufficient. Every hover, click, scroll-trigger, and auto-timer must be tested with browser automation on the implementation. A component that looks right but behaves wrong is not done.
+
+## Multi-section pages
+
+When reverse-engineering a page with multiple distinct sections (e.g., Hero + Carousel + Grid):
+
+1. **Phase 1 (Reference Capture): capture the ENTIRE page** — full scroll recording + per-section screenshots
+2. **Phase 2 (Extraction): extract per section** — each section gets its own `structure.json`, `styles.json`
+3. **Phase 3 (Generation): implement one section at a time** — complete and verify each before moving to the next
+4. **Phase 4 (Verification): verify each section individually AND the full page together**
+5. Section order: top to bottom, matching the page flow
 
 ## Input Modes
 
@@ -67,7 +228,7 @@ Save extracted data summary to `tmp/ref/<component>/extracted.json`:
 {
   "url": "https://target-site.com",
   "component": "HeroSection",
-  "breakpoints": { "mobile": 375, "tablet": 768, "desktop": 1440 },  // fill with actual extracted values
+  "breakpoints": { "mobile": 375, "tablet": 768, "desktop": 1440 },
   "tokens": { "colors": {}, "spacing": {}, "typography": {} },
   "interactions": { "hover": {}, "scroll": [], "animations": [] }
 }
@@ -91,6 +252,8 @@ agent-browser close                         # Kill session
 ```
 
 ## Reference Files
+
+> **REMINDER: You must Read each file when you reach its step. They are not optional references.**
 
 - **dom-extraction.md** — Steps 1–2: open, snapshot, DOM hierarchy
 - **style-extraction.md** — Steps 3–4: computed styles, design tokens, responsive breakpoints
