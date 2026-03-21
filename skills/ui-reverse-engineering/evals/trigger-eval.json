@@ -1,0 +1,122 @@
+[
+  {
+    "query": "hey can you clone this page for me? https://stripe.com/payments — i need a react component that looks exactly like it, with the hover effects and everything",
+    "should_trigger": true
+  },
+  {
+    "query": "I'm building a dashboard and I found this design I really like at https://linear.app/features. Can you reverse-engineer the layout into Tailwind? I want the exact spacing and colors, not approximations.",
+    "should_trigger": true
+  },
+  {
+    "query": "replicate this UI (attached screenshot of a pricing page) — turn it into a working React component with the card hover animations",
+    "should_trigger": true
+  },
+  {
+    "query": "I recorded my screen showing how this carousel works on https://vercel.com — can you copy the transition timing and make it work the same way in my project?",
+    "should_trigger": true
+  },
+  {
+    "query": "make it look like https://tailwindcss.com/docs — I want the sidebar nav, the content area, and the responsive breakpoints to match exactly",
+    "should_trigger": true
+  },
+  {
+    "query": "copy the hero section from notion.so — the gradient background, the CTA buttons, the responsive layout. I want computed CSS values not guesses from a screenshot",
+    "should_trigger": true
+  },
+  {
+    "query": "I need to turn this Figma mockup screenshot into a pixel-perfect React component. Here's the screenshot (attached). Get as close as possible to the original design.",
+    "should_trigger": true
+  },
+  {
+    "query": "clone the CSS animation on this button — when you hover it does a scale + shadow transition over 300ms with some kind of ease-out curve. URL: https://ui.shadcn.com",
+    "should_trigger": true
+  },
+  {
+    "query": "I have multiple screenshots of a mobile app UI at different screen sizes. Can you turn these into a responsive React component?",
+    "should_trigger": true
+  },
+  {
+    "query": "reverse-engineer the footer from https://github.com — I need the exact column layout, link styles, and the responsive stacking behavior",
+    "should_trigger": true
+  },
+  {
+    "query": "turn this into code — https://dribbble.com/shots/12345 — it's a card-based dashboard with data visualization placeholders",
+    "should_trigger": true
+  },
+  {
+    "query": "I want to copy the sidebar navigation from https://docs.github.com — the expandable tree structure with icons and active state highlighting",
+    "should_trigger": true
+  },
+  {
+    "query": "clone this FAQ page at https://example.com/faq — the accordions expand on click with smooth height transitions",
+    "should_trigger": true
+  },
+  {
+    "query": "this product page at https://example.com has an image carousel that auto-rotates. I want the same thing in my React app with exact timing.",
+    "should_trigger": true
+  },
+  {
+    "query": "just copy the modal dialog from https://example.com — click the Contact button to open it. I need the modal component with the backdrop animation.",
+    "should_trigger": true
+  },
+  {
+    "query": "I only need the navigation bar and footer from https://example.com — skip everything in between. Make them separate components.",
+    "should_trigger": true
+  },
+  {
+    "query": "write me a React component for a login form with email and password fields, a submit button, and form validation using react-hook-form and zod",
+    "should_trigger": false
+  },
+  {
+    "query": "can you help me debug this CSS issue? my flexbox layout is breaking on mobile — the items aren't wrapping correctly. here's my component code...",
+    "should_trigger": false
+  },
+  {
+    "query": "I want to add dark mode to my Next.js app. Should I use next-themes or just CSS variables with a toggle? What's the best practice?",
+    "should_trigger": false
+  },
+  {
+    "query": "refactor this React component to use server components instead of client components — it's currently fetching data with useEffect but I want to move to RSC",
+    "should_trigger": false
+  },
+  {
+    "query": "set up a new Next.js 15 project with Tailwind, TypeScript, and shadcn/ui. I want App Router with the standard folder structure.",
+    "should_trigger": false
+  },
+  {
+    "query": "write playwright e2e tests for my checkout flow — it should test adding items to cart, entering shipping info, and completing payment",
+    "should_trigger": false
+  },
+  {
+    "query": "optimize the performance of my React app — the bundle is 2MB and the LCP is terrible. Can you analyze what's causing the bloat?",
+    "should_trigger": false
+  },
+  {
+    "query": "I need to build a REST API with Express.js that connects to PostgreSQL. It should have CRUD endpoints for users, posts, and comments with authentication middleware.",
+    "should_trigger": false
+  },
+  {
+    "query": "help me migrate from CSS modules to Tailwind CSS in my existing React project. I have about 30 components that need to be converted.",
+    "should_trigger": false
+  },
+  {
+    "query": "deploy my Next.js app to Vercel with environment variables for my Supabase connection. I also need to set up the GitHub Actions CI pipeline.",
+    "should_trigger": false
+  },
+  {
+    "query": "design a database schema for an e-commerce platform with products, orders, users, and inventory tracking",
+    "should_trigger": false
+  },
+  {
+    "query": "how do I implement infinite scroll in React with virtualization? I have a list of 10000 items",
+    "should_trigger": false
+  },
+  {
+    "query": "I need to extract the hover animation timing from a button — not clone the whole site, just get the cubic-bezier and duration",
+    "should_trigger": false
+  },
+  {
+    "query": "write a Node.js script that scrapes product prices from multiple e-commerce sites and saves them to a CSV",
+    "should_trigger": false
+  }
+]

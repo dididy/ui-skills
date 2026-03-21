@@ -1,11 +1,13 @@
 ---
 name: ui-reverse-engineering
-description: Reverse-engineer any website into production-ready React + Tailwind code. Triggers on "clone this site", "copy this UI", "replicate this page", "turn this into code", "reverse-engineer this", "make it look like X". Extracts DOM structure, computed CSS, JS interactions, responsive breakpoints, and animations from a live URL — then generates a working component. Use transition-reverse-engineering sub-skill for precise animation extraction.
+description: Use when a user provides a website URL and wants to reproduce its visual design in code. This includes cloning entire pages, copying specific sections (hero, nav, footer, sidebar), extracting CSS animations or hover effects, replicating responsive layouts, or matching exact spacing/colors/typography from a live site. Typical requests — "clone https://stripe.com", "copy the hero from notion.so", "make it look like [URL]", "reverse-engineer this layout", "extract the animation from [URL]", "I found this design at [URL], recreate it in React". The key signal is the user has a reference URL or website they want to visually replicate. Outputs React + Tailwind components. Does NOT apply to general CSS help, building UIs from scratch without a reference URL, or non-visual tasks.
 ---
 
 # UI Reverse Engineering
 
 Reverse-engineer a live website into a **React + Tailwind** component.
+
+> **`agent-browser` is a system CLI.** Execute all commands via the Bash tool.
 
 **Core principles:**
 - **URL input:** Extract actual values via `getComputedStyle`, DOM inspection, and JS bundle analysis. Never guess.
@@ -35,33 +37,25 @@ Input (URL / screenshot / video)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
 R. Capture Reference        — Read visual-verification.md, execute Phase A
-  ↓                           Three mandatory captures of ORIGINAL site:
+  ↓                           Two mandatory captures of ORIGINAL site:
   ↓                           C1: Full-page static screenshots (5 scroll positions)
   ↓                           C2: Full-page scroll video (60 fps)
-  ↓                           C3: Per-region transition/interaction videos (60 fps)
+  ↓                           C3 is deferred until after Step 5 (needs interaction data)
   ↓
   ↓  ┌─────────────────────────────────────────────┐
-  ↓  │ GATE: Run these validation commands.        │
-  ↓  │ ALL must pass before proceeding.            │
+  ↓  │ GATE: Validate reference captures.          │
   ↓  │                                              │
-  ↓  │ $ ls -lh tmp/ref/<component>/static/ref/    │
-  ↓  │  □ 5 PNGs, each >50KB                       │
-  ↓  │                                              │
-  ↓  │ $ ls -lh tmp/ref/<component>/ref-scroll.webm│
-  ↓  │  □ exists, >2MB                             │
-  ↓  │                                              │
-  ↓  │ $ ls tmp/ref/<component>/frames/ref/ | wc -l│
-  ↓  │  □ ≥240 PNGs (60fps × 4sec minimum)        │
-  ↓  │                                              │
-  ↓  │ $ ls tmp/ref/<component>/transitions/ref/   │
-  ↓  │  □ ≥60 PNGs per interactive region          │
-  ↓  │                                              │
-  ↓  │ $ ls tmp/ref/<component>/responsive/        │
-  ↓  │  □ ref-mobile.png, ref-tablet.png,          │
-  ↓  │    ref-desktop.png (each >50KB)             │
+  ↓  │ $ ls tmp/ref/<component>/static/ref/        │
+  ↓  │  □ 5 PNGs (top, 25%, 50%, 75%, bottom)     │
   ↓  │                                              │
   ↓  │ Spot-check: Read top.png — is it the actual │
   ↓  │ site? (not blank, not bot-detection page)    │
+  ↓  │                                              │
+  ↓  │ $ ls tmp/ref/<component>/ref-scroll.webm    │
+  ↓  │  □ exists, frames extracted to frames/ref/  │
+  ↓  │                                              │
+  ↓  │ □ C3 (transitions/) — deferred until Step 5b │
+  ↓  │ □ responsive/ — deferred until Step 4       │
   ↓  │                                              │
   ↓  │ If ANY fails → go back to step R.           │
   ↓  └─────────────────────────────────────────────┘
@@ -78,13 +72,23 @@ R. Capture Reference        — Read visual-verification.md, execute Phase A
 3. Extract Styles         — Read style-extraction.md, execute Step 3
   ↓                         Save → tmp/ref/<component>/styles.json
   ↓
-4. Extract Responsive     — Read style-extraction.md, execute Step 4
+4. Detect Responsive      — Read responsive-detection.md, execute Steps 4-A through 4-E
   ↓
 5. Detect Interactions    — Read interaction-detection.md, execute Step 5
+  ↓                         Save → tmp/ref/<component>/interactions-detected.json
+  ↓
+5b. Capture C3 (deferred) — Re-open original site (viewport may have changed in Step 4)
+  ↓                          Read visual-verification.md, execute Phase A-C3
+  ↓                          Use selectors from interactions-detected.json
   ↓
 6. Analyze JS (if needed) — Read interaction-detection.md, execute Step 6
      ↓ complex animation?
      → invoke transition-reverse-engineering skill, then resume at Step 7
+  ↓
+6b. Assemble extracted.json — Combine data from Steps 2-5 into the summary file:
+  ↓                            structure.json + styles.json + detected-breakpoints.json
+  ↓                            + interactions-detected.json → extracted.json
+  ↓                            (see Output section for schema)
   ↓
   ↓  ┌─────────────────────────────────────────────┐
   ↓  │ GATE: Run these validation commands.        │
@@ -96,11 +100,9 @@ R. Capture Reference        — Read visual-verification.md, execute Phase A
   ↓  │ $ jq 'keys | length' tmp/ref/<c>/styles.json│
   ↓  │  □ ≥3 selectors with ≥2 properties each    │
   ↓  │                                              │
-  ↓  │ $ jq '.tokens.colors | keys | length'       │
-  ↓  │        tmp/ref/<c>/extracted.json            │
-  ↓  │  □ ≥3 colors extracted                      │
-  ↓  │  □ ≥2 typography styles                     │
-  ↓  │  □ interactions array not all empty         │
+  ↓  │ $ cat tmp/ref/<c>/extracted.json              │
+  ↓  │  □ Exists (assembled from Steps 2-5 data)  │
+  ↓  │  □ Has breakpoints, tokens, interactions    │
   ↓  │                                              │
   ↓  │ $ cat tmp/ref/<c>/interactions-detected.json │
   ↓  │  □ Exists (even if 0 interactions found)    │
@@ -208,6 +210,53 @@ When reverse-engineering a page with multiple distinct sections (e.g., Hero + Ca
 4. **Phase 4 (Verification): verify each section individually AND the full page together**
 5. Section order: top to bottom, matching the page flow
 
+## Partial extraction
+
+When the user requests a specific section or component (not the full page):
+
+### Scope determination
+
+| Request | Scope | Example |
+|---------|-------|---------|
+| "clone the hero section" | **single-section** | One visible section with a clear boundary |
+| "copy the nav and footer" | **multi-section** | Two+ independent sections from the same page |
+| "replicate this card component" | **single-element** | One repeating element, not a full section |
+| "clone the modal / dialog" | **hidden-element** | Element that requires interaction to become visible |
+
+### Adjustments by scope
+
+**single-section:**
+1. Step R: capture only the section's scroll range (not full page). C1 = 1–2 screenshots covering the section, C2 = scroll video of that range only
+2. Step 2: DOM extraction scoped to the section's root selector
+3. Step 4: responsive sweep still runs full width range, but measurement function targets the section's elements only
+4. Step 8: C1/C2 comparison limited to the section's viewport range
+
+**multi-section (independent sections):**
+1. Each section follows the single-section flow independently
+2. Generate separate components OR a single component with clearly separated sections (follow user preference)
+3. Verify each section individually — do not block one section's completion on another
+
+**single-element:**
+1. Step R: C1 = screenshot cropped to the element. C2 = skip (no scroll range). C3 = capture if element has interactions
+2. Step 2: DOM extraction starts from the element, not the page root
+3. Step 3: extract computed styles for the element and its children only
+4. Step 4: skip viewport sweep unless the user asks for responsive behavior
+5. Step 8: compare cropped element screenshots only
+
+**hidden-element (modal, dropdown, tooltip):**
+1. Step R: trigger the element first (click button, hover trigger, etc.), THEN capture. Document the trigger action
+2. Step 2: DOM extraction after the element is visible
+3. Step 5: the trigger interaction itself must be captured (click → open, click → close)
+4. Step 9: verify both opening and closing behavior on localhost
+
+### Artifact naming
+
+Use descriptive names for partial extractions:
+- `tmp/ref/hero/` not `tmp/ref/example-com/`
+- `tmp/ref/nav/` and `tmp/ref/footer/` for multi-section
+- `tmp/ref/pricing-card/` for single element
+- `tmp/ref/signup-modal/` for hidden element
+
 ## Input Modes
 
 | Mode | When to use | How |
@@ -228,7 +277,7 @@ Save extracted data summary to `tmp/ref/<component>/extracted.json`:
 {
   "url": "https://target-site.com",
   "component": "HeroSection",
-  "breakpoints": { "mobile": 375, "tablet": 768, "desktop": 1440 },
+  "breakpoints": { "detected": [640, 768, 1024], "tailwind": { "sm": 640, "md": 768, "lg": 1024 } },
   "tokens": { "colors": {}, "spacing": {}, "typography": {} },
   "interactions": { "hover": {}, "scroll": [], "animations": [] }
 }
@@ -256,10 +305,11 @@ agent-browser close                         # Kill session
 > **REMINDER: You must Read each file when you reach its step. They are not optional references.**
 
 - **dom-extraction.md** — Steps 1–2: open, snapshot, DOM hierarchy
-- **style-extraction.md** — Steps 3–4: computed styles, design tokens, responsive breakpoints
+- **style-extraction.md** — Step 3: computed styles, design tokens
+- **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
 - **interaction-detection.md** — Steps 5–6: hover/scroll/keyframes, JS bundle analysis
 - **component-generation.md** — Step 7: generation prompt, iteration rules
-- **visual-verification.md** — Step 8: Phase A/B/C recording, frame comparison
+- **visual-verification.md** — Steps R, 5b, 8–9: Phase A (reference capture), A-C3 (deferred), Phase B (impl capture), Phase C (comparison), interaction verification, responsive verification
 
 ## Sub-skills
 
@@ -271,7 +321,7 @@ If this skill is invoked as part of a ralph task (e.g. task description contains
 
 1. **Dismiss any modals or overlays before capturing** — cookie banners, signup prompts, etc. must be closed first or they will appear in reference frames
 2. **"Already implemented" is not grounds for skipping** — always capture reference frames from the original site and compare against the current implementation, even if the feature appears to be done
-3. **Capture reference frames once, save to `tmp/frames-original/`** — never re-capture from the original site mid-iteration
-4. **Capture implementation frames to `tmp/frames-ours/`** after each change
+3. **Capture reference frames once, save to `tmp/ref/<component>/frames/ref/`** — never re-capture from the original site mid-iteration
+4. **Capture implementation frames to `tmp/ref/<component>/frames/impl/`** after each change
 5. **Repeat until 100% visual match** — do not converge while any frame shows a discrepancy
 6. All timing/easing/spacing values must come from extracted measurements — no guessing

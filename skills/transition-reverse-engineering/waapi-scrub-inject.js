@@ -124,14 +124,15 @@
     },
 
     seek: function (ms) {
+      var clampedMs = Math.max(0, ms);
       for (var i = 0; i < _anims.length; i++) {
         var a = _anims[i].anim;
         // An animation in 'finished' state throws InvalidStateError on currentTime assignment.
         // Calling pause() first moves it back to 'paused' regardless of current state.
         if (a.playState !== 'paused') a.pause();
-        a.currentTime = ms;
+        a.currentTime = clampedMs;
       }
-      return 'seeked to ' + ms + 'ms';
+      return 'seeked to ' + clampedMs + 'ms';
     },
 
     get duration() {

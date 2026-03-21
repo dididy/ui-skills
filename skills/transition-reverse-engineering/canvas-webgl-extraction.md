@@ -30,12 +30,12 @@ If Spline/Rive/Lottie: data-driven (scene file), not code-driven. Either referen
 ## Find and download JS bundles
 
 ```bash
-agent-browser eval "
+# Find chunk URLs and download them to tmp/ref/<effect-name>/bundles/
+URLS=$(agent-browser eval "
 (() => {
   var scripts = Array.from(document.querySelectorAll('script[src]'))
     .map(function(s) { return s.src; })
     .filter(function(u) {
-      // Next.js, Nuxt, Remix, Vite, and generic chunk patterns
       return u.indexOf('/_next/') > -1 ||
              u.indexOf('/chunks/') > -1 ||
              u.indexOf('/_nuxt/') > -1 ||
@@ -44,15 +44,7 @@ agent-browser eval "
              /\.[a-f0-9]{8,}\.js/.test(u);
     });
   return JSON.stringify(scripts);
-})()
-"
-```
-
-```bash
-# Download to project tmp/ref/<effect-name>/bundles/
-# URLS: newline-separated list of script URLs from the eval above.
-# The eval returns a JSON array — parse it with jq, or copy-paste URLs manually:
-#   URLS=$(agent-browser eval "(() => { ... })()" | jq -r '.[]')
+})()" | jq -r '.[]')
 mkdir -p tmp/ref/<effect-name>/bundles
 failed=0
 while IFS= read -r url; do

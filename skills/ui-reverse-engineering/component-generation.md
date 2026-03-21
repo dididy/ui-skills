@@ -6,7 +6,7 @@
 
 - [ ] `structure.json` — DOM hierarchy (from Step 2)
 - [ ] `styles.json` — computed styles per element (from Step 3)
-- [ ] Breakpoint styles (mobile / tablet / desktop) (from Step 4)
+- [ ] Detected breakpoints + per-breakpoint styles (from Step 4 — `responsive-detection.md`)
 - [ ] Interaction delta (hover/click states + transition values) (from Step 5)
 - [ ] Keyframes or `extracted.json` from transition-reverse-engineering (if any)
 - [ ] Reference frames exist in `tmp/ref/<component>/frames/ref/` (from Phase 1)
@@ -22,7 +22,8 @@ Generate a React + Tailwind component based on these extracted values:
 
 Structure: [structure.json content]
 Styles: [styles.json content]
-Responsive: mobile={...} tablet={...} desktop={...}
+Responsive: detected breakpoints from responsive-detection.md (e.g. sm=640 md=768 lg=1024)
+  Per-breakpoint styles from styles-<width>.json files
 Interactions: hover delta={...}, transition="..."
 Keyframes / animations: [extracted.json or keyframes if any]
 

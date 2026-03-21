@@ -4,6 +4,8 @@
 
 ## Step 5: Detect Interactions
 
+> **Replace `.target` in all evals below** with the actual selector from Step 2.
+
 ### Classify interaction type
 
 ```bash
@@ -53,7 +55,7 @@ agent-browser eval "
         if (changed.length > 0) {
           window.__scrollTransitions.push({
             index: i,
-            selector: el.tagName.toLowerCase() + (el.className ? '.' + el.className.toString().trim().split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, '') : ''),
+            selector: (() => { const cn = typeof el.className === 'string' ? el.className : el.className?.baseVal || ''; const first = cn.trim().split(' ')[0]?.replace(/[^a-zA-Z0-9_-]/g, ''); return el.tagName.toLowerCase() + (first ? '.' + first : ''); })(),
             ratio: e.intersectionRatio,
             changed,
             before: Object.fromEntries(changed.map(p => [p, before[p]])),
@@ -102,9 +104,10 @@ agent-browser eval "
   if (!el) return JSON.stringify({ error: 'selector not found' });
   const s = getComputedStyle(el);
   window.__before = {
-    opacity: s.opacity, transform: s.transform,
+    opacity: s.opacity, transform: s.transform, scale: s.scale,
     backgroundColor: s.backgroundColor, boxShadow: s.boxShadow,
     color: s.color, filter: s.filter,
+    borderRadius: s.borderRadius, border: s.border,
   };
   return JSON.stringify(window.__before);
 })()
@@ -120,9 +123,10 @@ agent-browser eval "
   if (!el) return JSON.stringify({ error: 'selector not found' });
   const s = getComputedStyle(el);
   const after = {
-    opacity: s.opacity, transform: s.transform,
+    opacity: s.opacity, transform: s.transform, scale: s.scale,
     backgroundColor: s.backgroundColor, boxShadow: s.boxShadow,
     color: s.color, filter: s.filter,
+    borderRadius: s.borderRadius, border: s.border,
   };
   const delta = {};
   Object.keys(after).forEach(k => {

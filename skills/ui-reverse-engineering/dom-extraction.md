@@ -23,18 +23,20 @@ agent-browser --headed open "https://target-site.com"
 
 Identify the target component boundary first, then extract its hierarchy.
 
+> **Replace `.target-selector` below** with the actual selector for the component you're extracting. Use the snapshot from Step 1 to identify the right element. All subsequent steps (style-extraction, interaction-detection, responsive-detection) should use this same selector — replace `.target` in those files accordingly.
+
 ```bash
 agent-browser eval "
 (() => {
   const target = document.querySelector('.target-selector');
   if (!target) return JSON.stringify({ error: 'selector not found' });
-  // depth limit: increase to 6-8 for deep component trees (shadcn, MUI, etc.)
+  // depth limit: reduce to 4 for simple pages, increase to 8 for deep component trees (shadcn, MUI, etc.)
   const extract = (el, depth = 0) => {
-    if (depth > 4) return null;
+    if (depth > 6) return null;
     const s = getComputedStyle(el);
     return {
       tag: el.tagName.toLowerCase(),
-      class: el.className?.toString().slice(0, 80),
+      class: (typeof el.className === 'string' ? el.className : el.className?.baseVal || '').slice(0, 80),
       display: s.display,
       position: s.position,
       children: Array.from(el.children).map(c => extract(c, depth + 1)).filter(Boolean),

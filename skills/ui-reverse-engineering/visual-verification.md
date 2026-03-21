@@ -105,25 +105,13 @@ agent-browser record stop
 ffmpeg -i tmp/ref/<component>/ref-scroll.webm -vf fps=60 tmp/ref/<component>/frames/ref/scroll-%06d.png -y
 ```
 
-### A-C3: Transition/interaction videos
+### A-C3: Transition/interaction videos (deferred to Step 5b)
 
-For EACH interactive region detected in Step 5 (interaction-detection.md), record a separate video:
+> **This step requires `interactions-detected.json` from Step 5.** Execute A-C3 after Step 5 in Phase 2 (referenced as Step 5b in SKILL.md), not during the initial Phase A pass.
+
+For EACH interactive region from `interactions-detected.json`, record a separate video. Use the selectors already identified in Step 5.
 
 ```bash
-# Identify interactive elements first
-agent-browser eval "
-(() => {
-  const els = Array.from(document.querySelectorAll('a, button, [role=button], .card, nav a, [data-hover], [class*=slider], [class*=carousel], [class*=accordion]'));
-  return JSON.stringify(els.slice(0, 15).map((el, i) => ({
-    i,
-    tag: el.tagName,
-    text: el.textContent?.trim().slice(0, 30),
-    class: el.className?.toString().trim().split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''),
-    rect: el.getBoundingClientRect(),
-  })));
-})()"
-
-# For each interactive region — record hover/click/timer interaction:
 # Example: carousel with auto-timer + hover
 agent-browser eval "(() => { const el = document.querySelector('<carousel-selector>'); el.scrollIntoView({ block: 'center' }); })()"
 agent-browser wait 500
@@ -150,31 +138,19 @@ ffmpeg -i tmp/ref/<component>/ref-transition-carousel.webm -vf fps=60 tmp/ref/<c
 
 ### A-R: Responsive screenshots
 
-```bash
-agent-browser open https://target-site.com
-agent-browser set viewport 375 812
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser screenshot tmp/ref/<component>/responsive/ref-mobile.png
-agent-browser set viewport 768 1024
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser screenshot tmp/ref/<component>/responsive/ref-tablet.png
-agent-browser set viewport 1440 900
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser screenshot tmp/ref/<component>/responsive/ref-desktop.png
-```
+**Handled by `responsive-detection.md` Steps 4-D and A-R.** If Step 4 was already executed in Phase 2, ref screenshots already exist — do not re-capture. If Phase 1 runs before Phase 2 (as in the SKILL.md flow), defer A-R until Step 4 is complete.
 
 ### Phase A Gate
 
 ```
 □ static/ref/ has 5 screenshots (top, 25%, 50%, 75%, bottom)
-□ ref-scroll.webm exists
-□ frames/ref/ has scroll frames at 60 fps
-□ Per-transition videos exist for each interactive region
-□ transitions/ref/ has transition frames at 60 fps
-□ responsive/ has 3 ref screenshots
+□ Spot-check: Read top.png — is it the actual site? (not blank, not bot-detection page)
+□ ref-scroll.webm exists and has frames extracted to frames/ref/ at 60 fps
+□ C3 (transitions/) — deferred until Step 5b (needs interaction data from Step 5)
+□ responsive/ — deferred until Step 4 (responsive-detection.md)
 ```
 
-**If ANY is missing → do not proceed to Phase 2 (extraction). Go back and capture.**
+**If C1 or C2 is missing → go back and capture. C3 and responsive are captured later in Phase 2.**
 
 ---
 
@@ -249,18 +225,7 @@ ffmpeg -i tmp/ref/<component>/impl-transition-carousel.webm -vf fps=60 tmp/ref/<
 
 ### B-R: Responsive screenshots
 
-```bash
-agent-browser open http://localhost:<port>
-agent-browser set viewport 375 812
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser screenshot tmp/ref/<component>/responsive/impl-mobile.png
-agent-browser set viewport 768 1024
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser screenshot tmp/ref/<component>/responsive/impl-tablet.png
-agent-browser set viewport 1440 900
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser screenshot tmp/ref/<component>/responsive/impl-desktop.png
-```
+**Read `responsive-detection.md`, execute the B-R section.** Captures impl screenshots at the same detected breakpoints used in A-R.
 
 ---
 
@@ -272,7 +237,6 @@ agent-browser screenshot tmp/ref/<component>/responsive/impl-desktop.png
 
 Read ref and impl screenshots side-by-side using the Read tool.
 
-```
 | Position | Ref                      | Impl                      | Match? | Issue |
 |----------|--------------------------|---------------------------|--------|-------|
 | Top      | static/ref/top.png       | static/impl/top.png       | ✅/❌  |       |
@@ -280,10 +244,8 @@ Read ref and impl screenshots side-by-side using the Read tool.
 | 50%      | static/ref/50pct.png     | static/impl/50pct.png     | ✅/❌  |       |
 | 75%      | static/ref/75pct.png     | static/impl/75pct.png     | ✅/❌  |       |
 | Bottom   | static/ref/bottom.png    | static/impl/bottom.png    | ✅/❌  |       |
-| Mobile   | responsive/ref-mobile    | responsive/impl-mobile    | ✅/❌  |       |
-| Tablet   | responsive/ref-tablet    | responsive/impl-tablet    | ✅/❌  |       |
-| Desktop  | responsive/ref-desktop   | responsive/impl-desktop   | ✅/❌  |       |
-```
+
+**Responsive comparison:** see `responsive-detection.md` C-R table (covers all detected breakpoints).
 
 ### C2: Scroll video frame comparison (60 fps)
 

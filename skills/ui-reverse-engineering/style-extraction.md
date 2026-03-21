@@ -1,10 +1,12 @@
-# Style Extraction — Steps 3 & 4
+# Style Extraction — Step 3
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 
 ## Step 3: Extract Computed Styles
 
 ### Key element styles
+
+> **Adapt selectors below to your target component.** Replace `.target` with the actual selector identified in Step 1 (dom-extraction.md). The selectors here are starting points — add or remove based on the actual DOM structure.
 
 ```bash
 agent-browser eval "
@@ -28,9 +30,10 @@ agent-browser eval "
     if (!el) return;
     const s = getComputedStyle(el);
     result[sel] = {};
+    const positionProps = new Set(['top','right','bottom','left','marginTop','marginRight','marginBottom','marginLeft','paddingTop','paddingRight','paddingBottom','paddingLeft']);
     props.forEach(p => {
       const v = s[p];
-      if (v && v !== 'none' && v !== '0px') {
+      if (v && (v !== '0px' || positionProps.has(p)) && (v !== 'none' || p === 'display')) {
         result[sel][p] = v;
       }
     });
@@ -49,7 +52,7 @@ agent-browser eval "
   for (const sheet of document.styleSheets) {
     try {
       for (const rule of sheet.cssRules) {
-        if (rule.selectorText === ':root') {
+        if (rule.selectorText === ':root' || rule.selectorText === 'html' || rule.selectorText === ':host') {
           const matches = rule.cssText.matchAll(/--([\w-]+):\s*([^;]+)/g);
           for (const m of matches) vars['--' + m[1]] = m[2].trim();
         }
@@ -65,48 +68,4 @@ agent-browser eval "
 
 ---
 
-## Step 4: Extract Responsive Styles
-
-Extract actual breakpoints from CSS first:
-
-```bash
-agent-browser eval "
-(() => {
-  const breakpoints = [];
-  for (const sheet of document.styleSheets) {
-    try {
-      for (const rule of sheet.cssRules) {
-        if (rule instanceof CSSMediaRule) breakpoints.push(rule.conditionText);
-      }
-    } catch(e) {}
-  }
-  return JSON.stringify([...new Set(breakpoints)], null, 2);
-})()
-"
-```
-
-**Use the widths extracted above.** If the result is empty, either the site has no `@media` rules or CORS blocked stylesheet access — fall back to the defaults below (375 / 768 / 1440) and note this in `extracted.json`.
-
-Repeat this block for each breakpoint — replace `<width>`, `<height>`, and `<label>` with actual values:
-
-```bash
-# <label> (<width>px) — e.g. Mobile (375px), Tablet (768px), Desktop (1440px)
-agent-browser set viewport <width> <height>
-agent-browser screenshot tmp/ref/<component>/<label>.png
-agent-browser eval "
-(() => {
-  const el = document.querySelector('.target');
-  if (!el) return JSON.stringify({ error: 'selector not found' });
-  const s = getComputedStyle(el);
-  return JSON.stringify({ viewport: window.innerWidth, display: s.display, flexDirection: s.flexDirection, fontSize: s.fontSize, padding: s.padding, width: s.width });
-})()
-"
-```
-
-Default fallback breakpoints (use only when no `@media` rules found):
-
-| Label   | Width | Height |
-|---------|-------|--------|
-| mobile  | 375   | 812    |
-| tablet  | 768   | 1024   |
-| desktop | 1440  | 900    |
+> **Next:** Step 4 (Responsive Detection) is in `responsive-detection.md`.

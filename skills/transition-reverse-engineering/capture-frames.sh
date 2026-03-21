@@ -16,10 +16,10 @@
 #   ./capture-frames.sh tmp/ref/lobehub-hero/cropped 2000 15
 #
 # Output:
-#   tmp/ref/lobehub-hero/cropped/frame-01.png  (t=0ms)
-#   tmp/ref/lobehub-hero/cropped/frame-02.png  (t=142ms)
+#   tmp/ref/lobehub-hero/cropped/frame-001.png  (t=0ms)
+#   tmp/ref/lobehub-hero/cropped/frame-002.png  (t=142ms)
 #   ...
-#   tmp/ref/lobehub-hero/cropped/frame-15.png  (t=2000ms)
+#   tmp/ref/lobehub-hero/cropped/frame-015.png  (t=2000ms)
 
 set -euo pipefail
 
@@ -72,7 +72,7 @@ for i in $(seq 1 "$N_FRAMES"); do
   else
     T=$(( (i - 1) * STEP_MS ))
   fi
-  FRAME="$(printf '%02d' "$i")"
+  FRAME="$(printf '%03d' "$i")"
   OUTFILE="$OUTPUT_DIR/frame-$FRAME.png"
 
   # Seek animation to time T

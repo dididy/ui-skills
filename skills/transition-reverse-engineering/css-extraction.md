@@ -4,6 +4,8 @@
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 
+> **CRITICAL: Before extracting individual properties, run the multi-point measurement pass (Step -1 in SKILL.md → `measurement.md`).** The 11-point measurement reveals multi-phase timing and property-specific phase boundaries that start/end extraction alone will miss.
+
 ## Static state extraction
 
 ```bash
@@ -95,7 +97,7 @@ agent-browser eval "
     Array.from(parent.querySelectorAll('*')).slice(0, 20).map((el, i) => {
       const s = getComputedStyle(el);
       return {
-        index: i, tag: el.tagName, class: el.className?.toString().slice(0, 50),
+        index: i, tag: el.tagName, class: (typeof el.className === 'string' ? el.className : el.className?.baseVal || '').slice(0, 50),
         opacity: s.opacity, transform: s.transform,
         transition: s.transition, transitionDelay: s.transitionDelay,
       };
@@ -200,8 +202,7 @@ agent-browser eval "
     if (first[key] !== last[key]) changed[key] = { from: first[key], to: last[key] };
   });
 
-  const prop = Object.keys(changed)[0];
-  if (prop) {
+  Object.keys(changed).forEach(prop => {
     const numericValues = frames.map(f => parseFloat(f[prop])).filter(v => !isNaN(v));
     if (numericValues.length > 1) {
       const min = numericValues[0], max = numericValues[numericValues.length - 1];
@@ -210,7 +211,7 @@ agent-browser eval "
       changed[prop].easingCurve = sampled
         .map((v, i) => ({ t: sampled.length > 1 ? i / (sampled.length - 1) : 0, v: range ? (v - min) / range : 0 }));
     }
-  }
+  });
 
   return JSON.stringify({ duration: Math.round(duration) + 'ms', changedProperties: changed }, null, 2);
 })()"

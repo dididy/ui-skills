@@ -1,0 +1,318 @@
+{
+  "skill_name": "ui-reverse-engineering",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Clone this site: https://example.com — I need the full page as a React + Tailwind component. Make sure to get the exact colors, spacing, and typography from the computed styles, not guessed from a screenshot.",
+      "expected_output": "A React + Tailwind .tsx component with exact computed CSS values, structure.json, styles.json, and extracted.json artifacts, plus a visual verification comparison table with all rows passing.",
+      "files": [],
+      "expectations": [
+        "structure.json exists in tmp/ref/ with valid JSON containing tag and children keys",
+        "styles.json exists with at least 3 selectors each having at least 2 properties",
+        "extracted.json exists and contains breakpoints, tokens, and interactions fields",
+        "interactions-detected.json exists (even if empty interactions array)",
+        "A .tsx component file was generated using Tailwind utility classes",
+        "No inline style= attributes in the component (Tailwind classes used instead)",
+        "C1 static screenshot comparison table is present with 5 scroll positions",
+        "C2 scroll video comparison is present",
+        "Reference screenshots exist in tmp/ref/*/static/ref/ (5 PNGs)",
+        "Component uses exact hex color values from styles.json, not approximations"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I want to replicate the hero section from https://stripe.com/payments — it has hover effects on the cards and some scroll-triggered animations. Get everything including the interactions, not just the static layout.",
+      "expected_output": "A React component with functional hover states, scroll-triggered animations implemented via IntersectionObserver, and all transition timing extracted from computed styles.",
+      "files": [],
+      "expectations": [
+        "Hover state delta was captured (before/after computed styles recorded)",
+        "Scroll-triggered transitions were detected and recorded to scroll-transitions.json",
+        "interactions-detected.json lists at least one hover or scroll-trigger interaction",
+        "Generated component includes hover: Tailwind classes or CSS transition handlers",
+        "Step 9 interaction verification table is present with actual test results",
+        "Each interaction in the verification table was tested on localhost (not just code reading)",
+        "C3 transition video was captured for at least one interactive element"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Clone the landing page at https://linear.app — make sure the responsive layout works correctly on mobile, tablet, and desktop. Don't use hardcoded breakpoints, detect where the layout actually changes.",
+      "expected_output": "A responsive React + Tailwind component with auto-detected breakpoints from viewport sweep, per-breakpoint styles, and responsive verification screenshots.",
+      "files": [],
+      "expectations": [
+        "Viewport sweep was performed (sweep-coarse.json exists)",
+        "detected-breakpoints.json exists with at least one detected breakpoint",
+        "Breakpoints were detected by measurement, not hardcoded 375/768/1440",
+        "Per-breakpoint style files (styles-<width>.json) exist for each detected breakpoint",
+        "Component uses Tailwind responsive prefixes (sm:, md:, lg:) matching detected breakpoints",
+        "Responsive comparison table (C-R) is present with ref and impl screenshots",
+        "All responsive comparison rows show passing status"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I have a screenshot of a pricing page design (attached). There's no live URL — just this image. Turn it into a React + Tailwind component that matches the layout as closely as possible.",
+      "expected_output": "A React + Tailwind component generated from Claude Vision analysis of the screenshot, with approximate colors, spacing, and typography documented as approximations.",
+      "files": [],
+      "expectations": [
+        "Screenshot was analyzed via Claude Vision (not agent-browser)",
+        "extracted.json exists with approximate values clearly marked as approximations",
+        "A .tsx component file was generated using Tailwind utility classes",
+        "Component includes comments noting values are Vision-approximated, not computed",
+        "Colors are reasonable hex approximations from the screenshot",
+        "Layout structure matches the visible hierarchy in the screenshot"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Clone this multi-section landing page: https://example.com — it has a hero section, a feature grid, a testimonials carousel, and a footer. I need all sections as one component.",
+      "expected_output": "A single React + Tailwind component containing all page sections, with per-section extraction artifacts and full-page visual verification.",
+      "files": [],
+      "expectations": [
+        "Multiple structure.json files or a single structure.json with distinct section nodes",
+        "Full page reference capture covers all sections (5 scroll positions from top to bottom)",
+        "Each section was extracted individually (separate style data per section)",
+        "Sections are rendered in correct top-to-bottom order matching the original page",
+        "C1 static comparison covers all sections, not just the hero",
+        "C2 scroll video comparison covers the entire page length"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Clone https://example.com but the site has a cookie consent banner and a newsletter popup that appears after 3 seconds. I need the actual page content, not the overlays.",
+      "expected_output": "A React component of the page content with overlays dismissed before reference capture. No modal/banner artifacts in reference frames.",
+      "files": [],
+      "expectations": [
+        "Cookie banner or overlay was dismissed before reference capture",
+        "Reference screenshots do not contain modal/popup/banner overlays",
+        "The captured content is the actual page, not obscured by overlays",
+        "interactions-detected.json does not include the dismissed overlays as interactions",
+        "Generated component does not include cookie banner or newsletter popup markup"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "This SPA at https://example.com takes 5 seconds to fully load with a loading spinner. Clone the final rendered state, not the loading state.",
+      "expected_output": "A React component of the fully loaded SPA content, with proper wait for content before reference capture.",
+      "files": [],
+      "expectations": [
+        "agent-browser wait was used to wait for content to load before capturing",
+        "Reference screenshots show the fully rendered page, not a loading spinner",
+        "structure.json contains the actual DOM content, not placeholder/skeleton elements",
+        "styles.json reflects the final rendered styles, not loading state styles",
+        "Component does not include loading spinner markup"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Clone this product page at https://example.com/products — it has an image carousel that auto-rotates every 4 seconds, pauses on hover, and resumes when you move the mouse away. I need the carousel working exactly like the original.",
+      "expected_output": "A React component with auto-timer carousel that rotates at the correct interval, pauses on hover, and resumes on mouse leave. Step 9 auto-timer verification passes.",
+      "files": [],
+      "expectations": [
+        "interactions-detected.json includes an auto-timer interaction with interval duration",
+        "Auto-timer interval was measured (not hardcoded to a default value)",
+        "Step 9 auto-timer verification: T0 screenshot differs from T1 screenshot after interval",
+        "Step 9 auto-timer verification: hover pauses rotation (content stays same after interval)",
+        "Step 9 auto-timer verification: mouse leave resumes rotation (content changes again)",
+        "C3 transition video captures at least one slide transition"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Clone this FAQ page at https://example.com/faq — each question is an accordion that expands on click to show the answer with a smooth height transition. I need all the click interactions working.",
+      "expected_output": "A React component with click-to-expand accordions, smooth height transitions, and Step 9 click verification passing for each accordion item.",
+      "files": [],
+      "expectations": [
+        "interactions-detected.json includes click interactions for accordion items",
+        "Click interaction delta captures height/max-height change and any opacity transition",
+        "Step 9 click verification: before-click screenshot shows collapsed state",
+        "Step 9 click verification: after-click screenshot shows expanded state with content visible",
+        "Generated component handles click toggle state (open/close)",
+        "Height transition timing matches the original (not instant)"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Clone this landing page at https://example.com — as you scroll down, sections fade in from below with a staggered delay. I need the scroll-triggered animations to fire at the same scroll positions as the original.",
+      "expected_output": "A React component with IntersectionObserver-based scroll-triggered animations. Step 9 scroll-trigger verification passes for each animated section.",
+      "files": [],
+      "expectations": [
+        "interactions-detected.json includes scroll-trigger interactions with trigger scroll positions",
+        "Scroll-triggered elements have from/to states recorded (opacity, transform)",
+        "Step 9 scroll-trigger verification: before-trigger screenshot shows hidden elements",
+        "Step 9 scroll-trigger verification: after-trigger screenshot shows visible elements",
+        "Generated component uses IntersectionObserver or scroll listener matching trigger points",
+        "Stagger delay between sections matches the original"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Clone https://example.com — it has a complex hero with a canvas-based particle animation in the background and CSS-styled text overlaid on top. I need both the static layout and the animation extracted.",
+      "expected_output": "A React component with static layout from DOM extraction, plus transition-reverse-engineering invoked for the canvas animation. Both CSS and Canvas paths executed.",
+      "files": [],
+      "expectations": [
+        "Effect classification detected canvases > 0 alongside CSS-styled elements",
+        "transition-reverse-engineering skill was invoked for the canvas animation",
+        "DOM extraction captured the text overlay structure separately from the canvas",
+        "styles.json includes computed styles for the text overlay elements",
+        "Canvas animation parameters were extracted via bundle analysis",
+        "Generated component renders both the canvas animation and the styled text overlay"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "Clone https://example.com — it uses JS-driven animations via GSAP/anime.js rather than CSS transitions. The animations aren't in CSS stylesheets. I need the animation timing extracted from the JS bundles.",
+      "expected_output": "Animation parameters extracted from JS bundle analysis (Step 6) since CSS transition detection found nothing. extracted.json includes JS-sourced timing values.",
+      "files": [],
+      "expectations": [
+        "Step 5 interaction detection found no CSS transitions for the animated elements",
+        "Step 6 JS bundle analysis was triggered (bundle downloaded and grepped)",
+        "JS bundles downloaded to tmp/ref/*/bundles/ directory",
+        "Animation library identified (GSAP, anime.js, or similar)",
+        "Timing, easing, and property values extracted from bundle source code",
+        "extracted.json interactions field populated with JS-sourced animation data"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Clone this site at https://example.com — but the viewport sweep is getting blocked by CORS errors and the site shows a bot detection page at narrow widths. Just use standard breakpoints for the responsive version.",
+      "expected_output": "A React component with fallback responsive breakpoints (375/768/1440) since viewport sweep failed due to CORS/bot detection.",
+      "files": [],
+      "expectations": [
+        "Viewport sweep was attempted but failed (CORS error or bot detection documented)",
+        "Fallback breakpoints 375, 768, 1440 were used instead of detected breakpoints",
+        "Per-breakpoint styles captured at fallback widths",
+        "Component uses standard Tailwind responsive prefixes (sm:, md:, lg:)",
+        "The failure reason is documented (not silently skipped)",
+        "C-R responsive comparison still performed at fallback breakpoints"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "I recorded my screen showing how this page works — it has a sidebar that slides in on mobile, cards that flip on hover, and a sticky header that shrinks on scroll. Here's the video recording. No URL available, the site is behind a VPN.",
+      "expected_output": "A React component generated from Claude Vision analysis of the video, with state changes identified per visible frame and approximate timing documented.",
+      "files": [],
+      "expectations": [
+        "Video was analyzed via Claude Vision (not agent-browser, since no URL)",
+        "State changes identified per visible frame (sidebar slide, card flip, header shrink)",
+        "extracted.json includes interaction descriptions with approximate timing from video",
+        "Generated component implements all three interactions (sidebar, card hover, sticky header)",
+        "Values are documented as approximations from video analysis",
+        "Component includes comments noting timing values are Vision-estimated"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Clone https://example.com — the implementation looks right but there's a visual mismatch: the hero section spacing is off by about 20px and the font weight on the subtitle is wrong. Fix it using the C1 comparison as reference.",
+      "expected_output": "Root cause diagnosed from C1 comparison table, targeted fix applied (not full rewrite), re-verification passes within max 3 iterations.",
+      "files": [],
+      "expectations": [
+        "C1 comparison table identified the specific mismatch rows",
+        "Root cause named in one sentence before any code change",
+        "Targeted fix applied (only the affected properties changed, not a full rewrite)",
+        "Phase B re-captured for the affected capture type only",
+        "Comparison re-run on affected frames only (not full re-verification)",
+        "Fix completed within max 3 iterations",
+        "CSS import entry point verified (grep for import.*\\.css in app entry file)"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Clone https://example.com — Step 4-A should extract the existing @media rules from the site's CSS before running the viewport sweep, to use as hints for where breakpoints might be.",
+      "expected_output": "CSS @media rules extracted as hints before viewport sweep, then sweep verifies and refines those hints with actual measurement.",
+      "files": [],
+      "expectations": [
+        "Step 4-A extracted @media rules from stylesheets (min-width, max-width values)",
+        "@media breakpoint values documented as hints (not ground truth)",
+        "Viewport sweep (Step 4-B/C) ran independently to verify/refine the hints",
+        "detected-breakpoints.json reflects sweep results, not just @media hints",
+        "Where @media hints matched sweep results, both are documented",
+        "Where @media hints did NOT match sweep results, sweep results take precedence"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "Clone https://example.com — it uses CSS custom properties (--brand-color, --spacing-lg, etc.) extensively for theming. The DOM is deep with nested shadcn components. I need the design tokens preserved and the generated component to reference them as CSS variables.",
+      "expected_output": "A React + Tailwind component that extracts :root CSS custom properties as design tokens and references them via CSS variables. DOM depth adapts to handle deep component trees.",
+      "files": [],
+      "expectations": [
+        "agent-browser snapshot was executed to get the accessibility tree before DOM extraction",
+        "DOM extraction depth limit was increased above default (6+) for deep component tree",
+        "CSS custom properties (--var) extracted from :root/:host/html selectors in styles.json",
+        "Design tokens in extracted.json include CSS variable names and their resolved values",
+        "Generated component uses CSS variables (var(--brand-color)) or Tailwind theme extensions, not hardcoded values",
+        "Component is self-contained with no external data dependencies or API calls"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "Clone https://example.com — it has CSS @keyframes animations on hover (a pulsing glow effect) and the hero section uses images that are behind authentication so they can't be downloaded. Mock the images and extract the keyframe animation.",
+      "expected_output": "A React component with CSS @keyframes extracted from CSSOM, inaccessible images replaced with descriptive placeholders, and any backend data mocked inline.",
+      "files": [],
+      "expectations": [
+        "CSS @keyframes rules extracted via CSSOM inspection in interaction-detection Step 5",
+        "Keyframe data includes all percentage stops and property values at each stop",
+        "Inaccessible images replaced with descriptive placeholder elements (not broken img tags)",
+        "Backend-dependent data mocked inline within the component",
+        "Component is self-contained — renders without external APIs or data fetching",
+        "Animation library identified via grep in JS bundles if keyframes not found in CSS (Step 6)"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "Clone https://example.com — after building the component, verify responsiveness by recording a viewport resize video from 1440px down to 320px, showing the layout smoothly adapting at each breakpoint.",
+      "expected_output": "Responsive verification includes an optional resize video sweep (Step 4-E) showing continuous viewport adaptation from desktop to mobile.",
+      "files": [],
+      "expectations": [
+        "Step 4-E resize video was recorded showing viewport resize from 1440 to 320",
+        "Resize video extracted at 10fps for frame analysis",
+        "Layout transitions at detected breakpoints are visible in the resize video",
+        "No layout-breaking jumps or overflow issues visible during continuous resize",
+        "Resize video comparison performed between reference site and implementation",
+        "C-R responsive comparison table includes resize video findings"
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "Copy just the hero section from https://example.com — the part above the fold with the headline, subtitle, CTA buttons, and background gradient. I don't need the rest of the page.",
+      "expected_output": "A React + Tailwind component of the hero section only, with scoped extraction (not full-page) and verification limited to the hero's viewport range.",
+      "files": [],
+      "expectations": [
+        "DOM extraction scoped to the hero section's root selector (not full page root)",
+        "C1 reference screenshots cover only the hero section's scroll range (1-2 screenshots, not 5)",
+        "styles.json contains computed styles for the hero elements only",
+        "Artifact directory uses descriptive name (e.g., tmp/ref/hero/, not tmp/ref/example-com/)",
+        "C2 full-page scroll video was skipped or limited to the hero section range",
+        "Verification comparison limited to the hero section viewport range"
+      ]
+    },
+    {
+      "id": 21,
+      "prompt": "Clone the signup modal from https://example.com — you need to click the 'Sign Up' button in the nav to open it. It has a backdrop fade and a slide-up animation.",
+      "expected_output": "A React component of the modal with the trigger interaction captured. Reference frames taken after opening the modal, not from the default page state.",
+      "files": [],
+      "expectations": [
+        "Modal was triggered (click on signup button) before reference capture",
+        "Reference screenshots show the modal in its open state (not the underlying page)",
+        "The trigger interaction (click → open) was captured in interactions-detected.json",
+        "Both opening and closing animations were documented",
+        "Step 9 verifies both open and close behavior on localhost",
+        "Backdrop fade and slide-up animation timing extracted"
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "I need both the nav bar and the footer from https://example.com — just those two sections, not the rest of the page. Generate them as separate components.",
+      "expected_output": "Two separate React + Tailwind components (Nav and Footer), each with independently scoped extraction and verification.",
+      "files": [],
+      "expectations": [
+        "Nav and footer extracted as independent sections with separate artifact directories",
+        "tmp/ref/nav/ and tmp/ref/footer/ directories used (not a single full-page directory)",
+        "Each section has its own structure.json and styles.json",
+        "Two separate .tsx component files generated (not one combined component)",
+        "Each section verified independently (nav comparison and footer comparison)",
+        "Middle page content was not extracted or included in either component"
+      ]
+    }
+  ]
+}

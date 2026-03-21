@@ -67,27 +67,31 @@ Steps R–9 apply to URL input. For screenshot/video input, steps 1–6 are repl
 ```
 Input URL
   ↓
-R. Capture Reference    — static screenshots + scroll video + interaction videos (60 fps)
+R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 deferred to 5b
   ↓
-1. Open & Snapshot       — DOM tree, full-page screenshot
+1.  Open & Snapshot        — DOM tree, full-page screenshot
   ↓
-2. Extract Structure     — HTML hierarchy, component boundaries
+2.  Extract Structure      — HTML hierarchy, component boundaries
   ↓
-3. Extract Styles        — computed CSS, colors, typography, spacing, design tokens
+3.  Extract Styles         — computed CSS, colors, typography, spacing, design tokens
   ↓
-4. Extract Responsive    — styles at actual CSS breakpoints (default: 375 / 768 / 1440px)
+4.  Detect Responsive      — 2-pass viewport sweep (coarse 40px → fine 5px) to find real breakpoints
   ↓
-5. Detect Interactions   — hover/click/scroll transitions and animations
-     ↓ (complex animation detected)
-     → transition-reverse-engineering — precise extraction + frame comparison
+5.  Detect Interactions    — hover/click/scroll transitions and animations
+      ↓ (complex animation detected)
+      → transition-reverse-engineering — 11-point measurement + frame comparison
   ↓
-6. Analyze JS (if needed)— bundle grep for complex interactions
+5b. Capture C3 (deferred)  — interaction/transition videos using selectors from Step 5
   ↓
-7. Generate Component    — React + Tailwind, exact values, functional JS
+6.  Analyze JS (if needed) — bundle grep for complex interactions
   ↓
-8. Visual Verification   — static screenshot + scroll video + interaction video comparison
+6b. Assemble extracted.json — combine structure + styles + breakpoints + interactions
   ↓
-9. Iterate               — fix mismatches, re-verify until all three capture types match
+7.  Generate Component     — React + Tailwind, exact values, functional JS
+  ↓
+8.  Visual Verification    — C1 (static) + C2 (scroll) + C3 (transitions) comparison
+  ↓
+9.  Interaction Verification — test each hover/click/scroll/timer on localhost
 ```
 
 ### Input Modes
@@ -105,6 +109,8 @@ R. Capture Reference    — static screenshots + scroll video + interaction vide
 
 Extracts animations and transitions with frame-level precision. Called automatically by `ui-reverse-engineering` when complex motion is detected, or used standalone.
 
+Measures ALL animated properties at 11 progress points (0%–100%) before writing any code — catches multi-phase timing, non-linear curves, and property-specific phase boundaries that start/end extraction misses.
+
 ### When to Use
 
 - You need frame-perfect replication of a page-load animation
@@ -121,6 +127,22 @@ Clone this canvas effect
 Extract the page-load animation from https://example.com
 ```
 
+### How It Works
+
+```
+Step -1: Multi-point measurement  — 11 progress points, ALL animated properties
+  ↓
+Step  0: Capture reference frames — screenshots or video from original site
+  ↓
+Step  1: Classify effect          — CSS transition, CSS animation, or canvas/WebGL
+  ↓
+Step  2: Extract                  — CSS path or canvas path
+  ↓
+Step  3: Implement                — using measured values only, never guessed
+  ↓
+Step  4: Verify                   — frame-by-frame comparison (element or fullpage scope)
+```
+
 ### Supported Animation Types
 
 | Type | Method |
@@ -132,6 +154,12 @@ Extract the page-load animation from https://example.com
 | Three.js / custom WebGL | Bundle download + grep patterns |
 | Spline / Rive / Lottie | Engine detection → scene URL reference |
 | Scroll-triggered | IntersectionObserver frame recording |
+
+---
+
+## Evals
+
+Both skills include eval suites following [skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator) conventions. Located at `skills/*/evals/`.
 
 ---
 
