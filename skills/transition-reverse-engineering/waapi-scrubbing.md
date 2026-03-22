@@ -4,6 +4,8 @@ Problem: `agent-browser open` waits for full load — page-load animations are a
 
 ## Inject scrubber
 
+> **Security note:** The scrubber script (`waapi-scrub-inject.js`) is injected into the **target site's page context** via `agent-browser eval`. This is intentional — it manipulates WAAPI animations on the remote page for measurement. The script is a local, trusted file from this skill's directory. Never inject untrusted or downloaded scripts this way.
+
 ```bash
 agent-browser open https://target-site.com
 

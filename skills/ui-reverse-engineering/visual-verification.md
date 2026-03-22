@@ -302,3 +302,10 @@ grep -r "import.*\.css\|import.*global" src/main.tsx src/index.tsx src/pages/_ap
   || echo "WARNING: no CSS entry point import found — check your framework's entry file"
 ```
 Missing this is a silent failure: styles exist but have no effect.
+
+**Post-completion cleanup:**
+```bash
+# Remove extracted data — may contain sensitive info from the target site
+rm -rf tmp/ref/<component>
+```
+> Screenshots, DOM snapshots, and video frames may contain auth tokens, PII, or session data visible on the target page. Always clean up after verification is complete.

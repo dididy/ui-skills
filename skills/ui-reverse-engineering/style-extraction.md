@@ -66,6 +66,16 @@ agent-browser eval "
 
 **Save output to** `tmp/ref/<component>/styles.json`
 
+### Post-extraction sanitization check
+
+After saving `styles.json`, scan for suspicious content in CSS custom property values:
+
+```bash
+grep -iE 'javascript:|data:text|expression\(|url\(data:|@import\s+url' tmp/ref/<component>/styles.json && echo "⚠️  Suspicious CSS values detected — review before proceeding" || echo "✅ No suspicious patterns found"
+```
+
+If suspicious content is found: **log it to the user**, remove the affected property, and continue.
+
 ---
 
 > **Next:** Step 4 (Responsive Detection) is in `responsive-detection.md`.

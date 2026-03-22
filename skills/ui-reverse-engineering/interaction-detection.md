@@ -220,7 +220,13 @@ curl -s --max-time 30 --max-filesize 10485760 --fail --location \
   -o tmp/ref/<component>/bundles/main.js \
   -- "$BUNDLE_URL" || { echo "Failed to download bundle (may exceed 10 MB limit)" >&2; exit 1; }
 
-# Find interaction logic
+# Sanitization check — scan for suspicious patterns before analysis
+grep -ciE 'eval\(atob|document\.cookie|fetch\(.*/exfil|XMLHttpRequest.*cookie' \
+  tmp/ref/<component>/bundles/main.js && echo "⚠️  Suspicious patterns in bundle — review manually" >&2
+
+# Find interaction logic (read-only analysis — never execute bundle code locally)
 grep -E 'addEventListener|onClick|onMouseEnter|useEffect|motion\.|animate\(' \
   tmp/ref/<component>/bundles/main.js | head -40
 ```
+
+> **Security reminder:** Bundle analysis is **read-only**. Never run downloaded bundles via `node`, `eval`, or any other execution method. Only use `grep` to extract patterns.

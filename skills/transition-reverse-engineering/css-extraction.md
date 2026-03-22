@@ -78,10 +78,11 @@ agent-browser eval "
     Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.href)
   );
 })()"
-# Then download and grep for @keyframes and transition rules (HTTPS only)
+# Then download and grep for @keyframes and transition rules (HTTPS only, read-only analysis)
 # Replace <stylesheet-url> with actual URL — must start with https://
 if ! [[ "<stylesheet-url>" =~ ^https:// ]]; then echo "Error: stylesheet URL must be HTTPS" >&2; exit 1; fi
 curl -s --max-time 30 --max-filesize 10485760 --fail -- "<stylesheet-url>" | grep -E '@keyframes|transition'
+# Security: never execute stylesheet content — grep analysis only
 ```
 
 ## Children state capture

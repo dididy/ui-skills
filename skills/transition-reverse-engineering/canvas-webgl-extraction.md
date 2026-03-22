@@ -25,7 +25,105 @@ agent-browser eval "
 | **Lottie** | `.json` animation data | `lottie-web`, `bodymovin` |
 | **Custom WebGL** | Canvas only | `getContext('webgl')`, raw GLSL strings |
 
-If Spline/Rive/Lottie: data-driven (scene file), not code-driven. Either reference the scene URL or recreate with CSS/canvas.
+If Spline/Rive/Lottie: **data-driven** (scene file controls the animation, not application code). Extract the scene URL, then investigate interactions.
+
+## Rive / Spline / Lottie — Interactive Extraction
+
+These engines use scene files that embed state machines, event listeners, and animation segments. The JS bundle wires them to DOM events. Extract both the **scene URL** and the **interaction wiring**.
+
+### Step 1: Extract scene URL
+
+```bash
+# Rive — find .riv file URL
+agent-browser eval "
+(() => {
+  const resources = performance.getEntriesByType('resource');
+  const riv = resources.filter(r => r.name.includes('.riv'));
+  return JSON.stringify(riv.map(r => r.name));
+})()"
+
+# Spline — find .splinecode or spline CDN URL
+agent-browser eval "
+(() => {
+  const resources = performance.getEntriesByType('resource');
+  const spline = resources.filter(r => r.name.includes('.splinecode') || r.name.includes('prod.spline'));
+  return JSON.stringify(spline.map(r => r.name));
+})()"
+
+# Lottie — find animation JSON URL
+agent-browser eval "
+(() => {
+  const resources = performance.getEntriesByType('resource');
+  const lottie = resources.filter(r => r.name.includes('lottie') || r.name.includes('bodymovin') || r.name.endsWith('.json'));
+  return JSON.stringify(lottie.map(r => r.name));
+})()"
+```
+
+### Step 2: Extract interaction wiring from JS bundle
+
+Download bundles (see "Find and download JS bundles" below), then grep for interaction patterns:
+
+```bash
+# Rive state machine inputs
+grep -E 'stateMachineInputs|SMIInput|SMIBool|SMITrigger|SMINumber|onStateChange|rive.*addEventListener' \
+  tmp/ref/<effect-name>/bundles/*.js | head -30
+
+# Spline interaction events
+grep -E 'splineMouseDown|splineMouseUp|splineMouseHover|SplineEventName|onSplineEvent' \
+  tmp/ref/<effect-name>/bundles/*.js | head -20
+
+# Lottie playback config
+grep -E 'lottie\.loadAnimation|autoplay|loop|setSpeed|playSegments|goToAndStop|addEventListener.*complete' \
+  tmp/ref/<effect-name>/bundles/*.js | head -20
+```
+
+### Step 3: Capture interactive states
+
+For each interaction found, capture reference frames of each state:
+
+```bash
+# Example: Rive hover state
+agent-browser screenshot tmp/ref/<effect-name>/frames/ref/rive-default.png
+agent-browser hover <canvas-or-wrapper-selector>
+agent-browser wait 800
+agent-browser screenshot tmp/ref/<effect-name>/frames/ref/rive-hover.png
+
+# Example: Lottie click trigger
+agent-browser screenshot tmp/ref/<effect-name>/frames/ref/lottie-before.png
+agent-browser click <trigger-selector>
+agent-browser wait 2000
+agent-browser screenshot tmp/ref/<effect-name>/frames/ref/lottie-after.png
+```
+
+### Step 4: Document in extracted.json
+
+```json
+{
+  "engine": "rive | spline | lottie",
+  "sceneUrl": "https://cdn.example.com/animation.riv",
+  "interactions": [
+    {
+      "type": "hover",
+      "trigger": "mouseenter on canvas wrapper",
+      "stateMachine": {
+        "name": "State Machine 1",
+        "inputs": [
+          { "name": "isHovered", "type": "boolean", "defaultValue": false }
+        ]
+      },
+      "states": ["default", "hover"],
+      "transitions": "default → hover on mouseenter, hover → default on mouseleave"
+    }
+  ],
+  "playback": {
+    "autoplay": true,
+    "loop": true,
+    "speed": 1
+  }
+}
+```
+
+> **For non-interactive Rive/Spline/Lottie** (autoplay loop, no state machine): skip Steps 2-3 and document only the scene URL and playback config.
 
 ## Find and download JS bundles
 
@@ -75,13 +173,23 @@ while IFS= read -r url; do
 done <<< "$URLS"
 [ "$failed" -gt 0 ] && echo "Warning: $failed downloads failed" >&2
 
-# Find canvas-related chunks
+# Sanitization check — scan downloaded bundles for suspicious patterns
+for f in tmp/ref/<effect-name>/bundles/*.js; do
+  [ -f "$f" ] || continue
+  if grep -qiE 'eval\(atob|document\.cookie|\.cookie\s*=|fetch\(.*/exfil' "$f" 2>/dev/null; then
+    echo "⚠️  Suspicious pattern in $(basename "$f") — review before analysis" >&2
+  fi
+done
+
+# Find canvas-related chunks (read-only grep — never execute bundles locally)
 for f in tmp/ref/<effect-name>/bundles/*.js; do
   [ -f "$f" ] || continue
   count=$(grep -cE 'getContext|createRadialGradient|requestAnimationFrame|Float32Array' "$f" 2>/dev/null)
   [ "$count" -gt 1 ] && echo "$(basename -- "$f"): $count matches"
 done
 ```
+
+> **Security reminder:** Bundle analysis is **read-only**. Never run downloaded bundles via `node`, `eval`, or any other execution method. Only use `grep` to extract patterns.
 
 ## Three.js / WebGL extraction checklist
 

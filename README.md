@@ -9,7 +9,7 @@ Give it a live URL and it extracts computed CSS, DOM structure, JS interactions,
 Two skills included:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
-2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger)
+2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
 
 ## Requirements
 
@@ -115,8 +115,9 @@ Measures ALL animated properties at 11 progress points (0%–100%) before writin
 
 - You need frame-perfect replication of a page-load animation
 - The target uses character stagger, WAAPI, or canvas/WebGL
+- The target uses scroll-driven animations (Motion `useTransform`/`useScroll`, GSAP `ScrollTrigger`, rAF)
 - You want exact easing curves, durations, and delays
-- CSS computed values alone aren't enough
+- CSS computed values alone aren't enough (JS bundle analysis needed)
 
 ### Usage
 
@@ -134,9 +135,11 @@ Step -1: Multi-point measurement  — 11 progress points, ALL animated propertie
   ↓
 Step  0: Capture reference frames — screenshots or video from original site
   ↓
-Step  1: Classify effect          — CSS transition, CSS animation, or canvas/WebGL
+Step  1: Classify effect          — CSS transition, JS-driven animation, or canvas/WebGL
   ↓
-Step  2: Extract                  — CSS path or canvas path
+Step 2a: Extract CSS              — css-extraction.md (for CSS transitions/animations)
+Step 2b: Extract JS bundle        — js-animation-extraction.md (for scroll-driven/Motion/GSAP/rAF)
+Step 2c: Extract Canvas/WebGL     — canvas-webgl-extraction.md (for canvas/WebGL)
   ↓
 Step  3: Implement                — using measured values only, never guessed
   ↓
@@ -153,9 +156,22 @@ Step  4: Verify                   — frame-by-frame comparison (element or full
 | Character stagger | Per-char selector + delay configs |
 | Three.js / custom WebGL | Bundle download + grep patterns |
 | Spline / Rive / Lottie | Engine detection → scene URL reference |
-| Scroll-triggered | IntersectionObserver frame recording |
+| Scroll-driven (Motion/GSAP/rAF) | **JS bundle analysis** — extracts `useTransform`/`useScroll` keyframes, interpolation ranges, scroll offsets |
+| CSS-in-JS responsive layout | **Raw stylesheet extraction** — `calc()`, `cqw`, `%`, custom properties |
 
 ---
+
+## Security
+
+Both skills process untrusted external content (DOM, CSS, JS bundles) from arbitrary URLs. Built-in mitigations:
+
+- **Prompt injection defense** — extracted data is wrapped in boundary markers and treated as display-only content, never as instructions
+- **Post-extraction sanitization** — automated scans for suspicious patterns (`javascript:`, `eval(atob`, prompt injection phrases) in extracted JSON
+- **Bundle safety** — downloads are HTTPS-only, size-limited (10 MB), time-limited (30s), and read-only (grep analysis only, never executed locally)
+- **No credential forwarding** — `curl` invocations send no cookies or auth tokens
+- **Sensitive data cleanup** — `tmp/ref/` directories (which may contain screenshots with PII/auth tokens) are cleaned up after verification
+
+See the Security section in each skill's `SKILL.md` for full details.
 
 ## Evals
 
