@@ -66,7 +66,8 @@ Step -1: Multi-point measurement    — Read measurement.md, execute
   ↓
   ↓  GATE: measurements.json must exist with 11 data points
   ↓
-Step 0: Capture reference frames    — See "Capture Reference Frames" below
+Step 0: Capture reference frames    — Invoke /ui-capture <reference-url>
+  ↓                                   Or use targeted capture below for single elements
   ↓
   ↓  GATE: tmp/ref/<effect-name>/frames/ref/ must have frames
   ↓
@@ -83,7 +84,8 @@ Step 2c: Extract Canvas/WebGL       — Read canvas-webgl-extraction.md (for can
   ↓
 Step 3: Implement                   — Read patterns.md for reference patterns
   ↓
-Step 4: Verify                      — Read verification.md, execute
+Step 4: Verify                      — Invoke /ui-capture <ref-url> http://localhost:<port>
+  ↓                                   Or read verification.md for element-scope comparison
   ↓
   ↓  GATE: All frames ✅ in comparison table
   ↓
@@ -95,6 +97,17 @@ For page-load animations that need WAAPI scrubbing → Read `waapi-scrubbing.md`
 ## Step 0: Capture Reference Frames FIRST
 
 > **Before classifying or extracting anything, capture reference frames from the original site.**
+
+**Option A — Full page (preferred for ralph tasks or fullpage scope):**
+
+Invoke `/ui-capture <reference-url>`. This captures full-page screenshots, scroll videos, hover/mousemove transitions with 10x10 matrix, and serves a comparison web page. Copy relevant frames to your effect directory:
+
+```bash
+mkdir -p tmp/ref/<effect-name>/frames/{ref,impl}
+cp tmp/ref/capture/transitions/ref/<relevant-files> tmp/ref/<effect-name>/frames/ref/
+```
+
+**Option B — Single element (for element scope):**
 
 ```bash
 mkdir -p tmp/ref/<effect-name>/frames/{ref,impl}

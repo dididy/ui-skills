@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.5] - 2026-03-24
+
+### Added
+- **`ui-capture`** — new skill for capturing baseline screenshots and transition videos from reference URLs. Detects scroll, hover, mousemove, and auto-timer transitions. Generates web-based comparison page (original vs clone) with synchronized video playback and 10×10 cursor-reactive matrix grids. Includes error handling for bot detection, hydration delays, and lazy-loaded content.
+- **`ui-capture`**: `evals/` directory with trigger-eval.json and evals.json
+- **`ui-capture`**: `detection.md`, `capture-transitions.md`, `comparison-page.md` — phase implementation split out from SKILL.md following other skills' convention
+
+### Changed
+- **`ui-reverse-engineering`**: Phase A (reference capture) and Phase 4 (verification) now delegate to `/ui-capture` instead of executing visual-verification.md directly. visual-verification.md marked as deprecated.
+- **`ui-reverse-engineering`**: Added `ui-capture` as a sub-skill in Reference Files section
+- **`transition-reverse-engineering`**: Step 0 (capture reference frames) now offers `/ui-capture` as Option A for fullpage scope. Step 4 (verify) can delegate to `/ui-capture` for comparison.
+- **`ralph-kage-bunshin-start`**: UI Clone Detection now invokes `/ui-capture` for baseline capture + web-based user confirmation before task generation
+- **`ralph-kage-bunshin-loop`**: DoD visual regression check now invokes `/ui-capture` for impl capture and comparison
+- plugin.json and marketplace.json updated to include ui-capture, version bumped to 0.0.5
+
 ## [0.0.4] - 2026-03-22
 
 ### Added

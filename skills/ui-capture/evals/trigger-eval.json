@@ -1,0 +1,85 @@
+[
+  {
+    "query": "capture the reference screenshots from playbook.ebay.com so I can compare with my clone",
+    "should_trigger": true
+  },
+  {
+    "query": "compare original vs clone — take screenshots of both and show me the differences",
+    "should_trigger": true
+  },
+  {
+    "query": "I need a visual diff between https://stripe.com and my localhost:3000 implementation",
+    "should_trigger": true
+  },
+  {
+    "query": "take baseline screenshots of this reference site before I start cloning",
+    "should_trigger": true
+  },
+  {
+    "query": "verify visual match — capture the original and my implementation side by side",
+    "should_trigger": true
+  },
+  {
+    "query": "record the scroll transitions on https://linear.app so I can replicate them",
+    "should_trigger": true
+  },
+  {
+    "query": "capture the hover effects and mousemove parallax from this site for comparison",
+    "should_trigger": true
+  },
+  {
+    "query": "generate a comparison page showing original vs clone screenshots and transition videos",
+    "should_trigger": true
+  },
+  {
+    "query": "ui capture https://vercel.com — I need the full page baseline plus transition regions",
+    "should_trigger": true
+  },
+  {
+    "query": "take a 10x10 matrix of cursor positions on the hero parallax effect for reference",
+    "should_trigger": true
+  },
+  {
+    "query": "capture reference site transitions — scroll animations, hover states, auto-timer carousels",
+    "should_trigger": true
+  },
+  {
+    "query": "can you help me center a div with flexbox?",
+    "should_trigger": false
+  },
+  {
+    "query": "write a React component for a login form with email and password fields",
+    "should_trigger": false
+  },
+  {
+    "query": "fix the TypeScript error in my Button component — Property 'onClick' does not exist",
+    "should_trigger": false
+  },
+  {
+    "query": "clone https://stripe.com into a React component with Tailwind",
+    "should_trigger": false,
+    "note": "This is ui-reverse-engineering, not ui-capture — user wants code generation, not just capture"
+  },
+  {
+    "query": "reverse-engineer the animation on this button hover effect from https://ui.shadcn.com",
+    "should_trigger": false,
+    "note": "This is transition-reverse-engineering — user wants to replicate an effect, not capture baseline"
+  },
+  {
+    "query": "run my playwright tests and tell me why they're failing",
+    "should_trigger": false
+  },
+  {
+    "query": "optimize my Next.js bundle size — it's 2MB and I need it under 500KB",
+    "should_trigger": false
+  },
+  {
+    "query": "review my E2E tests for anti-patterns",
+    "should_trigger": false
+  },
+  {
+    "query": "set up a new ralph project for cloning this website",
+    "should_trigger": false,
+    "note": "This is ralph-kage-bunshin-start — it will invoke ui-capture internally"
+  }
+]

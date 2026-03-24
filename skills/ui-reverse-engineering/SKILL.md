@@ -59,28 +59,25 @@ Input (URL / screenshot / video)
   PHASE 1: REFERENCE CAPTURE (before ANY code)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
-R. Capture Reference        — Read visual-verification.md, execute Phase A
-  ↓                           Two mandatory captures of ORIGINAL site:
-  ↓                           C1: Full-page static screenshots (5 scroll positions)
-  ↓                           C2: Full-page scroll video (60 fps)
-  ↓                           C3 is deferred until after Step 5 (needs interaction data)
+R. Capture Reference        — Invoke /ui-capture <reference-url>
+  ↓                           Runs Phase 1 (full page screenshot + scroll video)
+  ↓                           + Phase 2 (transition detection + capture)
+  ↓                           Outputs: regions.json, static/ref/, transitions/ref/, matrix/ref/
+  ↓                           Serves comparison web page for user review
   ↓
   ↓  ┌─────────────────────────────────────────────┐
-  ↓  │ GATE: Validate reference captures.          │
+  ↓  │ GATE: Validate ui-capture output.           │
   ↓  │                                              │
-  ↓  │ $ ls tmp/ref/<component>/static/ref/        │
-  ↓  │  □ 5 PNGs (top, 25%, 50%, 75%, bottom)     │
+  ↓  │ $ ls tmp/ref/capture/static/ref/            │
+  ↓  │  □ fullpage screenshot exists                │
   ↓  │                                              │
-  ↓  │ Spot-check: Read top.png — is it the actual │
-  ↓  │ site? (not blank, not bot-detection page)    │
+  ↓  │ $ cat tmp/ref/capture/regions.json           │
+  ↓  │  □ exists, has scroll/hover/mousemove/timer │
   ↓  │                                              │
-  ↓  │ $ ls tmp/ref/<component>/ref-scroll.webm    │
-  ↓  │  □ exists, frames extracted to frames/ref/  │
+  ↓  │ $ ls tmp/ref/capture/transitions/ref/       │
+  ↓  │  □ transition videos captured                │
   ↓  │                                              │
-  ↓  │ □ C3 (transitions/) — deferred until Step 5b │
-  ↓  │ □ responsive/ — deferred until Step 4       │
-  ↓  │                                              │
-  ↓  │ If ANY fails → go back to step R.           │
+  ↓  │ If ANY fails → re-run /ui-capture.          │
   ↓  └─────────────────────────────────────────────┘
   ↓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -100,9 +97,9 @@ R. Capture Reference        — Read visual-verification.md, execute Phase A
 5. Detect Interactions    — Read interaction-detection.md, execute Step 5
   ↓                         Save → tmp/ref/<component>/interactions-detected.json
   ↓
-5b. Capture C3 (deferred) — Re-open original site (viewport may have changed in Step 4)
-  ↓                          Read visual-verification.md, execute Phase A-C3
-  ↓                          Use selectors from interactions-detected.json
+5b. Capture C3 (deferred) — If interactions-detected.json reveals NEW interactive elements
+  ↓                          not already captured by /ui-capture Phase 2, re-run
+  ↓                          /ui-capture with --sections flag targeting those elements
   ↓
 6. Analyze JS (if needed) — Read interaction-detection.md, execute Step 6
      ↓ complex animation?
@@ -144,24 +141,25 @@ R. Capture Reference        — Read visual-verification.md, execute Phase A
   PHASE 4: VERIFICATION (gates completion)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
-8. Visual Verification    — Read visual-verification.md, execute Phase B + C
-  ↓                         Phase B: capture implementation frames
-  ↓                         Phase C: frame-by-frame comparison table
+8. Visual Verification    — Invoke /ui-capture <reference-url> http://localhost:<port>
+  ↓                         Runs Phase 3 (impl capture) + Phase 4 (comparison page)
+  ↓                         Agent reads ref/impl images and identifies mismatches
+  ↓                         Serves comparison web page for user review
   ↓
   ↓  ┌─────────────────────────────────────────────┐
-  ↓  │ GATE: ALL THREE comparison tables must pass. │
-  ↓  │  □ C1 table: static screenshots all ✅       │
-  ↓  │  □ C2 table: scroll frames (60fps) all ✅    │
-  ↓  │  □ C3 table: transition frames (60fps) all ✅│
+  ↓  │ GATE: ui-capture comparison must pass.       │
+  ↓  │  □ Full-page screenshot: pixel-perfect match │
+  ↓  │  □ Scroll transitions: timing + visual match │
+  ↓  │  □ Hover/mousemove: behavior match           │
+  ↓  │  □ 10x10 matrix: cursor-reactive match       │
   ↓  │                                              │
-  ↓  │ If ANY row in ANY table is ❌:               │
+  ↓  │ If ANY mismatch found:                       │
   ↓  │  1. Name root cause in one sentence         │
   ↓  │  2. Targeted fix (do NOT rewrite component) │
-  ↓  │  3. Re-run Phase B for that capture type    │
-  ↓  │  4. Compare affected frames only            │
-  ↓  │  5. Max 3 full iterations                   │
+  ↓  │  3. Re-run /ui-capture (impl capture only)  │
+  ↓  │  4. Max 3 full iterations                   │
   ↓  │                                              │
-  ↓  │ COMPLETION = C1 ✅ AND C2 ✅ AND C3 ✅.      │
+  ↓  │ COMPLETION = all sections match.             │
   ↓  │ Nothing else counts as "done".               │
   ↓  └─────────────────────────────────────────────┘
   ↓
@@ -332,10 +330,11 @@ agent-browser close                         # Kill session
 - **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
 - **interaction-detection.md** — Steps 5–6: hover/scroll/keyframes, JS bundle analysis
 - **component-generation.md** — Step 7: generation prompt, iteration rules
-- **visual-verification.md** — Steps R, 5b, 8–9: Phase A (reference capture), A-C3 (deferred), Phase B (impl capture), Phase C (comparison), interaction verification, responsive verification
+- **visual-verification.md** — DEPRECATED: capture and comparison logic has moved to `/ui-capture` skill. This file remains for reference but should not be executed directly. Use `/ui-capture` instead.
 
 ## Sub-skills
 
+- **`ui-capture`** — visual capture, transition detection, 10x10 matrix, comparison web page generation
 - **`transition-reverse-engineering`** — precise animation/transition extraction (WAAPI scrubbing, canvas/WebGL, character stagger, frame-by-frame comparison)
 
 ## When called from a ralph worker

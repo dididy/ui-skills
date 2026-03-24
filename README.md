@@ -6,10 +6,11 @@ Give it a live URL and it extracts computed CSS, DOM structure, JS interactions,
 
 > **vs. screenshot-to-code tools:** Those tools copy what's visible. For URL input, `ui-skills` reads `getComputedStyle`, greps JS bundles, and scrubs WAAPI animations frame-by-frame — so hover states, easing curves, and stagger timing are extracted, not approximated.
 
-Two skills included:
+Three skills included:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
+3. **`ui-capture`** — baseline screenshot + transition video capture from reference URLs, with web-based comparison page for verifying UI clone fidelity (scroll, hover, mousemove 10×10 matrix, auto-timer)
 
 ## Requirements
 
@@ -175,7 +176,7 @@ See the Security section in each skill's `SKILL.md` for full details.
 
 ## Evals
 
-Both skills include eval suites following [skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator) conventions. Located at `skills/*/evals/`.
+All three skills include eval suites following [skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator) conventions. Located at `skills/*/evals/`.
 
 ---
 

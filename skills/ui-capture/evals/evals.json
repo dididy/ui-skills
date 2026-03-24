@@ -1,0 +1,133 @@
+{
+  "skill_name": "ui-capture",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "capture baseline screenshots from https://example.com",
+      "expected_output": "tmp/ref/capture/ directory with full-page screenshots in static/ref/ and scroll video in scroll-video/ref/, validated as non-blank and non-bot-detection.",
+      "files": [],
+      "expectations": [
+        "Creates tmp/ref/capture/ directory structure",
+        "Opens site with agent-browser",
+        "Sets viewport to 1440x900",
+        "Takes full-page screenshot(s) to static/ref/",
+        "Records full scroll video to scroll-video/ref/",
+        "Validates screenshots are not blank or bot-detection pages"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "capture https://playbook.ebay.com — detect all scroll-triggered animations",
+      "expected_output": "regions.json with scroll array listing detected elements, their from/to scrollY ranges, and changedProperties. Videos recorded for each scroll region.",
+      "files": [],
+      "expectations": [
+        "Scrolls through page measuring computed style changes",
+        "Identifies elements where transform/opacity/clipPath changes on scroll",
+        "Records scroll regions with from/to scrollY ranges in regions.json",
+        "Captures video for each detected scroll transition region",
+        "Filters out duplicates and elements < 50px"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "capture hover effects from a site with interactive buttons and cards",
+      "expected_output": "regions.json with hover array listing verified hover elements. Videos recorded in in/hold/out sequence for each element. Total regions ≤ 20.",
+      "files": [],
+      "expectations": [
+        "Detects elements with transitionDuration !== '0s'",
+        "Verifies hover actually changes computed styles before including",
+        "Groups sibling elements with same transition under parent",
+        "Records hover in/hold/out video for each verified element",
+        "Keeps total regions ≤ 20"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "capture cursor-reactive parallax effect with 10x10 matrix",
+      "expected_output": "matrix/ref/<name>/ directory with 100 screenshots (r0c0.png through r9c9.png) and pattern movement videos. regions.json includes mousemove array with grid metadata.",
+      "files": [],
+      "expectations": [
+        "Detects mousemove listeners or cursor-reactive class patterns",
+        "Captures 10x10 grid of screenshots (100 total) per element",
+        "Captures pattern movement videos (horizontal, diagonal, circular)",
+        "Saves grid metadata in regions.json",
+        "Creates matrix/ref/<name>/ directory with r0c0.png through r9c9.png"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "capture carousel auto-rotation from a site with a slideshow",
+      "expected_output": "regions.json with timer array including interval_ms estimate. Video recorded covering 2-3 full cycles.",
+      "files": [],
+      "expectations": [
+        "Detects carousel/slider/swiper elements",
+        "Records video waiting for 2-3 full cycles",
+        "Saves interval_ms estimate in regions.json"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "compare https://example.com vs http://localhost:3000 — generate comparison page",
+      "expected_output": "compare.html with side-by-side paired video sync, 10x10 matrix grids for cursor-reactive elements, and Play All button. URL presented to user.",
+      "files": [],
+      "expectations": [
+        "Captures impl with identical parameters as ref",
+        "Generates compare.html with side-by-side layout",
+        "Includes paired video sync (play one, other follows)",
+        "Includes 10x10 matrix grids for cursor-reactive elements",
+        "Includes Play All button",
+        "Serves comparison page and presents URL to user"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "capture https://cloudflare-protected-site.com",
+      "expected_output": "Bot detection detected on first screenshot, retried up to 2 times with increased wait, then reported to user with options: retry, manual capture, or provide screenshots.",
+      "files": [],
+      "expectations": [
+        "Detects bot-detection page on first screenshot (Cloudflare challenge)",
+        "Retries up to 2 times with increased wait",
+        "On 3rd failure, reports to user with options: retry, manual capture, or provide screenshots",
+        "Does not crash or hang indefinitely"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "capture a SPA where content only appears after scrolling",
+      "expected_output": "All lazy-loaded sections captured accurately. Each scroll position waited for content to settle (800ms+) before screenshot.",
+      "files": [],
+      "expectations": [
+        "Scrolls to each position before capturing",
+        "Waits for content to appear (800ms+ settle time)",
+        "Retries with longer wait if screenshot shows empty content",
+        "Accurately captures all lazy-loaded sections"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "capture all transitions and save to regions.json",
+      "expected_output": "regions.json with url, capturedAt, page dimensions, and fully populated scroll/hover/mousemove/timer arrays.",
+      "files": [],
+      "expectations": [
+        "regions.json has url, capturedAt, page dimensions",
+        "scroll array has name, from, to, elements, changedProperties",
+        "hover array has name, selector, y, bounds, transitionDuration",
+        "mousemove array has name, selector, matrix, patterns",
+        "timer array has name, selector, interval_ms"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "capture a site with 50+ nav links that all have the same hover transition",
+      "expected_output": "regions.json with deduplicated hover regions — siblings grouped under parent, total ≤ 20. No redundant individual-link entries.",
+      "files": [],
+      "expectations": [
+        "Groups sibling elements under parent instead of listing all 50",
+        "Applies size threshold (> 50px)",
+        "Verifies actual style change before including",
+        "Total regions ≤ 20",
+        "Prioritizes unique effects over repeated ones"
+      ]
+    }
+  ]
+}
