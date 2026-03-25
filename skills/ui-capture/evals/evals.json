@@ -44,14 +44,14 @@
     {
       "id": 4,
       "prompt": "capture cursor-reactive parallax effect with 10x10 matrix",
-      "expected_output": "matrix/ref/<name>/ directory with 100 screenshots (r0c0.png through r9c9.png) and pattern movement videos. regions.json includes mousemove array with grid metadata.",
+      "expected_output": "transitions/ref/mousemove-<name>.mp4 — single raster-path video sweeping the 10x10 grid. regions.json has mousemove entry with triggerType 'mousemove'.",
       "files": [],
       "expectations": [
         "Detects mousemove listeners or cursor-reactive class patterns",
-        "Captures 10x10 grid of screenshots (100 total) per element",
-        "Captures pattern movement videos (horizontal, diagonal, circular)",
-        "Saves grid metadata in regions.json",
-        "Creates matrix/ref/<name>/ directory with r0c0.png through r9c9.png"
+        "Tags region with triggerType 'mousemove' in regions.json",
+        "Captures single raster-path video sweeping all 100 grid points",
+        "Saves video to transitions/ref/mousemove-<name>.mp4",
+        "No separate matrix PNG images needed — video is the only artifact"
       ]
     },
     {
@@ -68,13 +68,13 @@
     {
       "id": 6,
       "prompt": "compare https://example.com vs http://localhost:3000 — generate comparison page",
-      "expected_output": "compare.html with side-by-side paired video sync, 10x10 matrix grids for cursor-reactive elements, and Play All button. URL presented to user.",
+      "expected_output": "compare.html with side-by-side paired video sync, raster-path videos for cursor-reactive elements, and Play All button. URL presented to user.",
       "files": [],
       "expectations": [
         "Captures impl with identical parameters as ref",
         "Generates compare.html with side-by-side layout",
         "Includes paired video sync (play one, other follows)",
-        "Includes 10x10 matrix grids for cursor-reactive elements",
+        "Includes paired raster-path videos for cursor-reactive elements (no PNG matrix grids)",
         "Includes Play All button",
         "Serves comparison page and presents URL to user"
       ]
@@ -106,14 +106,16 @@
     {
       "id": 9,
       "prompt": "capture all transitions and save to regions.json",
-      "expected_output": "regions.json with url, capturedAt, page dimensions, and fully populated scroll/hover/mousemove/timer arrays.",
+      "expected_output": "regions.json with url, capturedAt, page dimensions, and fully populated scroll/hover/mousemove/timer arrays. Each hover region includes triggerType field.",
       "files": [],
       "expectations": [
         "regions.json has url, capturedAt, page dimensions",
-        "scroll array has name, from, to, elements, changedProperties",
-        "hover array has name, selector, y, bounds, transitionDuration",
-        "mousemove array has name, selector, matrix, patterns",
-        "timer array has name, selector, interval_ms"
+        "scroll array has name, from, to, selector, changedProperties, triggerType ('scroll-driven')",
+        "hover array has name, selector, y, bounds, transitionDuration, triggerType",
+        "triggerType values are one of: css-hover, js-class, intersection, scroll-driven, mousemove, auto-timer",
+        "js-class regions include triggerClass field",
+        "mousemove array has name, selector, y, bounds, triggerType ('mousemove')",
+        "timer array has name, selector, y, bounds, triggerType ('auto-timer'), interval_ms"
       ]
     },
     {
@@ -127,6 +129,59 @@
         "Verifies actual style change before including",
         "Total regions ≤ 20",
         "Prioritizes unique effects over repeated ones"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "capture a scroll transition for an element located 5000px down the page",
+      "expected_output": "Scroll video correctly shows the element at the target scroll position (not stuck at y=0). record start followed by scroll eval and viewport reset.",
+      "files": [],
+      "expectations": [
+        "Issues scroll eval AFTER record start (not before)",
+        "Calls set viewport 1440 900 after record start",
+        "Waits 3000ms for page to reload in recording context",
+        "Scrolls to target position with scrollIntoView or scrollTo eval",
+        "Takes verify screenshot before recording to confirm correct position",
+        "Crops blank start frames using stdev threshold script"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "capture a card that uses a JS class toggle for its hover effect",
+      "expected_output": "Hover video shows the card animation triggered by toggling the correct CSS class via eval, not by a simple hover command. regions.json has triggerType 'js-class' with triggerClass field.",
+      "files": [],
+      "expectations": [
+        "Detects that the effect is JS-driven (class toggle), not CSS :hover",
+        "Tags region with triggerType 'js-class' and triggerClass in regions.json",
+        "Activates effect by adding the class via eval (not agent-browser hover)",
+        "Records in/hold/out sequence using class add/remove",
+        "Video shows actual animation, not a blank or wrong-state recording"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "capture a section that fades in when scrolled into view (IntersectionObserver-triggered animation)",
+      "expected_output": "Video shows the element animating as it enters the viewport. regions.json has triggerType 'intersection'. Activation uses smooth scroll into view, not agent-browser hover.",
+      "files": [],
+      "expectations": [
+        "Detects intersection trigger via data-in-view attribute or in-view/inview class pattern",
+        "Tags region with triggerType 'intersection' in regions.json",
+        "Resets in-view state before recording (removes in-view classes)",
+        "Activates by smooth-scrolling element into viewport (not hover command)",
+        "Video shows entry animation playing as element scrolls into view"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "generate comparison page where two videos have different durations",
+      "expected_output": "compare.html where both videos play fully to their own end. Shorter video finishing does not pause the longer one. pause events from buffering do not halt playback.",
+      "files": [],
+      "expectations": [
+        "Video sync uses busy flag to prevent recursive play loops",
+        "pause listener checks !a.ended before pausing paired video",
+        "ended event does NOT pause the paired video",
+        "seeked events sync currentTime between paired videos",
+        "Both videos play to their individual ends independently"
       ]
     }
   ]

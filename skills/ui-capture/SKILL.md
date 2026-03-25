@@ -1,6 +1,6 @@
 ---
 name: ui-capture
-description: Use when the user wants to capture, record, or screenshot any visual behavior from a website — including scroll transitions, hover effects, mousemove/parallax reactions, cursor-position matrices, and auto-playing carousels. Also use for side-by-side visual comparison between an original reference site and a local clone implementation. Trigger on requests to: take screenshots of a reference site, record scroll or hover animations, capture cursor-reactive parallax effects, build a 10x10 cursor position grid, verify visual fidelity between original and clone, or document how a site's transitions behave. Works standalone or integrates with ui-reverse-engineering and ralph workflows.
+description: Use when the user wants to capture, record, or screenshot any visual behavior from a website — including scroll transitions, hover effects, mousemove/parallax reactions, and interactive animations. Also use for side-by-side visual comparison between an original reference site and a local clone implementation. Trigger on requests to: take screenshots of a reference site, record scroll or hover animations, capture cursor-reactive parallax effects, verify visual fidelity between original and clone, or document how a site's transitions behave. Works standalone or integrates with ui-reverse-engineering and ralph workflows.
 ---
 
 # /ui-capture — Visual Capture & Comparison
@@ -62,7 +62,6 @@ Phase 5: User Review            — present URL, wait for feedback
 mkdir -p tmp/ref/capture/static/{ref,impl}
 mkdir -p tmp/ref/capture/scroll-video/{ref,impl}
 mkdir -p tmp/ref/capture/transitions/{ref,impl}
-mkdir -p tmp/ref/capture/matrix/{ref,impl}
 ```
 
 ### Open and measure
@@ -87,10 +86,11 @@ If `--fullpage` is not supported, stitch viewport-height screenshots: scroll to 
 ### Full scroll video
 
 ```bash
+agent-browser record start tmp/ref/capture/scroll-video/ref/full-scroll.webm
+agent-browser set viewport 1440 900
+agent-browser wait 3000  # wait for fresh context to load
 agent-browser eval "(() => window.scrollTo(0, 0))()"
 agent-browser wait 500
-agent-browser record start tmp/ref/capture/scroll-video/ref/full-scroll.webm
-agent-browser wait 1000
 agent-browser eval "(() => {
   const h = document.body.scrollHeight;
   let pos = 0;
@@ -118,9 +118,11 @@ Run the detection script, filter/deduplicate (≤20 regions), verify hover candi
 
 Execute per region type from `regions.json`:
 - **2B** — scroll transition videos
-- **2C** — hover in/hold/out videos
-- **2D** — mousemove pattern videos + 10×10 matrix screenshots (100 images per element)
+- **2C** — interactive transition videos (`css-hover`: in/hold/out; `js-class`: class toggle; `intersection`: scroll-into-view)
+- **2D** — mousemove raster-path video (10×10 grid sweep, single video per element)
 - **2E** — auto-timer videos (2–3 full cycles)
+
+> **Trigger type matters:** Always classify each effect as `css-hover`, `js-class`, `intersection`, `scroll-driven`, `mousemove`, or `auto-timer` before recording. Wrong activation = blank video.
 
 ---
 
@@ -129,8 +131,7 @@ Execute per region type from `regions.json`:
 Execute **identical** capture sequences on `<local-url>` (default `http://localhost:3000`):
 - Full-page screenshot → `static/impl/`
 - Full scroll video → `scroll-video/impl/`
-- Transition videos → `transitions/impl/` (same regions from `regions.json`)
-- 10×10 matrix → `matrix/impl/` (same elements, same grid points)
+- Transition videos → `transitions/impl/` (same regions from `regions.json`, same trigger types)
 
 **Use identical scroll speeds, wait times, hover durations, and mouse movement patterns as Phase 1/2.**
 
@@ -140,7 +141,7 @@ Execute **identical** capture sequences on `<local-url>` (default `http://localh
 
 > **Read `comparison-page.md` before executing this phase.**
 
-Generate `compare.html` with side-by-side paired screenshots, synced videos, and 10×10 matrix grids. Serve and present URL to user.
+Generate `compare.html` with side-by-side paired screenshots and synced videos for all regions. Serve and present URL to user.
 
 ---
 
@@ -153,7 +154,7 @@ Generate `compare.html` with side-by-side paired screenshots, synced videos, and
   - Full page screenshot comparison
   - N scroll transition videos
   - N hover transition videos
-  - N cursor-reactive videos + 10×10 matrix grids
+  - N cursor-reactive videos (raster-path sweep)
   - N auto-timer videos
 
 Please review and tell me which sections need work."
@@ -203,6 +204,10 @@ After video → Check:
 | eval returns empty array | Wait longer, fallback to class-name detection |
 | Video is 0 bytes | Close agent-browser, reopen, retry |
 | Sticky header/overlay | `document.querySelectorAll('[class*=cookie],[class*=banner],[class*=modal],[class*=overlay]').forEach(el => el.remove())` |
+| Video shows wrong scroll position (hero instead of target section) | `record start` creates a fresh context — always scroll AFTER record start, not before. See capture-transitions.md "Critical" section. |
+| Video has 1-4s blank/wrong-state at start | Normal — `record start` has inherent delay. Crop with ffmpeg using stdev threshold. See capture-transitions.md for auto-crop script. |
+| Video sync in compare.html causes infinite pause/play loop | `pause` event fires during buffering too. Use `!a.ended` guard in pause listener. See comparison-page.md for correct sync code. |
+| Shorter video stops the longer one from finishing | `ended` event must NOT pause the paired video. Each video plays to its own end independently. |
 
 ---
 
@@ -222,7 +227,7 @@ Always clean up after final verification. Captured assets may contain sensitive 
 
 - **detection.md** — Phase 2: transition detection scripts, deduplication, hover verification, regions.json schema
 - **capture-transitions.md** — Phase 2B–2E: scroll/hover/mousemove/timer capture sequences
-- **comparison-page.md** — Phase 4: compare.html generation, video sync script, matrix grid layout
+- **comparison-page.md** — Phase 4: compare.html generation, video sync script, cursor-reactive section
 
 ## Integration points
 

@@ -17,8 +17,6 @@ Generate `tmp/ref/capture/compare.html` for side-by-side human review of origina
     .tag { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     .tag.original { background: rgba(0,180,0,0.8); }
     .tag.clone { background: rgba(0,100,255,0.8); }
-    .matrix-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; }
-    .matrix-grid img { width: 100%; border: 1px solid #222; }
   </style>
 </head>
 <body>
@@ -35,21 +33,31 @@ Generate `tmp/ref/capture/compare.html` for side-by-side human review of origina
   <!-- Paired videos — one per hover region -->
 
   <h2>Cursor-Reactive (mousemove)</h2>
-  <!-- Paired videos + 10×10 matrix grids — one per mousemove region -->
+  <!-- Paired raster-path videos — one per mousemove region -->
 
   <h2>Auto-Timer</h2>
   <!-- Paired videos — one per timer region -->
 
   <script>
   // Sync paired videos
+  // Rules:
+  // 1. play/seek sync: when one plays or seeks, the other follows
+  // 2. pause sync: only sync user-initiated pauses (not buffering/ended)
+  // 3. different durations: when the shorter video ends, let the longer one finish
+  // 4. busy flag: prevents recursive sync loops
   document.querySelectorAll('.pair').forEach(pair => {
     const videos = pair.querySelectorAll('video');
-    if (videos.length === 2) {
-      videos[0].addEventListener('play', () => { videos[1].currentTime = videos[0].currentTime; videos[1].play(); });
-      videos[1].addEventListener('play', () => { videos[0].currentTime = videos[1].currentTime; videos[0].play(); });
-      videos[0].addEventListener('pause', () => videos[1].pause());
-      videos[1].addEventListener('pause', () => videos[0].pause());
-    }
+    if (videos.length !== 2) return;
+    const [a, b] = videos;
+    let busy = false;
+
+    a.addEventListener('play',   () => { if (busy) return; busy = true; b.currentTime = a.currentTime; b.play().catch(()=>{}).finally(()=>{ busy = false; }); });
+    b.addEventListener('play',   () => { if (busy) return; busy = true; a.currentTime = b.currentTime; a.play().catch(()=>{}).finally(()=>{ busy = false; }); });
+    a.addEventListener('pause',  () => { if (!busy && !a.ended) b.pause(); });
+    b.addEventListener('pause',  () => { if (!busy && !b.ended) a.pause(); });
+    a.addEventListener('seeked', () => { if (!busy) b.currentTime = a.currentTime; });
+    b.addEventListener('seeked', () => { if (!busy) a.currentTime = b.currentTime; });
+    // ended: do NOT pause the other — let it finish
   });
 
   document.getElementById('play-all')?.addEventListener('click', () => {
@@ -60,26 +68,24 @@ Generate `tmp/ref/capture/compare.html` for side-by-side human review of origina
 </html>
 ```
 
-## Matrix comparison section
+## Cursor-reactive (mousemove) section
 
-For each cursor-reactive element, two 10×10 grids side by side:
+For each cursor-reactive element, two raster-path videos side by side (same as other paired sections):
 
 ```html
 <div class="pair">
   <div class="side">
     <span class="tag original">Original</span>
-    <div class="matrix-grid">
-      <!-- 100 images: r0c0.png through r9c9.png -->
-    </div>
+    <video src="transitions/ref/mousemove-<name>.mp4" controls loop></video>
   </div>
   <div class="side">
     <span class="tag clone">Clone</span>
-    <div class="matrix-grid">
-      <!-- 100 images: r0c0.png through r9c9.png -->
-    </div>
+    <video src="transitions/impl/mousemove-<name>.mp4" controls loop></video>
   </div>
 </div>
 ```
+
+The raster-path video sweeps all 100 grid points in sequence — no separate PNG grid needed. The video shows movement across the full element, making parallax/tilt response visible throughout.
 
 ## Serve
 

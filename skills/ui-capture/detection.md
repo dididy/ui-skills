@@ -1,203 +1,191 @@
 # ui-capture — Transition Detection
 
-Detect all interactive regions on the page and filter to a manageable set for capture.
+Detect all interactive regions on the page and classify by trigger type before capturing.
 
-## Step 2A: Run detection script
+## Step 2A: Classify transitions by trigger type
+
+**Critical:** Before recording, always determine HOW each effect is triggered. Wrong trigger type = blank/useless video.
+
+| Trigger type | How to detect | How to activate |
+|---|---|---|
+| `css-hover` | `:hover` rule in stylesheet targeting this element | `agent-browser hover <selector>` |
+| `js-class` | JS adds/removes a class on click/focus/mouseover | Toggle the class directly via eval |
+| `intersection` | `data-in-view`, IntersectionObserver, scroll into viewport | Scroll element into view smoothly |
+| `scroll-driven` | CSS `animation-timeline: scroll()` or JS rAF tracking scrollY | Scroll through the element's scroll range |
+| `mousemove` | `mousemove` event listener, class patterns (parallax/tilt/magnetic) | Dispatch mousemove events across element bounds |
+| `auto-timer` | setInterval, CSS animation without user trigger | Wait for cycles (record passively) |
+
+---
+
+## Step 2A-1: Scan for all transition candidates
 
 ```bash
 agent-browser eval "(() => {
   const results = { scroll: [], hover: [], mousemove: [], timer: [] };
 
-  // --- Scroll transitions ---
+  // --- Check stylesheet for :hover rules ---
+  const hoverSelectors = new Set();
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) {
+        if (rule.selectorText && rule.selectorText.includes(':hover')) {
+          hoverSelectors.add(rule.selectorText);
+        }
+      }
+    } catch(e) {}
+  }
+
   const allElements = document.querySelectorAll('*');
-  const scrollCandidates = [];
+
+  // --- Hover candidates ---
   for (const el of allElements) {
     const s = getComputedStyle(el);
-    if (s.willChange !== 'auto' ||
-        s.transform !== 'none' ||
-        s.transition !== 'all 0s ease 0s' ||
-        el.style.cssText.includes('scroll')) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 50 && rect.height > 50) {
-        scrollCandidates.push({
-          selector: genSelector(el),
-          y: rect.top + window.scrollY,
-          height: rect.height
-        });
-      }
-    }
-  }
-  results.scroll = scrollCandidates;
+    if (s.transitionDuration === '0s') continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 20) continue;
 
-  // --- Hover transitions ---
+    const cn = typeof el.className === 'string' ? el.className : '';
+    const sel = el.id ? '#'+el.id : el.tagName+'.'+cn.trim().split(/\s+/).slice(0,2).join('.');
+
+    // Determine trigger type
+    const hasHoverRule = [...hoverSelectors].some(s => {
+      try { return el.matches(s.replace(/:hover.*/,'').trim()); } catch(e) { return false; }
+    });
+    const hasInView = el.dataset.inView !== undefined || cn.includes('in-view') || cn.includes('inview');
+    const triggerType = hasHoverRule ? 'css-hover' : hasInView ? 'intersection' : 'js-class';
+
+    results.hover.push({
+      selector: sel,
+      y: Math.round(rect.top + window.scrollY),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      transitionDuration: s.transitionDuration,
+      transitionProperty: s.transitionProperty,
+      triggerType
+    });
+  }
+
+  // --- Scroll-driven candidates: elements with sticky position or scroll-animation CSS ---
   for (const el of allElements) {
     const s = getComputedStyle(el);
-    if (s.transitionDuration !== '0s' || s.transitionProperty !== 'all') {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 20 && rect.height > 20) {
-        results.hover.push({
-          selector: genSelector(el),
-          y: rect.top + window.scrollY,
-          width: rect.width,
-          height: rect.height
-        });
-      }
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 50 || rect.height < 50) continue;
+    if (s.position === 'sticky' || s.animationTimeline === 'scroll()' ||
+        (s.willChange !== 'auto' && s.willChange !== '')) {
+      const cn = typeof el.className === 'string' ? el.className : '';
+      results.scroll.push({
+        selector: el.id ? '#'+el.id : el.tagName+'.'+cn.trim().split(/\s+/).slice(0,2).join('.'),
+        y: Math.round(rect.top + window.scrollY),
+        height: Math.round(rect.height),
+        triggerType: 'scroll-driven'
+      });
     }
   }
 
-  // --- Mousemove listeners (class/attribute heuristic) ---
-  const movePatterns = ['parallax', 'tilt', 'magnetic', 'cursor', 'mouse', 'follow'];
+  // --- Mousemove: class/id heuristic + event listener check ---
+  const movePatterns = ['parallax', 'tilt', 'magnetic', 'cursor', 'mouse', 'follow', 'playground'];
   for (const el of allElements) {
-    const classes = el.className.toString().toLowerCase();
+    const cn = (typeof el.className === 'string' ? el.className : '').toLowerCase();
     const id = (el.id || '').toLowerCase();
-    if (movePatterns.some(p => classes.includes(p) || id.includes(p))) {
+    if (movePatterns.some(p => cn.includes(p) || id.includes(p))) {
       const rect = el.getBoundingClientRect();
+      if (rect.width < 50) continue;
+      const sel = el.id ? '#'+el.id : el.tagName+'.'+cn.trim().split(/\s+/).slice(0,2).join('.');
       results.mousemove.push({
-        selector: genSelector(el),
-        y: rect.top + window.scrollY,
-        width: rect.width,
-        height: rect.height
+        selector: sel,
+        y: Math.round(rect.top + window.scrollY),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        triggerType: 'mousemove'
       });
     }
   }
 
-  // --- Auto-timer (carousels, slideshows) ---
-  const timerPatterns = ['carousel', 'slider', 'slide', 'swiper', 'autoplay'];
+  // --- Auto-timer: carousel/slideshow patterns ---
+  const timerPatterns = ['carousel', 'slider', 'slideshow', 'swiper', 'autoplay'];
   for (const el of allElements) {
-    const classes = el.className.toString().toLowerCase();
-    if (timerPatterns.some(p => classes.includes(p))) {
+    const cn = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+    if (timerPatterns.some(p => cn.includes(p))) {
       const rect = el.getBoundingClientRect();
-      results.timer.push({
-        selector: genSelector(el),
-        y: rect.top + window.scrollY,
-        width: rect.width,
-        height: rect.height
-      });
+      if (rect.width < 50 || rect.height < 50) continue;
+      const sel = el.id ? '#'+el.id : el.tagName+'.'+cn.trim().split(/\s+/).slice(0,2).join('.');
+      // Estimate interval from data-autoplay / data-interval attribute, fallback to 3000ms
+      const intervalMs = parseInt(el.dataset.autoplaySpeed || el.dataset.interval || el.dataset.delay || '3000', 10);
+      results.timer.push({ selector: sel, y: Math.round(rect.top + window.scrollY), width: Math.round(rect.width), height: Math.round(rect.height), triggerType: 'auto-timer', interval_ms: intervalMs });
     }
-  }
-
-  function genSelector(el) {
-    if (el.id) return '#' + el.id;
-    if (el.dataset.testid) return '[data-testid=\"' + el.dataset.testid + '\"]';
-    const path = [];
-    let cur = el;
-    while (cur && cur !== document.body) {
-      let seg = cur.tagName.toLowerCase();
-      if (cur.className && typeof cur.className === 'string') {
-        const cls = cur.className.trim().split(/\s+/).slice(0, 2).join('.');
-        if (cls) seg += '.' + cls;
-      }
-      path.unshift(seg);
-      cur = cur.parentElement;
-      if (path.length >= 3) break;
-    }
-    return path.join(' > ');
   }
 
   return JSON.stringify(results, null, 2);
 })()"
 ```
 
-**Scroll-based detection (more reliable):** Scroll top to bottom and compare computed styles at each step — elements whose `transform`/`opacity`/`clipPath` change are scroll-triggered.
+---
+
+## Step 2A-2: Verify hover candidates by trigger type
+
+For each hover candidate, **actually test** that the effect is visible before including it:
 
 ```bash
 agent-browser eval "(() => {
-  const transitions = [];
-  const vh = window.innerHeight;
-  const total = document.body.scrollHeight;
-  const steps = Math.ceil(total / (vh * 0.5));
-  let prevStyles = {};
+  const el = document.querySelector('<selector>');
+  if (!el) return 'not found';
 
-  for (let i = 0; i <= steps; i++) {
-    const y = Math.min(i * vh * 0.5, total - vh);
-    window.scrollTo(0, y);
+  const snap = (e) => ({
+    transform: getComputedStyle(e).transform,
+    opacity: getComputedStyle(e).opacity,
+    backgroundColor: getComputedStyle(e).backgroundColor,
+    boxShadow: getComputedStyle(e).boxShadow,
+    color: getComputedStyle(e).color
+  });
 
-    const visible = document.elementsFromPoint(720, 450);
-    const curStyles = {};
-    for (const el of visible.slice(0, 20)) {
-      const s = getComputedStyle(el);
-      const key = el.tagName + (el.id ? '#' + el.id : '') + '.' + (el.className || '').toString().slice(0, 30);
-      curStyles[key] = {
-        transform: s.transform,
-        opacity: s.opacity,
-        clipPath: s.clipPath,
-        scale: s.scale
-      };
-      if (prevStyles[key]) {
-        const p = prevStyles[key];
-        if (p.transform !== s.transform || p.opacity !== s.opacity || p.clipPath !== s.clipPath || p.scale !== s.scale) {
-          transitions.push({ element: key, scrollY: y, changed: Object.keys(p).filter(k => p[k] !== curStyles[key][k]) });
-        }
+  const before = snap(el);
+
+  if ('<triggerType>' === 'css-hover') {
+    // Force :hover via CDP — dispatch real pointer events
+    el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerId: 1 }));
+    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+  } else if ('<triggerType>' === 'js-class') {
+    // Try toggling common class names
+    const classNames = ['hover', 'active', 'hovered', 'is-hover', 'flipped', 'expanded'];
+    for (const cls of classNames) {
+      if ([...document.styleSheets].some(s => {
+        try { return [...s.cssRules].some(r => r.selectorText?.includes(cls)); } catch(e) { return false; }
+      })) {
+        el.classList.add(cls);
+        break;
       }
     }
-    prevStyles = { ...prevStyles, ...curStyles };
+  } else if ('<triggerType>' === 'intersection') {
+    el.dataset.inView = 'true';
+    el.classList.add('in-view', 'is-visible');
   }
-  return JSON.stringify(transitions);
+
+  // Wait for transition
+  const duration = parseFloat(getComputedStyle(el).transitionDuration || '0') * 1000;
+  return new Promise(resolve => setTimeout(() => {
+    const after = snap(el);
+    const changed = Object.keys(before).some(k => before[k] !== after[k]);
+    resolve(JSON.stringify({ changed, before, after }));
+  }, duration + 100));
 })()"
 ```
 
-**Mousemove listener check (DevTools protocol):**
+If `changed: false` → **discard** this candidate.
 
-```bash
-agent-browser eval "(() => {
-  const found = [];
-  const walk = (el) => {
-    if (typeof getEventListeners === 'function') {
-      const listeners = getEventListeners(el);
-      if (listeners.mousemove && listeners.mousemove.length > 0) {
-        const rect = el.getBoundingClientRect();
-        found.push({
-          selector: el.tagName + (el.id ? '#' + el.id : ''),
-          y: rect.top + window.scrollY,
-          width: rect.width,
-          height: rect.height,
-          listenerCount: listeners.mousemove.length
-        });
-      }
-    }
-    for (const child of el.children) walk(child);
-  };
-  walk(document.body);
-  return JSON.stringify(found);
-})()"
-```
+---
 
-## Step 2A-2: Filter & deduplicate
+## Step 2A-3: Filter & deduplicate
 
-Raw detection returns too many elements. Apply these rules before capturing:
+Apply in order:
+1. **Discard unverified** — `changed: false` from Step 2A-2
+2. **Parent absorbs children** — if parent and descendant share same `triggerType`, keep parent only
+3. **Sibling grouping** — 5+ siblings with identical `transitionProperty` → group under parent, note "N children"
+4. **Size threshold** — discard < 50×50px unless it's the only interactive element in its section
 
-1. **Parent absorbs children** — if parent and descendants share the same transition type, keep only the parent
-2. **Sibling grouping** — if 5+ siblings have identical transition properties, group under parent
-3. **Size threshold** — discard elements smaller than 50×50px (unless only interactive element in section)
-4. **Actual change verification** — hover each candidate and compare `getComputedStyle` before/after; discard if nothing changes
+**Target: ≤20 total regions**. Prioritize: unique effect > repeated, large area > small, complex > color-only.
 
-```bash
-agent-browser eval "(() => {
-  const candidates = <hover-candidates-from-2A>;
-  const verified = [];
-  for (const c of candidates) {
-    const el = document.querySelector(c.selector);
-    if (!el) continue;
-    const before = getComputedStyle(el);
-    const beforeSnap = {
-      transform: before.transform, opacity: before.opacity,
-      backgroundColor: before.backgroundColor, color: before.color,
-      boxShadow: before.boxShadow, borderColor: before.borderColor, scale: before.scale
-    };
-    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-    const after = getComputedStyle(el);
-    const changed = Object.keys(beforeSnap).some(k => beforeSnap[k] !== after[k]);
-    el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
-    if (changed) verified.push(c);
-  }
-  return JSON.stringify(verified);
-})()"
-```
-
-**Target: ≤20 total regions** across all types. If more, prioritize:
-1. Unique effects > repeated
-2. Large visual area > small
-3. Complex animation > simple color change
+---
 
 ## Save regions.json
 
@@ -207,16 +195,53 @@ agent-browser eval "(() => {
   "capturedAt": "<ISO timestamp>",
   "page": { "totalHeight": 14886, "viewportWidth": 1440, "viewportHeight": 900 },
   "scroll": [
-    { "name": "hero-zoom", "from": 0, "to": 1800, "elements": ["selector1"], "changedProperties": ["transform", "opacity"] }
+    { "name": "hero-zoom", "from": 0, "to": 1800, "selector": ".sticky-el", "changedProperties": ["transform"], "triggerType": "scroll-driven" }
   ],
   "hover": [
-    { "name": "nav-links", "selector": ".nav a", "y": 0, "bounds": { "width": 200, "height": 40 }, "transitionDuration": "300ms" }
+    {
+      "name": "nav-link",
+      "selector": ".nav a",
+      "y": 0,
+      "bounds": { "width": 120, "height": 40 },
+      "transitionDuration": "300ms",
+      "triggerType": "css-hover"
+    },
+    {
+      "name": "passion-card",
+      "selector": ".card[data-in-view]",
+      "y": 5400,
+      "bounds": { "width": 420, "height": 450 },
+      "transitionDuration": "750ms",
+      "triggerType": "intersection"
+    },
+    {
+      "name": "flip-card",
+      "selector": ".flipCardInner",
+      "y": 9500,
+      "bounds": { "width": 230, "height": 230 },
+      "transitionDuration": "600ms",
+      "triggerType": "js-class",
+      "triggerClass": "flipped"
+    }
   ],
   "mousemove": [
-    { "name": "hero-parallax", "selector": ".hero-bg", "y": 0, "bounds": { "width": 1440, "height": 900 }, "matrix": "10x10", "patterns": ["horizontal", "diagonal", "circular"] }
+    {
+      "name": "icon-playground",
+      "selector": ".playground section",
+      "y": 10400,
+      "bounds": { "width": 1376, "height": 900 },
+      "triggerType": "mousemove"
+    }
   ],
   "timer": [
-    { "name": "carousel", "selector": ".carousel", "y": 3600, "interval_ms": 5000 }
+    {
+      "name": "hero-carousel",
+      "selector": ".swiper",
+      "y": 0,
+      "bounds": { "width": 1440, "height": 600 },
+      "triggerType": "auto-timer",
+      "interval_ms": 4000
+    }
   ]
 }
 ```

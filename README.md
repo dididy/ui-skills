@@ -10,7 +10,7 @@ Three skills included:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
-3. **`ui-capture`** — baseline screenshot + transition video capture from reference URLs, with web-based comparison page for verifying UI clone fidelity (scroll, hover, mousemove 10×10 matrix, auto-timer)
+3. **`ui-capture`** — baseline screenshot + transition video capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type (`css-hover`, `js-class`, `intersection`, `scroll-driven`, `mousemove`, `auto-timer`) before recording. Handles scroll/hover/cursor-reactive/auto-timer transitions with synchronized side-by-side video comparison.
 
 ## Requirements
 
@@ -162,9 +162,66 @@ Step  4: Verify                   — frame-by-frame comparison (element or full
 
 ---
 
+## Skill 3: `ui-capture` — Visual Capture & Comparison
+
+Captures baseline screenshots and transition videos from any reference URL, then generates a web-based side-by-side comparison page for verifying UI clone fidelity.
+
+Classifies each interactive effect by trigger type before recording — preventing blank videos caused by wrong activation method.
+
+### When to Use
+
+- You want a reference baseline before starting a UI clone
+- You need to record how a site's scroll, hover, or cursor effects look
+- You want to compare your implementation against the original side-by-side
+- You're verifying visual fidelity after implementation
+
+### Usage
+
+```
+Capture the transitions from https://example.com
+Record the hover effects on https://example.com
+Compare https://example.com vs http://localhost:3000
+Take a baseline screenshot of https://example.com before I start cloning
+```
+
+### How It Works
+
+```
+Phase 1: Full Page Capture   — static screenshot + full scroll video
+  ↓
+Phase 2: Transition Detection — classify all effects by trigger type, save regions.json
+  ↓
+Phase 2B–2E: Capture Transitions — per trigger type:
+  2B scroll-driven  — scroll through transition range
+  2C css-hover      — CDP hover in/hold/out
+     js-class       — eval class toggle add/remove
+     intersection   — smooth scroll into viewport
+  2D mousemove      — raster-path sweep video (10×10 grid, single video)
+  2E auto-timer     — passive recording for 2–3 cycles
+  ↓
+Phase 3: Implementation Capture — identical sequences on local-url
+  ↓
+Phase 4: Comparison Page     — side-by-side paired videos, synchronized playback
+  ↓
+Phase 5: User Review         — present URL, wait for feedback
+```
+
+### Trigger Type Classification
+
+| Trigger type | Detection | Activation |
+|---|---|---|
+| `css-hover` | `:hover` rule in stylesheet | `agent-browser hover` |
+| `js-class` | JS adds/removes a class | eval class toggle |
+| `intersection` | `data-in-view`, IntersectionObserver | smooth scroll into viewport |
+| `scroll-driven` | `animation-timeline: scroll()`, sticky, willChange | scroll through range |
+| `mousemove` | `mousemove` listener, parallax/tilt/magnetic patterns | raster-path sweep |
+| `auto-timer` | setInterval, CSS animation, carousel/swiper | passive wait |
+
+---
+
 ## Security
 
-Both skills process untrusted external content (DOM, CSS, JS bundles) from arbitrary URLs. Built-in mitigations:
+All three skills process untrusted external content (DOM, CSS, JS bundles, and screenshots) from arbitrary URLs. Built-in mitigations:
 
 - **Prompt injection defense** — extracted data is wrapped in boundary markers and treated as display-only content, never as instructions
 - **Post-extraction sanitization** — automated scans for suspicious patterns (`javascript:`, `eval(atob`, prompt injection phrases) in extracted JSON
