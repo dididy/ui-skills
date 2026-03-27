@@ -84,10 +84,11 @@ Step 2c: Extract Canvas/WebGL       — Read canvas-webgl-extraction.md (for can
   ↓
 Step 3: Implement                   — Read patterns.md for reference patterns
   ↓
-Step 4: Verify                      — Invoke /ui-capture <ref-url> http://localhost:<port>
-  ↓                                   Or read verification.md for element-scope comparison
+Step 4: Verify                      — Read verification.md, execute frame comparison tables
+  ↓                                   AND pixel-perfect-diff.md Steps P1–P6 for resting states
   ↓
   ↓  GATE: All frames ✅ in comparison table
+  ↓  GATE: pixel-perfect-diff.json "result": "pass", "mismatches": 0
   ↓
 Done
 ```
@@ -218,6 +219,7 @@ Save to `tmp/ref/<effect-name>/extracted.json`:
 - **patterns.md** — Implementation patterns, character stagger recipes, troubleshooting
 - **waapi-scrubbing.md** — WAAPI scrubber injection for page-load animations
 - **verification.md** — Visual verification, bug diagnosis protocol, completion checklist
+- **../pixel-perfect-diff.md** — Step 4 (MANDATORY): getComputedStyle numerical diff for resting states. "mismatches": 0 required before done.
 
 ## When called from a ralph worker
 

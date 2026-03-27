@@ -58,6 +58,20 @@ When a visual bug is reported (white flash, wrong timing, layout jump, etc.):
 
 **Do not iterate on the same approach more than twice.** If two fixes in the same direction don't work, the diagnosis was wrong — re-instrument and re-diagnose.
 
+## Pixel-Perfect Static State Diff (MANDATORY)
+
+> **Read and execute `../pixel-perfect-diff.md` Steps P1–P6 for the element's resting state (before and after animation).**
+
+Frame comparison verifies timing and motion but CANNOT verify:
+- Whether resting-state `font-size` / `font-weight` / `color` are numerically correct
+- Whether spacing, padding, and border-radius are exact matches
+
+Run the pixel-perfect diff for:
+1. **Before state** (element as it appears before the transition triggers)
+2. **After state** (element in its final settled position after transition completes)
+
+Gate: `pixel-perfect-diff.json` must exist with `"result": "pass"` and `"mismatches": 0` for both states.
+
 ## "Is This Done?" Checklist
 
 - [ ] `measurements.json` saved (11-point multi-property measurement from measurement.md)
@@ -68,6 +82,7 @@ When a visual bug is reported (white flash, wrong timing, layout jump, etc.):
 - [ ] Comparison table filled — every frame has ✅ or ❌
 - [ ] All ❌ rows fixed and re-verified
 - [ ] No white flash / blank frame / layout jump in any impl frame where ref shows content
+- [ ] **`pixel-perfect-diff.json` exists with `"result": "pass"` and `"mismatches": 0` (before + after states)**
 - [ ] Entry points verified: CSS imports loaded (`body { margin: 0 }` etc. in effect), no missing `import` in main entry file
 - [ ] **Scroll transitions: reverse direction verified** — scroll back through trigger zone, confirm animation reverses to initial state
 - [ ] **Post-implementation full-page capture** — after all transitions are implemented, do a full-page scroll capture (top → bottom → top) on both original and implementation, compare side by side

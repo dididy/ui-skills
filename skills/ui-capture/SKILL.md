@@ -137,11 +137,13 @@ Execute **identical** capture sequences on `<local-url>` (default `http://localh
 
 ---
 
-## Phase 4: Comparison Page
+## Phase 4: Pixel-Perfect Diff + Comparison Page
 
 > **Read `comparison-page.md` before executing this phase.**
 
-Generate `compare.html` with side-by-side paired screenshots and synced videos for all regions. Serve and present URL to user.
+**Step 4A (MANDATORY — runs before compare.html):** Read `../pixel-perfect-diff.md` and execute Steps P1–P6 for every major section of the page. Produce `tmp/ref/capture/pixel-perfect-diff.json` with `"result": "pass"` and `"mismatches": 0`. Fix any mismatches in the implementation before proceeding to Step 4B.
+
+**Step 4B:** Generate `compare.html` with pixel-perfect diff table embedded at the top, followed by side-by-side paired screenshots and synced videos for all regions. Serve and present URL to user.
 
 ---
 
@@ -227,7 +229,8 @@ Always clean up after final verification. Captured assets may contain sensitive 
 
 - **detection.md** — Phase 2: transition detection scripts, deduplication, hover verification, regions.json schema
 - **capture-transitions.md** — Phase 2B–2E: scroll/hover/mousemove/timer capture sequences
-- **comparison-page.md** — Phase 4: compare.html generation, video sync script, cursor-reactive section
+- **../pixel-perfect-diff.md** — Phase 4A (MANDATORY): getComputedStyle numerical measurement, diff table, pixel-perfect-diff.json gate
+- **comparison-page.md** — Phase 4A gate checklist + Phase 4B: compare.html generation, video sync script, cursor-reactive section
 
 ## Integration points
 

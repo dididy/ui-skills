@@ -141,25 +141,33 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   PHASE 4: VERIFICATION (gates completion)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
-8. Visual Verification    — Invoke /ui-capture <reference-url> http://localhost:<port>
-  ↓                         Runs Phase 3 (impl capture) + Phase 4 (comparison page)
-  ↓                         Agent reads ref/impl images and identifies mismatches
-  ↓                         Serves comparison web page for user review
+8. Visual Verification    — Read visual-verification.md, execute Phases A, B, C, D
+  ↓
+  ↓   Phase A: Reference capture (static screenshots + scroll video)
+  ↓   Phase B: Impl capture (identical sequences on localhost)
+  ↓   Phase C: Frame-by-frame comparison tables (C1 static, C2 scroll, C3 transitions)
+  ↓   Phase D: Pixel-perfect numerical diff — Read pixel-perfect-diff.md, execute P1–P6
   ↓
   ↓  ┌─────────────────────────────────────────────┐
-  ↓  │ GATE: ui-capture comparison must pass.       │
-  ↓  │  □ Full-page screenshot: pixel-perfect match │
-  ↓  │  □ Scroll transitions: timing + visual match │
-  ↓  │  □ Hover/mousemove: behavior match           │
-  ↓  │  □ 10x10 matrix: cursor-reactive match       │
+  ↓  │ GATE: ALL of the following must pass.        │
+  ↓  │                                              │
+  ↓  │  □ C1 table: all static screenshots ✅      │
+  ↓  │  □ C2 table: scroll video frames ✅         │
+  ↓  │  □ C3 table: transition frames ✅           │
+  ↓  │  □ Phase D: pixel-perfect-diff.json          │
+  ↓  │       "result": "pass", "mismatches": 0      │
+  ↓  │                                              │
+  ↓  │ "거의 동일" (approximately same) = FAIL.    │
+  ↓  │ Only exact numerical match = PASS.           │
   ↓  │                                              │
   ↓  │ If ANY mismatch found:                       │
   ↓  │  1. Name root cause in one sentence         │
   ↓  │  2. Targeted fix (do NOT rewrite component) │
-  ↓  │  3. Re-run /ui-capture (impl capture only)  │
+  ↓  │  3. Re-run Phase B + Phase D only           │
   ↓  │  4. Max 3 full iterations                   │
   ↓  │                                              │
-  ↓  │ COMPLETION = all sections match.             │
+  ↓  │ COMPLETION = C1+C2+C3 all ✅ AND            │
+  ↓  │             pixel-perfect-diff mismatches=0  │
   ↓  │ Nothing else counts as "done".               │
   ↓  └─────────────────────────────────────────────┘
   ↓
@@ -220,6 +228,7 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
 3. **No skipping.** If a step seems unnecessary (e.g., "this site has no interactions"), still run the detection commands from `interaction-detection.md` to confirm. Document the null result.
 4. **Reference capture is step ZERO.** Before any extraction or coding, capture the original site's screenshots and video (Phase A of `visual-verification.md`). These are your ground truth for the entire process.
 5. **Test interactions, not just screenshots.** Static visual match is necessary but NOT sufficient. Every hover, click, scroll-trigger, and auto-timer must be tested with browser automation on the implementation. A component that looks right but behaves wrong is not done.
+6. **Numerical match, not visual match.** Screenshots cannot catch `font-size: 16px vs 24px` or `font-weight: 400 vs 600`. Phase D (`pixel-perfect-diff.md`) is the authoritative gate — `mismatches: 0` is required. "Looks the same" is not a valid completion criterion.
 
 ## Multi-section pages
 
@@ -330,7 +339,8 @@ agent-browser close                         # Kill session
 - **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
 - **interaction-detection.md** — Steps 5–6: hover/scroll/keyframes, JS bundle analysis
 - **component-generation.md** — Step 7: generation prompt, iteration rules
-- **visual-verification.md** — DEPRECATED: capture and comparison logic has moved to `/ui-capture` skill. This file remains for reference but should not be executed directly. Use `/ui-capture` instead.
+- **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition frame comparison. Phase D requires `pixel-perfect-diff.md`.
+- **../pixel-perfect-diff.md** — Step 8 Phase D (MANDATORY): getComputedStyle numerical measurement, structured diff table, pixel-perfect-diff.json gate. "거의 동일" = FAIL. Only mismatches=0 = PASS.
 
 ## Sub-skills
 

@@ -1,7 +1,7 @@
 {
   "name": "ui-skills",
-  "version": "0.0.6",
-  "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Auto-detects responsive breakpoints via viewport sweep. Verifies output with 60 fps three-capture comparison (static, scroll, interaction). Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS) and visual baseline capture & comparison with trigger-type-aware recording and corrected video sync.",
+  "version": "0.0.7",
+  "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Auto-detects responsive breakpoints via viewport sweep. Verifies output with frame comparison (static, scroll, interaction) and mandatory pixel-perfect numerical diff (getComputedStyle, mismatches: 0 required). Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture & comparison with trigger-type-aware recording, and corrected video sync.",
   "license": "Apache-2.0",
   "author": {
     "name": "YONGJAE LEE"

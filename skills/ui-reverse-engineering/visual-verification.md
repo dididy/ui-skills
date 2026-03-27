@@ -285,12 +285,37 @@ For each interactive region, compare at minimum: start frame, every 6th frame du
 3. Targeted fix → re-run Phase B only (the specific capture type that failed) → compare affected frames
 4. If the same fix has been tried twice without result, the diagnosis was wrong — re-instrument
 
+### Phase D: Pixel-Perfect Numerical Diff (MANDATORY)
+
+> **Read and execute `../pixel-perfect-diff.md` in full before declaring any section done.**
+
+Screenshot comparison (C1–C3) catches layout and animation mismatches but CANNOT catch:
+- `font-size: 16px` vs `24px` (looks "similar" in a full-page screenshot)
+- `font-weight: 400` vs `600` (subtle at small sizes)
+- `padding: 2rem` vs `3rem` (hard to judge without a ruler)
+- `height: 810px` vs `900px` (~10% off but "close enough" visually)
+
+Phase D is the numerical ground truth. It runs **in parallel with C1** (both use the static loaded page).
+
+**For each major section of the component:**
+
+1. Follow `../pixel-perfect-diff.md` Steps P1–P6
+2. Produce `tmp/ref/<component>/pixel-perfect-diff.json` with `"result": "pass"`
+
+Phase D gate:
+```
+□ pixel-perfect-diff.json exists for this component
+□ "result": "pass"
+□ "mismatches": 0
+```
+
 ### Completion gate
 
 ```
-COMPLETION = C1 all ✅ AND C2 all ✅ AND C3 all ✅
+COMPLETION = C1 all ✅ AND C2 all ✅ AND C3 all ✅ AND Phase D "mismatches": 0
 
 Any single ❌ in any table = NOT DONE.
+Phase D mismatch = NOT DONE (fix the CSS value, not the screenshot).
 Max 3 full iterations before escalating to user.
 ```
 

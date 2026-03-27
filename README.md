@@ -6,11 +6,12 @@ Give it a live URL and it extracts computed CSS, DOM structure, JS interactions,
 
 > **vs. screenshot-to-code tools:** Those tools copy what's visible. For URL input, `ui-skills` reads `getComputedStyle`, greps JS bundles, and scrubs WAAPI animations frame-by-frame — so hover states, easing curves, and stagger timing are extracted, not approximated.
 
-Three skills included:
+Three skills included, plus one shared verification document:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
 3. **`ui-capture`** — baseline screenshot + transition video capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type (`css-hover`, `js-class`, `intersection`, `scroll-driven`, `mousemove`, `auto-timer`) before recording. Handles scroll/hover/cursor-reactive/auto-timer transitions with synchronized side-by-side video comparison.
+4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory numerical verification gate invoked by all three skills. Measures every key element with `getComputedStyle` on both reference and implementation, diffs all typography/spacing/sizing/layout properties, and requires `mismatches: 0` before any verification step can declare PASS. "Looks the same" is not a valid completion criterion.
 
 ## Requirements
 
@@ -90,7 +91,7 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 7.  Generate Component     — React + Tailwind, exact values, functional JS
   ↓
-8.  Visual Verification    — C1 (static) + C2 (scroll) + C3 (transitions) comparison
+8.  Visual Verification    — Phase A/B/C (frame comparison) + Phase D (pixel-perfect numerical diff)
   ↓
 9.  Interaction Verification — test each hover/click/scroll/timer on localhost
 ```
@@ -144,7 +145,7 @@ Step 2c: Extract Canvas/WebGL     — canvas-webgl-extraction.md (for canvas/Web
   ↓
 Step  3: Implement                — using measured values only, never guessed
   ↓
-Step  4: Verify                   — frame-by-frame comparison (element or fullpage scope)
+Step  4: Verify                   — frame comparison tables + pixel-perfect numerical diff (mismatches: 0 required)
 ```
 
 ### Supported Animation Types
@@ -201,7 +202,9 @@ Phase 2B–2E: Capture Transitions — per trigger type:
   ↓
 Phase 3: Implementation Capture — identical sequences on local-url
   ↓
-Phase 4: Comparison Page     — side-by-side paired videos, synchronized playback
+Phase 4A: Pixel-Perfect Diff — getComputedStyle numerical diff, mismatches: 0 required
+  ↓
+Phase 4B: Comparison Page    — pixel-perfect diff table + side-by-side paired videos
   ↓
 Phase 5: User Review         — present URL, wait for feedback
 ```
@@ -219,9 +222,51 @@ Phase 5: User Review         — present URL, wait for feedback
 
 ---
 
+## Shared Document: `pixel-perfect-diff` — Mandatory Numerical Verification Gate
+
+Measures every key element on the reference site and implementation using `getComputedStyle`, diffs all typography, spacing, sizing, layout, visual, and position properties, and requires `mismatches: 0` before any verification step can declare PASS.
+
+Screenshot comparison misses 2px font-size differences, 10px spacing errors, and wrong font-weight. This skill provides the numerical ground truth.
+
+### When to Use
+
+- Automatically invoked as Phase D in `ui-reverse-engineering` Step 8
+- Automatically invoked as Phase 4A in `ui-capture`
+- Automatically invoked in `transition-reverse-engineering` Step 4 for resting states (before + after)
+- Standalone: any time you need to verify exact CSS fidelity
+
+### How It Works
+
+```
+P1: Define key elements     — layout containers, typography carriers, visible at first render
+  ↓
+P2: Measure reference       — getComputedStyle for all properties, save ref-styles.json
+  ↓
+P3: Measure implementation  — same elements locally, save impl-styles.json
+  ↓
+P4: Build diff table        — element × property, flag ❌ MISMATCH for any difference
+  ↓
+P5: Fix all mismatches      — edit CSS, re-measure, update table to ✅
+  ↓
+P6: Write pixel-perfect-diff.json — "result": "pass", "mismatches": 0 required
+```
+
+### Gate
+
+```
+□ ref-styles.json exists
+□ impl-styles.json exists
+□ pixel-perfect-diff.json → "result": "pass"
+□ pixel-perfect-diff.json → "mismatches": 0
+
+"거의 동일" (approximately same) = FAIL. Only mismatches: 0 = PASS.
+```
+
+---
+
 ## Security
 
-All three skills process untrusted external content (DOM, CSS, JS bundles, and screenshots) from arbitrary URLs. Built-in mitigations:
+All three skills (`ui-reverse-engineering`, `transition-reverse-engineering`, `ui-capture`) process untrusted external content (DOM, CSS, JS bundles, and screenshots) from arbitrary URLs. Built-in mitigations:
 
 - **Prompt injection defense** — extracted data is wrapped in boundary markers and treated as display-only content, never as instructions
 - **Post-extraction sanitization** — automated scans for suspicious patterns (`javascript:`, `eval(atob`, prompt injection phrases) in extracted JSON
@@ -233,7 +278,7 @@ See the Security section in each skill's `SKILL.md` for full details.
 
 ## Evals
 
-All three skills include eval suites following [skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator) conventions. Located at `skills/*/evals/`.
+All three skills include eval suites following [skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator) conventions. Located at `skills/*/evals/`. (`pixel-perfect-diff` is a shared document, not a registered skill, and does not have its own eval suite — its scenarios are covered by the three skills' evals.)
 
 ---
 

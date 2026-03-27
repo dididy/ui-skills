@@ -356,6 +356,36 @@
         "No extracted JSON files or screenshots remain after cleanup",
         "Generated component .tsx file is preserved (only tmp/ref/ is removed)"
       ]
+    },
+    {
+      "id": 26,
+      "prompt": "Clone https://example.com — the screenshot comparison looks right but I want to make sure the font sizes and spacing are numerically exact, not just visually similar. Run a pixel-perfect numerical diff.",
+      "expected_output": "Phase D executed: ref-styles.json and impl-styles.json saved, diff table produced, all mismatches fixed, pixel-perfect-diff.json with result: pass and mismatches: 0.",
+      "files": [],
+      "expectations": [
+        "pixel-perfect-diff.md Steps P1–P6 were executed",
+        "ref-styles.json exists with getComputedStyle measurements for all key elements",
+        "impl-styles.json exists with matching element measurements from localhost",
+        "Diff table produced covering typography, spacing, sizing, layout, visual, and position properties",
+        "Any mismatch rows (❌) were fixed before declaring pass — not skipped",
+        "pixel-perfect-diff.json exists with result: pass and mismatches: 0",
+        "getComputedStyle was used (not offsetWidth or getBoundingClientRect alone)"
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "Clone https://example.com — Phase D pixel-perfect diff finds that the hero heading font-size is 48px on ref but 40px on impl, and the nav link font-weight is 600 on ref but 400 on impl. Fix both.",
+      "expected_output": "Both mismatches fixed with targeted CSS edits. Re-measurement confirms exact match. pixel-perfect-diff.json updated to result: pass, mismatches: 0.",
+      "files": [],
+      "expectations": [
+        "Mismatch diff table shows ❌ for font-size (48px vs 40px) and font-weight (600 vs 400)",
+        "Root cause identified: which CSS rule controls each property in the implementation",
+        "Targeted fix applied — only affected CSS rules changed, not full component rewrite",
+        "P3 re-measurement run for the two affected elements after fix",
+        "Diff table updated: both rows now ✅",
+        "pixel-perfect-diff.json saved with result: pass and mismatches: 0",
+        "No other properties changed as side effect of the fix"
+      ]
     }
   ]
 }
