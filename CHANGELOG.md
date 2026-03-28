@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.8] - 2026-03-28
+
+### Added
+- **`ui-capture`**: `SKILL.md` — `agent-browser` session rule added. Named `--session <project-name>` is now required on every `agent-browser` command. The default session is global and shared; without a name, commands from other projects overwrite browser state mid-capture.
+- **`transition-reverse-engineering`**: `SKILL.md` — same session rule added as a top-of-file callout.
+- **`ui-reverse-engineering`**: `SKILL.md` — same session rule added as a top-of-file callout.
+
+### Fixed
+- **`ui-capture`**: `capture-transitions.md` — scroll crop logic rewritten. The previous stdev > 8 method only stripped blank frames but left hero footage at the start of deep-section clips. Correct approach is timestamp-based: record start at t=0, wait for page load (~3 s), note wall-clock offset before scroll command, then use that timestamp as the ffmpeg crop point. Old stdev Python snippet removed and replaced with explicit SCROLL_T variable pattern.
+
 ## [0.0.7] - 2026-03-27
 
 ### Added

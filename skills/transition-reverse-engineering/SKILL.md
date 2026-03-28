@@ -7,6 +7,8 @@ description: Use when replicating any visual effect from a reference website —
 
 Precise extraction and replication of animations, transitions, and visual effects from live sites. Works both as an independent skill and as a sub-skill called by `ui-reverse-engineering`.
 
+> **Session rule:** Always use `--session <project-name>` with every `agent-browser` command. The default session is global — without a named session, other projects can overwrite your browser state. Derive the name from the project dir or ref URL (e.g. `--session good-fella`).
+
 **When to use independently:**
 - Cloning or replicating any visual effect (canvas, WebGL, shader, CSS animation, scroll effect)
 - Working on an existing clone where effects don't match the reference

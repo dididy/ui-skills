@@ -7,6 +7,20 @@ description: Use when the user wants to capture, record, or screenshot any visua
 
 Capture reference screenshots and transition videos from an original site, detect and record all transition types (scroll, hover, mousemove, auto-timer), and generate a web-based comparison page for human review.
 
+## agent-browser Session Rule
+
+**Always use `--session <project-name>` with every `agent-browser` command.** The default session is global and shared across all projects — without a named session, commands from other projects will overwrite your browser state mid-capture.
+
+```bash
+# Derive session name from the project directory or ref URL
+# e.g., good-fella.com → --session good-fella
+# e.g., stripe.com clone → --session stripe-clone
+
+agent-browser --session <project-name> open <url>
+agent-browser --session <project-name> screenshot <path>
+agent-browser --session <project-name> record start <path>
+```
+
 ## When to use
 
 - **Standalone**: `/ui-capture <reference-url> [local-url]`

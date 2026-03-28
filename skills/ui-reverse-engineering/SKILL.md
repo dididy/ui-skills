@@ -9,6 +9,8 @@ Reverse-engineer a live website into a **React + Tailwind** component.
 
 > **`agent-browser` is a system CLI.** Execute all commands via the Bash tool.
 
+> **Session rule:** Always use `--session <project-name>` with every `agent-browser` command. The default session is global — without a named session, other projects can overwrite your browser state. Derive the name from the project dir or ref URL (e.g. `--session good-fella`).
+
 **Core principles:**
 - **URL input:** Extract actual values via `getComputedStyle`, DOM inspection, and JS bundle analysis. Never guess.
 - **Screenshot/video input (fallback):** Analyzed via Claude Vision — values are approximations, not computed properties.

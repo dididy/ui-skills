@@ -22,27 +22,50 @@ agent-browser screenshot /tmp/verify.png
 # NOW the recording shows the correct position
 ```
 
-**Blank start crop is always needed:** The first ~1-4s of every webm will show either blank or wrong state. After stopping, crop with:
+**Crop to target section, not just blank removal:**
+
+The `stdev > 8` method only removes blank frames — but for deep-page sections (scroll grid, flip cards, playground, etc.), the recording starts at y=0 (hero) which also has stdev > 8. This means hero footage appears at the start of every clip even after cropping.
+
+**Correct approach: record a timestamp when the scroll reaches the target y, then use that as the crop point.**
+
 ```bash
-# Find first content frame (stdev > 8 = has content)
-python3 -c "
-import subprocess, re
-src = '<file>.webm'
-for t in [x * 0.1 for x in range(0, 80)]:
-    r = subprocess.run(['ffmpeg','-ss',str(t),'-i',src,'-vframes','1','-filter:v','showinfo','-f','null','-'], capture_output=True, text=True)
-    m = re.search(r'stdev:(\d+\.\d+)', r.stderr)
-    if m and float(m.group(1)) > 8.0:
-        print(f'crop from: {t}s'); break
-"
-# Then crop:
+# Step 1: Before scrolling, note the wall-clock offset from record start.
+# record start happens at t=0; page loads in ~3s; scroll command runs after wait 3000.
+# Measure actual scroll arrival time:
+agent-browser record start <path>.webm
+agent-browser set viewport 1440 900
+agent-browser wait 3000
+# Save timestamp before scroll (recording elapsed ≈ 3s so far)
+SCROLL_T=3.5   # conservative: 3s load + 0.5s margin
+agent-browser eval "(() => { window.scrollTo(0, <target_y>); return window.scrollY; })()"
+agent-browser wait 1000
+# At this point recording is at ~4.5s — use 4.5 as crop point
+```
+
+```bash
+# Step 2: Crop using the scroll arrival time as start point
+# Formula: crop_t = 3.0 (load) + 0.5 (margin) + 1.0 (scroll settle) = 4.5s minimum
+# For sections below y=5000 (playground, flip cards, scale), add +0.5s → 5.0s
 ffmpeg -y -ss <crop_t> -i <file>.webm -c:v libx264 -preset fast -crf 23 -an <file>.mp4
 ```
 
-If stdev detection returns nothing (white-bg pages), extract frames manually and inspect:
+**Crop point rules by section depth (empirically measured on 1440px viewport, Next.js SSR pages):**
+
+| Target y | Crop point | Notes |
+|----------|-----------|-------|
+| y < 2000 (header, nav, hero) | 4.0s | Page loads at y=0, no scroll needed |
+| y 2000–6000 (scroll grid ~y=1200, passion ~y=5000) | 5.0–10.0s | Scroll grid: 8.5s; Passion: 10.0s — wide variance, always verify |
+| y 6000–10000 (evolve ~y=7500, flip cards ~y=9000) | 6.0–7.0s | Evolve: 6.0s; Flip cards: 7.0s |
+| y > 10000 (playground ~y=10200, scale ~y=14000) | 5.0s | Instant scroll jump, settles fast |
+
+> **Warning:** "scroll grid" (y~1200) takes 8.5s despite being shallow — it's a slow-scroll range covering 2400px, so the page traversal itself takes extra time. Do NOT assume shallow y = fast arrival.
+
+**Verify the crop worked:** Always read the first frame of the output mp4:
 ```bash
-ffmpeg -y -ss 2.0 -i <file>.webm -vframes 1 -update 1 /tmp/frame.png
+ffmpeg -y -ss 0 -i <file>.mp4 -vframes 1 -update 1 /tmp/verify-crop.png 2>/dev/null
+# Read /tmp/verify-crop.png — must show target section, NOT hero/y=0
 ```
-Read the frame image to determine correct crop point.
+If hero is still visible, increase crop_t by 1.0s and reconvert. Repeat until target section is visible.
 
 ---
 
