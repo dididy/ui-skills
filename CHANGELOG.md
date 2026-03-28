@@ -7,6 +7,9 @@
 - **`transition-reverse-engineering`**: `SKILL.md` — same session rule added as a top-of-file callout.
 - **`ui-reverse-engineering`**: `SKILL.md` — same session rule added as a top-of-file callout.
 
+### Changed
+- **`ui-capture`**: `evals/evals.json` — evals 17–18 added: timestamp-based crop for deep sections (hero footage bleed case), and named session requirement across all agent-browser commands. eval 11 expectation updated to reference timestamp crop method (stdev-only reference removed).
+
 ### Fixed
 - **`ui-capture`**: `capture-transitions.md` — scroll crop logic rewritten. The previous stdev > 8 method only stripped blank frames but left hero footage at the start of deep-section clips. Correct approach is timestamp-based: record start at t=0, wait for page load (~3 s), note wall-clock offset before scroll command, then use that timestamp as the ffmpeg crop point. Old stdev Python snippet removed and replaced with explicit SCROLL_T variable pattern.
 

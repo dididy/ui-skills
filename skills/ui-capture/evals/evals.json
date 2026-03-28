@@ -146,7 +146,7 @@
         "Waits 3000ms for page to reload in recording context",
         "Scrolls to target position with scrollIntoView or scrollTo eval",
         "Takes verify screenshot before recording to confirm correct position",
-        "Crops blank start frames using stdev threshold script"
+        "Crops using timestamp-based crop point (SCROLL_T), not stdev threshold — stdev only removes blank frames but leaves hero footage for deep sections"
       ]
     },
     {
@@ -217,6 +217,33 @@
         "Both rows updated to ✅ in diff table",
         "pixel-perfect-diff.json saved with result: pass and mismatches: 0",
         "compare.html generated only after pixel-perfect gate passes"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "capture a flip card section at y=9000 — the recording keeps starting with hero footage even after cropping with the stdev method.",
+      "expected_output": "Crop point calculated using SCROLL_T timestamp method: record start at t=0, page load wait 3s, scroll eval after wait, SCROLL_T set to 3.5s minimum + depth adjustment. ffmpeg crop uses SCROLL_T as -ss value. First frame of output mp4 shows the flip card section, not the hero.",
+      "files": [],
+      "expectations": [
+        "Recognizes that stdev > 8 fails for deep sections because hero also has stdev > 8",
+        "Uses timestamp-based crop: SCROLL_T = load_time + margin + scroll_settle",
+        "Does NOT use the stdev Python script for this case",
+        "For y=9000 (flip cards), applies crop point ≈ 7.0s per depth table",
+        "Verifies first frame of output mp4 shows target section (not hero)",
+        "If hero still visible, increases crop_t by 1.0s and reconverts"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "capture all agent-browser commands for a project cloning stripe.com — make sure sessions don't interfere with other running projects.",
+      "expected_output": "Every agent-browser command uses --session stripe-clone (derived from the ref URL). No command uses the default global session.",
+      "files": [],
+      "expectations": [
+        "Session name derived from ref URL or project dir (e.g. stripe.com → stripe-clone)",
+        "Every agent-browser command includes --session stripe-clone",
+        "record start, screenshot, set viewport, wait, eval, hover all use --session flag",
+        "No agent-browser command issued without --session",
+        "Session name is consistent across all commands in the same capture run"
       ]
     }
   ]
