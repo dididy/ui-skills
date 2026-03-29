@@ -87,10 +87,10 @@ Step 2c: Extract Canvas/WebGL       — Read canvas-webgl-extraction.md (for can
 Step 3: Implement                   — Read patterns.md for reference patterns
   ↓
 Step 4: Verify                      — Read verification.md, execute frame comparison tables
-  ↓                                   AND pixel-perfect-diff.md Steps P1–P6 for resting states
+  ↓                                   AND pixel-perfect-diff.md Phase 1 Visual Gate for resting states (idle + active)
   ↓
   ↓  GATE: All frames ✅ in comparison table
-  ↓  GATE: pixel-perfect-diff.json "result": "pass", "mismatches": 0
+  ↓  GATE: Phase 1 Visual Gate all pass AND Phase 2 mismatches = 0
   ↓
 Done
 ```
@@ -115,13 +115,29 @@ cp tmp/ref/capture/transitions/ref/<relevant-files> tmp/ref/<effect-name>/frames
 ```bash
 mkdir -p tmp/ref/<effect-name>/frames/{ref,impl}
 
-# For CSS transitions/hover effects:
-agent-browser open https://target-site.com
-agent-browser set viewport 1440 900
-agent-browser screenshot tmp/ref/<effect-name>/frames/ref/before.png
-agent-browser hover <target-selector>
-agent-browser wait 600
-agent-browser screenshot tmp/ref/<effect-name>/frames/ref/after-hover.png
+# For CSS transitions/hover effects — use clip screenshot (idle + active):
+agent-browser --session <project> open https://target-site.com
+agent-browser --session <project> set viewport 1440 900
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<target-selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> wait 300
+
+# idle state
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/idle.png
+
+# active state (CDP hover — triggers CSS :hover reliably)
+agent-browser --session <project> hover <target-selector>
+agent-browser --session <project> wait <transitionDuration + 100>
+# re-measure rect after hover (transform: scale may change bounds)
+agent-browser --session <project> eval "(() => {
+  const r = document.querySelector('<target-selector>').getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/active.png
 
 # For page-load / scroll animations — use video:
 agent-browser record start tmp/ref/<effect-name>/ref.webm
@@ -129,15 +145,57 @@ agent-browser wait 3000
 agent-browser record stop
 ffmpeg -i tmp/ref/<effect-name>/ref.webm -vf fps=60 tmp/ref/<effect-name>/frames/ref/frame-%04d.png -y
 
-# For scroll-driven — capture BOTH directions:
-agent-browser scroll down <distance>
-agent-browser wait 500
-agent-browser screenshot tmp/ref/<effect-name>/frames/ref/forward-start.png
-# ... scroll incrementally, screenshot at each step ...
-agent-browser screenshot tmp/ref/<effect-name>/frames/ref/forward-end.png
-agent-browser scroll up <distance>
-agent-browser wait 500
-agent-browser screenshot tmp/ref/<effect-name>/frames/ref/reverse-end.png
+# For scroll-driven — two phases:
+# Phase 1: exploration video (to identify trigger_y, mid_y, settled_y)
+agent-browser --session <project> eval "(() => window.scrollTo(0, 0))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> record start tmp/ref/<effect-name>/frames/ref/scroll-explore.webm
+agent-browser --session <project> eval "
+(() => {
+  const h = document.body.scrollHeight;
+  let pos = 0;
+  const step = () => {
+    pos += 120;
+    window.scrollTo(0, pos);
+    if (pos < h) setTimeout(step, 80);
+  };
+  step();
+})()"
+agent-browser --session <project> wait 4000
+agent-browser --session <project> record stop
+# Watch the video to determine: trigger_y (scroll position where transition starts),
+# mid_y (midpoint of transition), settled_y (where transition completes)
+
+# Phase 2: clip screenshot verification at each y-position
+# before state (scroll to trigger_y - 50)
+agent-browser --session <project> eval "(() => window.scrollTo(0, <trigger_y> - 50))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<target-selector>');
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/before.png
+
+# mid state (scroll to mid_y)
+agent-browser --session <project> eval "(() => window.scrollTo(0, <mid_y>))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<target-selector>');
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/mid.png
+
+# after state (scroll to settled_y + 50)
+agent-browser --session <project> eval "(() => window.scrollTo(0, <settled_y> + 50))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<target-selector>');
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/after.png
 ```
 
 **GATE: `tmp/ref/<effect-name>/frames/ref/` must contain reference frames before proceeding.**
@@ -221,7 +279,7 @@ Save to `tmp/ref/<effect-name>/extracted.json`:
 - **patterns.md** — Implementation patterns, character stagger recipes, troubleshooting
 - **waapi-scrubbing.md** — WAAPI scrubber injection for page-load animations
 - **verification.md** — Visual verification, bug diagnosis protocol, completion checklist
-- **../pixel-perfect-diff.md** — Step 4 (MANDATORY): getComputedStyle numerical diff for resting states. "mismatches": 0 required before done.
+- **../pixel-perfect-diff.md** — Step 4 (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
 
 ## When called from a ralph worker
 

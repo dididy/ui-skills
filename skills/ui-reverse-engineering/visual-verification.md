@@ -19,20 +19,21 @@ Every component verification requires these **three distinct captures**, both fr
 |---|---|---|---|
 | **C1** | Full-page static screenshots | Screenshot at each scroll position (top, 25%, 50%, 75%, 100%) | Catches layout, spacing, color, typography mismatches |
 | **C2** | Full-page scroll video | Continuous video recording while scrolling top to bottom | Catches scroll-triggered animations, parallax, sticky elements, reveal transitions |
-| **C3** | Transition/interaction video | Per-region video of each interactive element (hover, click, auto-timer, carousel) | Catches timing, easing, state changes, interaction behavior |
+| **C3** | Transition/interaction captures | Per-region capture by triggerType: clip screenshots (css-hover, js-class, intersection) or video (scroll-driven, mousemove, auto-timer) | Catches timing, easing, state changes, interaction behavior |
 
-**All three are mandatory. C1 alone (static screenshots) is NOT sufficient.** C2 catches what C1 misses (scroll-triggered motion), and C3 catches what C2 misses (hover/click interactions that only fire on user input, not scroll).
+**All three are mandatory. C1 alone (static screenshots) is NOT sufficient.** C2 catches what C1 misses (scroll-triggered motion), and C3 catches what C2 misses (hover/click/scroll interactions).
 
 ## Frame Extraction: 60 fps
 
-All videos are extracted at **60 fps** for frame-by-frame comparison. This matches browser rendering rate and ensures no transition frame is missed.
+Video captures (scroll-driven, mousemove, auto-timer) are extracted at **60 fps** for frame-by-frame comparison.
 
 ```bash
-# 60 fps extraction — use for ALL video captures
+# 60 fps extraction — use for VIDEO captures only
 ffmpeg -i <input>.webm -vf fps=60 <output-dir>/frame-%06d.png -y
 ```
 
 > **Why 60 fps:** At 2 fps, a 500ms transition produces 1 frame. At 60 fps, it produces 30 frames. Transition bugs (flicker, wrong easing, layout jump) are only visible at full frame rate.
+> **css-hover / js-class / intersection:** no frame extraction needed — these use clip screenshots directly.
 
 ## Shared scroll sequence (use identically in Phase A and B)
 
@@ -105,35 +106,58 @@ agent-browser record stop
 ffmpeg -i tmp/ref/<component>/ref-scroll.webm -vf fps=60 tmp/ref/<component>/frames/ref/scroll-%06d.png -y
 ```
 
-### A-C3: Transition/interaction videos (deferred to Step 5b)
+### A-C3: Transition/interaction captures (deferred to Step 5b)
 
 > **This step requires `interactions-detected.json` from Step 5.** Execute A-C3 after Step 5 in Phase 2 (referenced as Step 5b in SKILL.md), not during the initial Phase A pass.
 
-For EACH interactive region from `interactions-detected.json`, record a separate video. Use the selectors already identified in Step 5.
+**Capture method depends on `triggerType`:**
+
+| triggerType | Method |
+|---|---|
+| `css-hover`, `js-class`, `intersection` | eval + clip screenshot (idle + active states) |
+| `scroll-driven` | video recording (continuous change) |
+| `mousemove` | video recording (cursor-coordinate reaction) |
+| `auto-timer` | video recording (time-based loop) |
+
+**For css-hover / js-class / intersection regions:**
 
 ```bash
-# Example: carousel with auto-timer + hover
-agent-browser eval "(() => { const el = document.querySelector('<carousel-selector>'); el.scrollIntoView({ block: 'center' }); })()"
+# 1. Measure element rect
+agent-browser eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser wait 500
+
+# 2. idle state
+agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<component>/transitions/ref/<name>-idle.png
+
+# 3. active state
+# css-hover: CDP hover
+agent-browser hover <selector>
+# js-class: classList.add
+# agent-browser eval "document.querySelector('<sel>').classList.add('<cls>')"
+# intersection: classList.add('in-view')
+agent-browser wait <transitionDuration + 100>
+agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<component>/transitions/ref/<name>-active.png
+```
+
+**For scroll-driven / mousemove / auto-timer regions (video):**
+
+```bash
+# Example: carousel with auto-timer
+agent-browser eval "(() => { document.querySelector('<carousel-selector>').scrollIntoView({ block: 'center' }); })()"
 agent-browser wait 500
 agent-browser record start tmp/ref/<component>/ref-transition-carousel.webm
 
-# Wait for auto-transition cycle (e.g., 2 full cycles)
-agent-browser wait 12000
-
-# Hover each strip/tab
-agent-browser hover <strip-1>
-agent-browser wait 2000
-agent-browser hover <strip-2>
-agent-browser wait 2000
-agent-browser hover <strip-3>
-agent-browser wait 2000
+agent-browser wait 12000  # 2 full cycles
 
 agent-browser record stop
 
 # Extract at 60 fps
 ffmpeg -i tmp/ref/<component>/ref-transition-carousel.webm -vf fps=60 tmp/ref/<component>/transitions/ref/carousel-%06d.png -y
-
-# Repeat for each interactive region (scroll-reveal, hover cards, etc.)
 ```
 
 ### A-R: Responsive screenshots
@@ -202,21 +226,36 @@ agent-browser record stop
 ffmpeg -i tmp/ref/<component>/impl-scroll.webm -vf fps=60 tmp/ref/<component>/frames/impl/scroll-%06d.png -y
 ```
 
-### B-C3: Transition/interaction videos
+### B-C3: Transition/interaction captures
+
+**Same method as A-C3 — identical triggerType classification, identical selectors and timing.**
+
+**For css-hover / js-class / intersection regions (clip screenshot):**
 
 ```bash
-# Same interactions as Phase A — identical sequence, identical timing
-agent-browser eval "(() => { const el = document.querySelector('<carousel-selector>'); el.scrollIntoView({ block: 'center' }); })()"
+agent-browser eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser wait 500
+
+agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<component>/transitions/impl/<name>-idle.png
+
+agent-browser hover <selector>  # or classList.add for js-class/intersection
+agent-browser wait <transitionDuration + 100>
+agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<component>/transitions/impl/<name>-active.png
+```
+
+**For scroll-driven / mousemove / auto-timer regions (video — identical to A-C3):**
+
+```bash
+agent-browser eval "(() => { document.querySelector('<carousel-selector>').scrollIntoView({ block: 'center' }); })()"
 agent-browser wait 500
 agent-browser record start tmp/ref/<component>/impl-transition-carousel.webm
 
 agent-browser wait 12000
-agent-browser hover <strip-1>
-agent-browser wait 2000
-agent-browser hover <strip-2>
-agent-browser wait 2000
-agent-browser hover <strip-3>
-agent-browser wait 2000
 
 agent-browser record stop
 
@@ -260,9 +299,27 @@ Compare ref and impl scroll frames at matching frame numbers. Check at minimum e
 | ...    | ...                         | ...                          | ...                           | ✅/❌  |       |
 ```
 
-### C3: Transition frame comparison (60 fps)
+### C3: Transition comparison
 
-For each interactive region, compare at minimum: start frame, every 6th frame during transition (= 100ms intervals at 60fps), and end frame.
+**For css-hover / js-class / intersection — clip screenshot diff:**
+
+```
+| Region   | State  | Ref                                   | Impl                                   | Match? | Issue |
+|----------|--------|---------------------------------------|----------------------------------------|--------|-------|
+| <name>   | idle   | transitions/ref/<name>-idle.png       | transitions/impl/<name>-idle.png       | ✅/❌  |       |
+| <name>   | active | transitions/ref/<name>-active.png     | transitions/impl/<name>-active.png     | ✅/❌  |       |
+```
+
+Run pixel diff for each pair:
+```bash
+compare -metric AE tmp/ref/<component>/transitions/ref/<name>-idle.png tmp/ref/<component>/transitions/impl/<name>-idle.png /dev/null 2>&1
+compare -metric AE tmp/ref/<component>/transitions/ref/<name>-active.png tmp/ref/<component>/transitions/impl/<name>-active.png /dev/null 2>&1
+# → 0 = pass
+```
+
+**For scroll-driven / mousemove / auto-timer — frame comparison (60 fps):**
+
+Compare at minimum: start frame, every 6th frame during transition (= 100ms at 60fps), end frame.
 
 ```
 | Frame  | Moment                  | Ref                                | Impl                                | Match? | Issue |
@@ -273,8 +330,6 @@ For each interactive region, compare at minimum: start frame, every 6th frame du
 | ...    | (every 6 frames)        | ...                                | ...                                 | ✅/❌  |       |
 | 000030 | Transition end (~500ms) | transitions/ref/carousel-000030    | transitions/impl/carousel-000030    | ✅/❌  |       |
 | 000360 | Auto-timer fires        | transitions/ref/carousel-000360    | transitions/impl/carousel-000360    | ✅/❌  |       |
-| 000XXX | Hover strip 1           | ...                                | ...                                 | ✅/❌  |       |
-| 000XXX | Hover strip 2           | ...                                | ...                                 | ✅/❌  |       |
 ```
 
 ### Fix protocol
@@ -285,37 +340,38 @@ For each interactive region, compare at minimum: start frame, every 6th frame du
 3. Targeted fix → re-run Phase B only (the specific capture type that failed) → compare affected frames
 4. If the same fix has been tried twice without result, the diagnosis was wrong — re-instrument
 
-### Phase D: Pixel-Perfect Numerical Diff (MANDATORY)
+### Phase D: Pixel-Perfect Visual Gate (MANDATORY)
 
-> **Read and execute `../pixel-perfect-diff.md` in full before declaring any section done.**
+> **Read and execute `../pixel-perfect-diff.md` Phase 1 (Visual Gate) AND Phase 2 (Numerical Diagnosis) before declaring any section done — both always run.**
 
-Screenshot comparison (C1–C3) catches layout and animation mismatches but CANNOT catch:
-- `font-size: 16px` vs `24px` (looks "similar" in a full-page screenshot)
+C1–C3 catches layout and motion mismatches but cannot catch subtle numerical differences:
+- `font-size: 16px` vs `24px` (looks similar in full-page screenshot)
 - `font-weight: 400` vs `600` (subtle at small sizes)
 - `padding: 2rem` vs `3rem` (hard to judge without a ruler)
-- `height: 810px` vs `900px` (~10% off but "close enough" visually)
 
-Phase D is the numerical ground truth. It runs **in parallel with C1** (both use the static loaded page).
+Phase D runs **in parallel with C1** (both use the static loaded page). Phase 1 and Phase 2 always both run — Phase 2 catches sub-pixel mismatches (`font-size: 15px vs 16px`, `letter-spacing` 미세 차이) that pass the Visual Gate.
 
 **For each major section of the component:**
 
-1. Follow `../pixel-perfect-diff.md` Steps P1–P6
-2. Produce `tmp/ref/<component>/pixel-perfect-diff.json` with `"result": "pass"`
+1. Follow `../pixel-perfect-diff.md` Phase 1 — clip screenshot per element per state (idle / active / before / mid / after — by triggerType), AE/SSIM diff
+2. Follow `../pixel-perfect-diff.md` Phase 2 — getComputedStyle all properties, build diff table
+3. Produce `tmp/ref/<component>/pixel-perfect-diff.json`
 
 Phase D gate:
 ```
 □ pixel-perfect-diff.json exists for this component
-□ "result": "pass"
-□ "mismatches": 0
+□ all elements Visual Gate status = "pass" (idle / active / before / mid / after — by triggerType)
+□ mismatches = 0
 ```
 
 ### Completion gate
 
 ```
-COMPLETION = C1 all ✅ AND C2 all ✅ AND C3 all ✅ AND Phase D "mismatches": 0
+COMPLETION = C1 all ✅ AND C2 all ✅ AND C3 all ✅
+             AND Phase D Visual Gate all pass
+             AND Phase D mismatches = 0
 
-Any single ❌ in any table = NOT DONE.
-Phase D mismatch = NOT DONE (fix the CSS value, not the screenshot).
+Any single ❌ = NOT DONE.
 Max 3 full iterations before escalating to user.
 ```
 

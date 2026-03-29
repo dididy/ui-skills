@@ -10,8 +10,8 @@ Three skills included, plus one shared verification document:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
-3. **`ui-capture`** — baseline screenshot + transition video capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type (`css-hover`, `js-class`, `intersection`, `scroll-driven`, `mousemove`, `auto-timer`) before recording. Handles scroll/hover/cursor-reactive/auto-timer transitions with synchronized side-by-side video comparison.
-4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory numerical verification gate invoked by all three skills. Measures every key element with `getComputedStyle` on both reference and implementation, diffs all typography/spacing/sizing/layout properties, and requires `mismatches: 0` before any verification step can declare PASS. "Looks the same" is not a valid completion criterion.
+3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type before capturing: `css-hover`/`js-class`/`intersection` → eval + clip screenshot (idle + active); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
+4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory visual verification gate invoked by all three skills. Phase 1 captures DOM clip screenshots per element per state (idle / active / before / mid / after by triggerType) and diffs with AE/SSIM — this is the pass/fail criterion. Phase 2 runs `getComputedStyle` always (regardless of Phase 1 result) to catch sub-pixel mismatches like `font-size: 15px vs 16px` that AE/SSIM passes. Both must pass. "Looks the same" is not a valid completion criterion.
 
 ## Requirements
 
@@ -91,7 +91,7 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 7.  Generate Component     — React + Tailwind, exact values, functional JS
   ↓
-8.  Visual Verification    — Phase A/B/C (frame comparison) + Phase D (pixel-perfect numerical diff)
+8.  Visual Verification    — Phase A/B/C (frame comparison) + Phase D (pixel-perfect visual gate)
   ↓
 9.  Interaction Verification — test each hover/click/scroll/timer on localhost
 ```
@@ -145,7 +145,7 @@ Step 2c: Extract Canvas/WebGL     — canvas-webgl-extraction.md (for canvas/Web
   ↓
 Step  3: Implement                — using measured values only, never guessed
   ↓
-Step  4: Verify                   — frame comparison tables + pixel-perfect numerical diff (mismatches: 0 required)
+Step  4: Verify                   — frame comparison + Phase 1 Visual Gate (clip AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle), both always run
 ```
 
 ### Supported Animation Types
@@ -193,18 +193,19 @@ Phase 1: Full Page Capture   — static screenshot + full scroll video
 Phase 2: Transition Detection — classify all effects by trigger type, save regions.json
   ↓
 Phase 2B–2E: Capture Transitions — per trigger type:
-  2B scroll-driven  — scroll through transition range
-  2C css-hover      — CDP hover in/hold/out
-     js-class       — eval class toggle add/remove
-     intersection   — smooth scroll into viewport
+  2B scroll-driven  — exploration video (파악) → clip screenshot before/mid/after (검증)
+  2C css-hover      — eval + clip screenshot: idle + active states
+     js-class       — eval classList.add + clip screenshot: idle + active states
+     intersection   — eval classList.add + clip screenshot: before + after states
   2D mousemove      — raster-path sweep video (10×10 grid, single video)
-  2E auto-timer     — passive recording for 2–3 cycles
+  2E auto-timer     — passive recording for 2–3 cycles (video)
   ↓
 Phase 3: Implementation Capture — identical sequences on local-url
   ↓
-Phase 4A: Pixel-Perfect Diff — getComputedStyle numerical diff, mismatches: 0 required
-  ↓
-Phase 4B: Comparison Page    — pixel-perfect diff table + side-by-side paired videos
+Phase 4A: Pixel-Perfect Gate — Phase 1 Visual Gate (clip screenshot AE/SSIM) always runs
+  ↓                             Phase 2 Numerical Diagnosis (getComputedStyle) always runs
+  ↓                             both must pass — Phase 2 catches sub-pixel mismatches Phase 1 misses
+Phase 4B: Comparison Page    — visual gate results + side-by-side screenshots and videos
   ↓
 Phase 5: User Review         — present URL, wait for feedback
 ```
@@ -213,53 +214,59 @@ Phase 5: User Review         — present URL, wait for feedback
 
 | Trigger type | Detection | Activation |
 |---|---|---|
-| `css-hover` | `:hover` rule in stylesheet | `agent-browser hover` |
-| `js-class` | JS adds/removes a class | eval class toggle |
-| `intersection` | `data-in-view`, IntersectionObserver | smooth scroll into viewport |
-| `scroll-driven` | `animation-timeline: scroll()`, sticky, willChange | scroll through range |
-| `mousemove` | `mousemove` listener, parallax/tilt/magnetic patterns | raster-path sweep |
-| `auto-timer` | setInterval, CSS animation, carousel/swiper | passive wait |
+| `css-hover` | `:hover` rule in stylesheet | eval + clip screenshot (idle + active) |
+| `js-class` | JS adds/removes a class | eval classList.add + clip screenshot (idle + active) |
+| `intersection` | `data-in-view`, IntersectionObserver | eval classList.add + clip screenshot (before + after) |
+| `scroll-driven` | `animation-timeline: scroll()`, sticky, willChange | exploration video → clip screenshots (before / mid / after) |
+| `mousemove` | `mousemove` listener, parallax/tilt/magnetic patterns | raster-path sweep (video) |
+| `auto-timer` | setInterval, CSS animation, carousel/swiper | passive wait (video) |
 
 ---
 
-## Shared Document: `pixel-perfect-diff` — Mandatory Numerical Verification Gate
+## Shared Document: `pixel-perfect-diff` — Mandatory Visual Verification Gate
 
-Measures every key element on the reference site and implementation using `getComputedStyle`, diffs all typography, spacing, sizing, layout, visual, and position properties, and requires `mismatches: 0` before any verification step can declare PASS.
+Compares reference and implementation at element level using DOM clip screenshots — not eyeball comparison. The Visual Gate (Phase 1) is the objective pass/fail criterion. Numerical Diagnosis (Phase 2) always runs in parallel regardless of Phase 1 result — catches sub-pixel mismatches like `font-size: 15px vs 16px` that pixel diff passes.
 
-Screenshot comparison misses 2px font-size differences, 10px spacing errors, and wrong font-weight. This skill provides the numerical ground truth.
+Screenshot comparison misses 2px font-size differences, 10px spacing errors, and wrong font-weight. Clip screenshot diff catches them all — across all states: idle, active (hover/animated), and before/mid/after (scroll-driven).
 
 ### When to Use
 
 - Automatically invoked as Phase D in `ui-reverse-engineering` Step 8
 - Automatically invoked as Phase 4A in `ui-capture`
 - Automatically invoked in `transition-reverse-engineering` Step 4 for resting states (before + after)
-- Standalone: any time you need to verify exact CSS fidelity
+- Standalone: any time you need to verify exact visual fidelity
 
 ### How It Works
 
 ```
-P1: Define key elements     — layout containers, typography carriers, visible at first render
-  ↓
-P2: Measure reference       — getComputedStyle for all properties, save ref-styles.json
-  ↓
-P3: Measure implementation  — same elements locally, save impl-styles.json
-  ↓
-P4: Build diff table        — element × property, flag ❌ MISMATCH for any difference
-  ↓
-P5: Fix all mismatches      — edit CSS, re-measure, update table to ✅
-  ↓
-P6: Write pixel-perfect-diff.json — "result": "pass", "mismatches": 0 required
+Phase 1: Visual Gate (항상 실행)
+  V1: Define elements + states  — idle for all; active for css-hover/js-class/intersection;
+                                  before/mid/after for scroll-driven
+  V2: Measure rect + activate   — scrollIntoView, then eval to apply state; re-measure rect
+  V3: Clip screenshot           — ref and impl, per element per state
+  V4: Pixel diff                — ImageMagick AE or ffmpeg SSIM
+  V5: Pass/fail judgment        — AE=0 or SSIM≥0.995 = pass
+  V6: Save Visual Gate results
+
+Phase 2: Numerical Diagnosis (항상 실행 — Phase 1 결과와 무관)
+  P1: getComputedStyle ref      — all states, save ref-styles-<state>.json
+  P2: getComputedStyle impl     — same, save impl-styles-<state>.json
+  P3: Diff table                — flag ❌ per property + state, exact value reported (e.g. "24px → 16px")
+  P4: Fix mismatches            — edit CSS, re-measure
+  P5: Re-run Phase 1 + Phase 2
+
+→ Both pass: done
+→ Either fails: fix → re-run both
 ```
 
 ### Gate
 
 ```
-□ ref-styles.json exists
-□ impl-styles.json exists
-□ pixel-perfect-diff.json → "result": "pass"
-□ pixel-perfect-diff.json → "mismatches": 0
+□ Phase 1 all elements "status": "pass" (idle / active / before / mid / after — by triggerType)
+□ Phase 2 mismatches = 0
 
-"거의 동일" (approximately same) = FAIL. Only mismatches: 0 = PASS.
+Both required. "거의 동일" = FAIL.
+Phase 2 catches what Phase 1 misses (font-size: 15px vs 16px, letter-spacing 미세 차이 등).
 ```
 
 ---

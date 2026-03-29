@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Auto-detects responsive breakpoints via viewport sweep. Verifies output with frame comparison (static, scroll, interaction) and mandatory pixel-perfect numerical diff (getComputedStyle, mismatches: 0 required). Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture & comparison with trigger-type-aware recording, corrected video sync, named agent-browser sessions, and timestamp-based scroll crop.",
-      "version": "0.0.8",
+      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Auto-detects responsive breakpoints via viewport sweep. Verifies output with DOM clip screenshot pixel diff (AE/SSIM per element per state) as the Visual Gate; getComputedStyle numerical diagnosis always runs in parallel to catch sub-pixel mismatches. Hover/interactive states captured as eval + clip screenshots (no video). Scroll-driven: exploration video to find transition bounds, then clip screenshots at before/mid/after for easing-curve verification. Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture & comparison, trigger-type-aware recording, and timestamp-based scroll crop.",
+      "version": "0.0.9",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -51,7 +51,14 @@
         "css-verification",
         "named-session",
         "scroll-crop",
-        "timestamp-crop"
+        "timestamp-crop",
+        "visual-gate",
+        "clip-screenshot",
+        "ae-ssim-diff",
+        "idle-active-states",
+        "scroll-driven-states",
+        "before-mid-after",
+        "easing-verification"
       ]
     }
   ]

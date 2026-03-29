@@ -76,15 +76,16 @@ Phase 5: User Review            — present URL, wait for feedback
 mkdir -p tmp/ref/capture/static/{ref,impl}
 mkdir -p tmp/ref/capture/scroll-video/{ref,impl}
 mkdir -p tmp/ref/capture/transitions/{ref,impl}
+mkdir -p tmp/ref/capture/clip/{ref,impl,diff}
 ```
 
 ### Open and measure
 
 ```bash
-agent-browser open <reference-url>
-agent-browser set viewport 1440 900
-agent-browser wait 3000
-agent-browser eval "(() => JSON.stringify({ totalHeight: document.body.scrollHeight, viewportHeight: window.innerHeight, viewportWidth: window.innerWidth }))()"
+agent-browser --session <project-name> open <reference-url>
+agent-browser --session <project-name> set viewport 1440 900
+agent-browser --session <project-name> wait 3000
+agent-browser --session <project-name> eval "(() => JSON.stringify({ totalHeight: document.body.scrollHeight, viewportHeight: window.innerHeight, viewportWidth: window.innerWidth }))()"
 ```
 
 ### Full-page screenshot
@@ -131,8 +132,8 @@ Run the detection script, filter/deduplicate (≤20 regions), verify hover candi
 > **Read `capture-transitions.md` before executing this phase.**
 
 Execute per region type from `regions.json`:
-- **2B** — scroll transition videos
-- **2C** — interactive transition videos (`css-hover`: in/hold/out; `js-class`: class toggle; `intersection`: scroll-into-view)
+- **2B** — scroll transitions: 2B-1 exploration video (find trigger_y / mid_y / settled_y), then 2B-2 clip screenshot verification (before / mid / after)
+- **2C** — interactive state screenshots (`css-hover`, `js-class`, `intersection`: eval + clip screenshot for idle + active/after states — no video)
 - **2D** — mousemove raster-path video (10×10 grid sweep, single video per element)
 - **2E** — auto-timer videos (2–3 full cycles)
 
@@ -155,7 +156,7 @@ Execute **identical** capture sequences on `<local-url>` (default `http://localh
 
 > **Read `comparison-page.md` before executing this phase.**
 
-**Step 4A (MANDATORY — runs before compare.html):** Read `../pixel-perfect-diff.md` and execute Steps P1–P6 for every major section of the page. Produce `tmp/ref/capture/pixel-perfect-diff.json` with `"result": "pass"` and `"mismatches": 0`. Fix any mismatches in the implementation before proceeding to Step 4B.
+**Step 4A (MANDATORY — runs before compare.html):** Read `../pixel-perfect-diff.md` and execute Phase 1 Visual Gate + Phase 2 Numerical Diagnosis for every major section of the page. Both always run — Phase 2 catches sub-pixel mismatches that Phase 1 passes. Produce `tmp/ref/capture/pixel-perfect-diff.json`. Only proceed to Step 4B when Phase 1 all pass AND Phase 2 mismatches = 0.
 
 **Step 4B:** Generate `compare.html` with pixel-perfect diff table embedded at the top, followed by side-by-side paired screenshots and synced videos for all regions. Serve and present URL to user.
 
@@ -243,7 +244,7 @@ Always clean up after final verification. Captured assets may contain sensitive 
 
 - **detection.md** — Phase 2: transition detection scripts, deduplication, hover verification, regions.json schema
 - **capture-transitions.md** — Phase 2B–2E: scroll/hover/mousemove/timer capture sequences
-- **../pixel-perfect-diff.md** — Phase 4A (MANDATORY): getComputedStyle numerical measurement, diff table, pixel-perfect-diff.json gate
+- **../pixel-perfect-diff.md** — Phase 4A (MANDATORY): Phase 1 Visual Gate (clip screenshot diff, primary pass/fail) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
 - **comparison-page.md** — Phase 4A gate checklist + Phase 4B: compare.html generation, video sync script, cursor-reactive section
 
 ## Integration points

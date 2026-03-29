@@ -2,13 +2,13 @@
 
 Generate `tmp/ref/capture/compare.html` for side-by-side human review of original vs clone.
 
-## Phase 4A: Pixel-Perfect Numerical Diff (MANDATORY — run BEFORE generating compare.html)
+## Phase 4A: Pixel-Perfect Visual Gate (MANDATORY — run BEFORE generating compare.html)
 
-> **Read and execute `../pixel-perfect-diff.md` Steps P1–P6 for each major section of the page.**
-> Screenshot comparison is subjective. Numerical diff is objective. Do numerical diff first.
+> **Read and execute `../pixel-perfect-diff.md` Phase 1 (Visual Gate) for each major section of the page.**
+> Visual Gate (clip screenshot diff) is the objective pass/fail criterion. If it fails, run Phase 2 (Numerical Diagnosis) to find and fix the CSS mismatch, then re-run Phase 1.
 
 For each section in `regions.json` plus any static-only sections (header, footer, hero):
-1. Follow `../pixel-perfect-diff.md` to measure ref and impl using `getComputedStyle`
+1. Follow `../pixel-perfect-diff.md` Phase 1 to capture clip screenshots and run pixel diff
 2. Produce `tmp/ref/capture/pixel-perfect-diff.json` with `"result": "pass"`
 
 The diff JSON must be embedded in the compare.html output (see HTML structure below).
@@ -16,11 +16,11 @@ The diff JSON must be embedded in the compare.html output (see HTML structure be
 Gate before generating compare.html:
 ```
 □ pixel-perfect-diff.json exists at tmp/ref/capture/pixel-perfect-diff.json
-□ "result": "pass"
-□ "mismatches": 0
+□ 모든 elements의 status = "pass" (Visual Gate 기준)
+□ mismatches = 0 (Numerical Diagnosis 기준)
 ```
 
-If mismatches exist → fix CSS → re-measure → get to 0 mismatches → THEN generate compare.html.
+Both must pass. If Visual Gate fails or mismatches > 0 → fix CSS → re-run Phase 1 + Phase 2 → THEN generate compare.html.
 
 ---
 
@@ -53,10 +53,10 @@ If mismatches exist → fix CSS → re-measure → get to 0 mismatches → THEN 
 <body>
   <h1>Original vs Clone</h1>
 
-  <h2>Pixel-Perfect Diff (Numerical)</h2>
+  <h2>Pixel-Perfect Visual Gate</h2>
   <!-- Embed pixel-perfect-diff.json results as table -->
-  <!-- Show: element, property, ref value, impl value, status -->
-  <!-- Summary line: "N mismatches found" in red if any, "0 mismatches — pixel perfect" in green if none -->
+  <!-- Show: element, state (idle/active), ae, ssim, status -->
+  <!-- Summary line: "N elements failed" in red if any, "All pass — pixel perfect" in green if none -->
 
   <button id="play-all">▶ Play All</button>
 
@@ -64,10 +64,12 @@ If mismatches exist → fix CSS → re-measure → get to 0 mismatches → THEN 
   <!-- Side-by-side full page screenshots -->
 
   <h2>Scroll Transitions</h2>
-  <!-- Paired videos with sync — one per scroll region in regions.json -->
+  <!-- Primary comparison: paired clip screenshots (before/mid/after) — see Scroll-Driven States section below -->
+  <!-- Exploration videos (optional reference): paired webm videos with sync, one per scroll region in regions.json -->
 
-  <h2>Hover Transitions</h2>
-  <!-- Paired videos — one per hover region -->
+  <h2>Hover / Interactive States</h2>
+  <!-- Paired screenshots (idle + active) — one pair per css-hover, js-class, intersection region -->
+  <!-- Each region shows: idle side-by-side, then active side-by-side -->
 
   <h2>Cursor-Reactive (mousemove)</h2>
   <!-- Paired raster-path videos — one per mousemove region -->
@@ -104,6 +106,89 @@ If mismatches exist → fix CSS → re-measure → get to 0 mismatches → THEN 
 </body>
 </html>
 ```
+
+## Hover / Interactive States section
+
+For each `css-hover`, `js-class`, `intersection` region — show idle and active states as paired screenshots:
+
+```html
+<!-- idle state -->
+<h3><name> — idle</h3>
+<div class="pair">
+  <div class="side">
+    <span class="tag original">Original</span>
+    <img src="clip/ref/<name>-idle.png">
+  </div>
+  <div class="side">
+    <span class="tag clone">Clone</span>
+    <img src="clip/impl/<name>-idle.png">
+  </div>
+</div>
+
+<!-- active state -->
+<h3><name> — active</h3>
+<div class="pair">
+  <div class="side">
+    <span class="tag original">Original</span>
+    <img src="clip/ref/<name>-active.png">
+  </div>
+  <div class="side">
+    <span class="tag clone">Clone</span>
+    <img src="clip/impl/<name>-active.png">
+  </div>
+</div>
+```
+
+> idle/active 각각 Visual Gate(clip screenshot diff)를 통과해야 한다. idle은 통과했지만 active가 실패하는 경우가 흔함 — hover 색상, transform, shadow 오류.
+
+## Scroll-Driven States section
+
+For each `scroll-driven` region — show before / mid / after states as paired screenshots (from Phase 2B-2 clip verification):
+
+```html
+<!-- before state (above trigger point) -->
+<h3><name> — before</h3>
+<div class="pair">
+  <div class="side">
+    <span class="tag original">Original</span>
+    <img src="clip/ref/<name>-before.png">
+  </div>
+  <div class="side">
+    <span class="tag clone">Clone</span>
+    <img src="clip/impl/<name>-before.png">
+  </div>
+</div>
+
+<!-- mid state (midpoint of transition) -->
+<h3><name> — mid</h3>
+<div class="pair">
+  <div class="side">
+    <span class="tag original">Original</span>
+    <img src="clip/ref/<name>-mid.png">
+  </div>
+  <div class="side">
+    <span class="tag clone">Clone</span>
+    <img src="clip/impl/<name>-mid.png">
+  </div>
+</div>
+
+<!-- after state (settled) -->
+<h3><name> — after</h3>
+<div class="pair">
+  <div class="side">
+    <span class="tag original">Original</span>
+    <img src="clip/ref/<name>-after.png">
+  </div>
+  <div class="side">
+    <span class="tag clone">Clone</span>
+    <img src="clip/impl/<name>-after.png">
+  </div>
+</div>
+```
+
+> `mid` state is the easing-curve canary: if before/after both pass but mid fails, the easing function is wrong (e.g., `linear` vs `ease-in-out`). The exploration video (Phase 2B-1) is what tells you the correct `mid_y`.
+
+---
 
 ## Cursor-reactive (mousemove) section
 

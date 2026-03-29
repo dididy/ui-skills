@@ -8,7 +8,7 @@ Capture each region from `regions.json`. Apply trigger type to choose the correc
 
 - Pre-scrolling before `record start` has NO effect on the recording
 - Any `eval` scroll commands issued AFTER `record start` DO work, but only appear in the recording after a delay while the page reloads (~3-5s)
-- The recording viewport may differ from the regular session viewport — always call `agent-browser set viewport 1440 900` after `record start`
+- **The recording is always captured at 1280×720 regardless of `set viewport`** — this is a known bug in agent-browser ([#1031](https://github.com/vercel-labs/agent-browser/issues/1031)). Chrome is launched with `--window-size=1280,720` hardcoded, and the new recording context does not inherit the session viewport. `set viewport` still controls CSS layout (so the page renders at the correct width), but the captured frames are cropped to 1280×720. Upscale after recording as a workaround (see below).
 
 **Correct pattern for deep-page elements:**
 ```bash
@@ -85,17 +85,21 @@ If hero is still visible, increase crop_t by 1.0s and reconvert. Repeat until ta
 
 ## Step 2B: Scroll transitions
 
+두 단계로 진행한다: **탐색(영상)** → **검증(clip screenshot)**.
+
+### Step 2B-1: 탐색 — 영상으로 변화 구간 파악
+
 ```bash
-agent-browser record start tmp/ref/capture/transitions/ref/<name>.webm
-agent-browser set viewport 1440 900
-agent-browser wait 3000
+agent-browser --session <project> record start tmp/ref/capture/transitions/ref/<name>.webm
+agent-browser --session <project> set viewport 1440 900
+agent-browser --session <project> wait 3000
 
 # Scroll to just above the transition range
-agent-browser eval "(() => window.scrollTo(0, <from - 300>))()"
-agent-browser wait 800
+agent-browser --session <project> eval "(() => window.scrollTo(0, <from - 300>))()"
+agent-browser --session <project> wait 800
 
 # Slow smooth scroll through the full transition range
-agent-browser eval "(() => {
+agent-browser --session <project> eval "(() => {
   let pos = <from - 300>;
   const target = <to + 300>;
   const step = () => {
@@ -107,102 +111,196 @@ agent-browser eval "(() => {
 })()"
 
 # Wait for scroll to finish: ((to - from + 600) / 30) * 50ms
-agent-browser wait <duration_ms>
-agent-browser wait 500
-agent-browser record stop
+agent-browser --session <project> wait <duration_ms>
+agent-browser --session <project> wait 500
+agent-browser --session <project> record stop
 ```
 
-**Validate:** `ffprobe -v quiet -show_entries format=duration -of csv=p=0 <file>` — must be > 2s and < 30s. If 0s or > 60s, re-record.
+**Validate:** `ffprobe -v quiet -show_entries format=duration -of csv=p=0 <file>` — must be > 2s and < 30s.
+
+영상을 Read 도구로 열어 확인:
+- 변화가 시작되는 스크롤 y값 (`trigger_y`)
+- 변화가 완전히 끝나는 스크롤 y값 (`settled_y`)
+- 중간 지점 y값 (`mid_y = (trigger_y + settled_y) / 2`)
+
+### Step 2B-2: 검증 — clip screenshot으로 정밀 비교
+
+탐색에서 파악한 y값으로 3개 상태를 clip screenshot 캡처한다.
+
+```bash
+# before: 변화 시작 직전
+agent-browser --session <project> eval "(() => window.scrollTo(0, <trigger_y - 50>))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> \
+  tmp/ref/capture/clip/ref/<name>-before.png
+
+# mid: 변화 중간 지점 (rect 재측정 — scroll 위치에 따라 transform이 바뀌어 크기가 달라질 수 있음)
+agent-browser --session <project> eval "(() => window.scrollTo(0, <mid_y>))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> \
+  tmp/ref/capture/clip/ref/<name>-mid.png
+
+# after: 변화 완료 후
+agent-browser --session <project> eval "(() => window.scrollTo(0, <settled_y + 50>))()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> \
+  tmp/ref/capture/clip/ref/<name>-after.png
+```
+
+> **mid 상태의 역할:** before/after만 비교하면 이징 커브가 맞는지 알 수 없다. mid에서 transform/opacity 값이 정확히 50%인지 확인함으로써 linear vs ease-in-out 같은 이징 차이를 잡아낼 수 있다.
+
+**impl도 동일하게 반복** (`ref` → `impl` 경로 변경, 동일한 y값 사용).
 
 ---
 
 ## Step 2C: Hover / interactive transitions
+
+**동영상 대신 eval + clip screenshot으로 idle/active 두 상태를 캡처한다.**
+동영상은 transition 중간 과정이 중요할 때만 사용 — 대부분의 hover/class/intersection은 두 상태 비교로 충분하다.
 
 **Choose activation method based on `triggerType`:**
 
 ### css-hover
 
 ```bash
-agent-browser record start tmp/ref/capture/transitions/ref/hover-<name>.webm
-agent-browser set viewport 1440 900
-agent-browser wait 3000
+# 요소 위치 확인
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> wait 500
 
-agent-browser eval "(() => { document.querySelector('<selector>').scrollIntoView({block:'center'}); return window.scrollY; })()"
-agent-browser wait 1000  # show idle state
+# idle 상태 캡처
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/hover-<name>-idle.png
 
-# CDP-level hover (triggers CSS :hover)
-agent-browser hover <unique-selector>
-agent-browser wait <transitionDuration * 2>  # hold in hover state
+# hover 상태 강제 적용
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+})()"
+agent-browser --session <project> wait <transitionDuration + 100>
 
-# Move away
-agent-browser hover body
-agent-browser wait <transitionDuration>  # show return to idle
+# hover 상태 캡처
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/hover-<name>-active.png
 
-agent-browser record stop
+# hover 해제
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+  el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+})()"
 ```
 
-**Note:** Use a selector that matches exactly ONE element. If `agent-browser hover` reports "matched N elements", use `:nth-child(1)` or a parent > child path to narrow it.
+> **CSS `:hover` pseudo-class는 JS 이벤트로 트리거되지 않는 경우가 있다.** 그럴 때는 `agent-browser hover <selector>`로 CDP-level hover를 적용한 직후 screenshot:
+> ```bash
+> agent-browser --session <project> hover <unique-selector>
+> agent-browser --session <project> wait <transitionDuration + 100>
+> agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/capture/clip/ref/hover-<name>-active.png
+> agent-browser --session <project> hover body
+> ```
 
 ### js-class (e.g. flip card toggled by JS class)
 
 ```bash
-agent-browser record start tmp/ref/capture/transitions/ref/hover-<name>.webm
-agent-browser set viewport 1440 900
-agent-browser wait 3000
+# 요소 위치 확인
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
+})()"
+agent-browser --session <project> wait 500
 
-agent-browser eval "(() => { document.querySelector('<selector>').scrollIntoView({block:'center'}); return window.scrollY; })()"
-agent-browser wait 1000  # idle state visible
+# idle 상태 캡처
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/<name>-idle.png
 
-# Add trigger class
-agent-browser eval "(() => {
+# active 상태 강제 적용
+agent-browser --session <project> eval "(() => {
   document.querySelector('<selector>').classList.add('<triggerClass>');
 })()"
-agent-browser wait <transitionDuration * 2>
+agent-browser --session <project> wait <transitionDuration + 100>
 
-# Remove trigger class
-agent-browser eval "(() => {
+# active 상태 캡처
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/<name>-active.png
+
+# 원래 상태로 복원
+agent-browser --session <project> eval "(() => {
   document.querySelector('<selector>').classList.remove('<triggerClass>');
 })()"
-agent-browser wait <transitionDuration>
-
-agent-browser record stop
 ```
 
 ### intersection (scroll-triggered entry animation)
 
 ```bash
-agent-browser record start tmp/ref/capture/transitions/ref/<name>.webm
-agent-browser set viewport 1440 900
-agent-browser wait 3000
-
-# Reset any in-view state so animation plays fresh
-agent-browser eval "(() => {
+# reset: in-view 상태 제거
+agent-browser --session <project> eval "(() => {
   document.querySelectorAll('[data-in-view]').forEach(el => el.dataset.inView = 'false');
   document.querySelectorAll('.in-view, .is-visible, .animate').forEach(el => {
     el.classList.remove('in-view', 'is-visible', 'animate');
   });
 })()"
-agent-browser wait 300
 
-# Scroll to just above the section (NOT from y=0 — that makes the scroll too long)
-agent-browser eval "(() => window.scrollTo(0, <y - 500>))()"
-agent-browser wait 500
-
-# Smooth scroll into view — let IntersectionObserver fire naturally
-agent-browser eval "(() => {
-  let pos = <y - 500>;
-  const target = <y + 300>;
-  const step = () => {
-    pos += 25;
-    window.scrollTo(0, pos);
-    if (pos < target) setTimeout(step, 40);
-  };
-  step();
+# 요소 위치 확인 (reset 후)
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
 })()"
-agent-browser wait <scroll_duration + transitionDuration * 2>
+agent-browser --session <project> wait 300
 
-agent-browser record stop
+# before-animate 상태 캡처 (클래스 없는 상태)
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/<name>-before.png
+
+# in-view 상태 강제 적용
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.classList.add('in-view');
+  el.classList.add('is-visible');
+  if (el.dataset.inView !== undefined) el.dataset.inView = 'true';
+})()"
+agent-browser --session <project> wait <transitionDuration + 100>
+
+# after-animate 상태 캡처
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/<name>-after.png
 ```
+
+> **IntersectionObserver가 자체 클래스를 추가하는 경우:** 클래스 이름을 먼저 확인:
+> ```bash
+> agent-browser eval "document.querySelector('<selector>').className"
+> # 스크롤해서 in-view로 만든 후 다시 확인
+> ```
+> 확인한 클래스명으로 위 eval을 조정한다.
 
 ---
 
@@ -293,7 +391,89 @@ agent-browser record stop
 □ If duration is 0 or > 60s → re-record (recording got stuck or never started)
 ```
 
+---
+
+## Auto-crop: remove blank intro from every transition video
+
+**Run this after EVERY recording.** `record start` always adds 1–4s of blank/wrong-state frames at the beginning. Crop them out before saving the final file.
+
+### Step 1: Detect blank end point via frame file sizes
+
+```bash
+# Extract frames at 2fps, measure file sizes
+# Blank frames compress tiny (<10KB); content frames are large (>50KB)
+AUTO_CROP() {
+  local INPUT="$1"
+  local OUTPUT="$2"
+
+  local TMPDIR=$(mktemp -d)
+  ffmpeg -y -i "$INPUT" -vf "fps=2" "$TMPDIR/f%03d.png" 2>/dev/null
+
+  # Find first frame > 10KB (= first content frame)
+  local FIRST_CONTENT=0
+  local IDX=0
+  for f in $(ls "$TMPDIR"/f*.png | sort); do
+    local SZ=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f")
+    IDX=$((IDX + 1))
+    if [ "$SZ" -gt 10000 ]; then
+      # Convert frame index to timestamp: (IDX - 1) / 2fps
+      FIRST_CONTENT=$(echo "scale=2; ($IDX - 1) / 2" | bc)
+      break
+    fi
+  done
+
+  rm -rf "$TMPDIR"
+
+  # Add 0.1s margin before first content frame (never go negative)
+  local CROP_T=$(echo "scale=2; $FIRST_CONTENT - 0.1" | bc)
+  if (( $(echo "$CROP_T < 0" | bc -l) )); then CROP_T=0; fi
+
+  echo "Cropping from ${CROP_T}s → $OUTPUT"
+  ffmpeg -y -ss "$CROP_T" -i "$INPUT" "$OUTPUT" 2>/dev/null
+}
+```
+
+### Step 2: Verify first frame shows target content
+
+```bash
+ffmpeg -y -ss 0 -i <output>.webm -vframes 1 -update 1 /tmp/verify-crop.png 2>/dev/null
+# Read /tmp/verify-crop.png
+# ✓ Shows the target element (button, card, text, etc.)
+# ✗ Still shows blank or hero/top-of-page → increase crop by 0.5s and retry
+```
+
+### Step 3: Apply in-place (replace original)
+
+```bash
+AUTO_CROP input.webm input-cropped.webm
+# Verify first frame, then replace:
+mv input-cropped.webm input.webm
+```
+
+### Quick one-liner (when blank duration is known)
+
+```bash
+# If you know the blank is ~N seconds:
+ffmpeg -y -ss N -i input.webm output.webm 2>/dev/null
+```
+
+### Typical blank durations by video type
+
+| Video type | Typical blank | Reason |
+|---|---|---|
+| Hover (element already in view) | 1–2s | `record start` context reload |
+| Scroll transition (from near y=0) | 2–3s | Context reload + scroll travel |
+| Scroll transition (deep page y>5000) | 4–6s | Context reload + longer scroll travel |
+| Auto-timer (carousel) | 2–3s | Context reload |
+| Mousemove | 2–3s | Context reload + scroll to element |
+
 Convert to mp4 for browser compatibility:
 ```bash
 ffmpeg -y -i <file>.webm -c:v libx264 -preset fast -crf 23 -an <file>.mp4
 ```
+
+**Workaround for 1280×720 recording bug:** If the target viewport is larger (e.g. 1440×900), upscale during conversion:
+```bash
+ffmpeg -y -i <file>.webm -vf scale=<target_width>:<target_height> -c:v libx264 -preset fast -crf 23 -an <file>.mp4
+```
+Note: this is pixel upscaling — sharpness will be slightly reduced. The correct fix requires agent-browser to call `Emulation.setDeviceMetricsOverride` on the recording context ([#1031](https://github.com/vercel-labs/agent-browser/issues/1031)).
