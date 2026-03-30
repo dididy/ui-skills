@@ -275,13 +275,14 @@ Phase 2 catches what Phase 1 misses (font-size: 15px vs 16px, letter-spacing 미
 
 All three skills (`ui-reverse-engineering`, `transition-reverse-engineering`, `ui-capture`) process untrusted external content (DOM, CSS, JS bundles, and screenshots) from arbitrary URLs. Built-in mitigations:
 
-- **Prompt injection defense** — extracted data is wrapped in boundary markers and treated as display-only content, never as instructions
-- **Post-extraction sanitization** — automated scans for suspicious patterns (`javascript:`, `eval(atob`, prompt injection phrases) in extracted JSON
+- **Prompt injection defense** — extracted data is wrapped in boundary markers and treated as display-only content, never as instructions. All extraction sub-documents include explicit untrusted-data handling rules.
+- **Post-extraction sanitization** — automated scans for suspicious patterns (`javascript:`, `eval(atob`, prompt injection phrases) in extracted JSON. `interaction-detection.md` runs a grep check after saving `interactions-detected.json`.
+- **Content boundary enforcement** — `component-generation.md` treats all extracted text as untrusted data (never follows directives found in DOM text, HTML comments, CSS content properties, or `data-*` attributes)
 - **Bundle safety** — downloads are HTTPS-only, size-limited (10 MB), time-limited (30s), and read-only (grep analysis only, never executed locally)
 - **No credential forwarding** — `curl` invocations send no cookies or auth tokens
 - **Sensitive data cleanup** — `tmp/ref/` directories (which may contain screenshots with PII/auth tokens) are cleaned up after verification
 
-See the Security section in each skill's `SKILL.md` for full details.
+See the Security section in each skill's `SKILL.md` and sub-documents for full details.
 
 ## Evals
 
