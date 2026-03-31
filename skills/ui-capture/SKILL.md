@@ -151,7 +151,7 @@ Run the detection script, filter/deduplicate (≤20 regions), verify hover candi
 
 Execute per region type from `regions.json`:
 - **2B** — scroll transitions: 2B-1 exploration video (find trigger_y / mid_y / settled_y), then 2B-2 clip screenshot verification (before / mid / after)
-- **2C** — interactive state screenshots (`css-hover`, `js-class`, `intersection`: eval + clip screenshot for idle + active/after states — no video)
+- **2C** — interactive state screenshots: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval classList.add + clip screenshot (before + after) — no video
 - **2D** — mousemove raster-path video (10×10 grid sweep, single video per element)
 - **2E** — auto-timer videos (2–3 full cycles)
 

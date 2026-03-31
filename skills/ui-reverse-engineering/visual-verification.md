@@ -114,7 +114,8 @@ ffmpeg -i tmp/ref/<component>/ref-scroll.webm -vf fps=60 tmp/ref/<component>/fra
 
 | triggerType | Method |
 |---|---|
-| `css-hover`, `js-class`, `intersection` | eval + clip screenshot (idle + active states) |
+| `css-hover`, `js-class` | eval + clip screenshot (idle + active states) |
+| `intersection` | eval classList.add + clip screenshot (before + after states) |
 | `scroll-driven` | video recording (continuous change) |
 | `mousemove` | video recording (cursor-coordinate reaction) |
 | `auto-timer` | video recording (time-based loop) |

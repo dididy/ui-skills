@@ -43,8 +43,8 @@
     },
     {
       "id": 4,
-      "prompt": "capture cursor-reactive parallax effect with 10x10 matrix",
-      "expected_output": "transitions/ref/mousemove-<name>.mp4 — single raster-path video sweeping the 10x10 grid. regions.json has mousemove entry with triggerType 'mousemove'.",
+      "prompt": "capture cursor-reactive parallax effect with raster-path sweep",
+      "expected_output": "transitions/ref/mousemove-<name>.mp4 — single raster-path video sweeping all grid points. regions.json has mousemove entry with triggerType 'mousemove'.",
       "files": [],
       "expectations": [
         "Detects mousemove listeners or cursor-reactive class patterns",

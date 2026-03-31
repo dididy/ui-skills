@@ -41,7 +41,7 @@
         "motion",
         "gsap",
         "bundle-analysis",
-        "mousemove-matrix",
+        "mousemove-raster-path",
         "baseline-capture",
         "trigger-type-detection",
         "video-sync",

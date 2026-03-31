@@ -140,10 +140,15 @@ agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-idle.png
 
-# active / after (css-hover → active, js-class → active, intersection → after)
+# active (css-hover / js-class — 상태 적용 후)
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-active.png
+
+# after (intersection — in-view 클래스 적용 후)
+agent-browser --session <project> screenshot \
+  --clip <x>,<y>,<width>,<height> \
+  tmp/ref/capture/clip/ref/<name>-after.png
 
 # scroll-driven: before / mid / after 각각
 agent-browser --session <project> screenshot \

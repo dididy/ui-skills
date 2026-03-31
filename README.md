@@ -10,7 +10,7 @@ Three skills included, plus one shared verification document:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
-3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type before capturing: `css-hover`/`js-class`/`intersection` → eval + clip screenshot (idle + active); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
+3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type before capturing: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval + clip screenshot (before + after); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
 4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory visual verification gate invoked by all three skills. Phase 1 captures DOM clip screenshots per element per state (idle / active / before / mid / after by triggerType) and diffs with AE/SSIM — this is the pass/fail criterion. Phase 2 runs `getComputedStyle` always (regardless of Phase 1 result) to catch sub-pixel mismatches like `font-size: 15px vs 16px` that AE/SSIM passes. Both must pass. "Looks the same" is not a valid completion criterion.
 
 ## Requirements
@@ -200,7 +200,7 @@ Phase 2B–2E: Capture Transitions — per trigger type:
   2C css-hover      — eval + clip screenshot: idle + active states
      js-class       — eval classList.add + clip screenshot: idle + active states
      intersection   — eval classList.add + clip screenshot: before + after states
-  2D mousemove      — raster-path sweep video (10×10 grid, single video)
+  2D mousemove      — raster-path sweep video (single video per element)
   2E auto-timer     — passive recording for 2–3 cycles (video)
   ↓
 Phase 3: Implementation Capture — identical sequences on local-url

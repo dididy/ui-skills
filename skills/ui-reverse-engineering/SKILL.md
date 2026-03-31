@@ -64,7 +64,7 @@ Input (URL / screenshot / video)
 R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓                           Runs Phase 1 (full page screenshot + scroll video)
   ↓                           + Phase 2 (transition detection + capture)
-  ↓                           Outputs: regions.json, static/ref/, transitions/ref/, matrix/ref/
+  ↓                           Outputs: regions.json, static/ref/, transitions/ref/, clip/ref/
   ↓                           Serves comparison web page for user review
   ↓
   ↓  ┌─────────────────────────────────────────────┐
@@ -357,7 +357,7 @@ agent-browser close                         # Kill session
 
 ## Sub-skills
 
-- **`ui-capture`** — visual capture, transition detection, 10x10 matrix, comparison web page generation
+- **`ui-capture`** — visual capture, transition detection, raster-path sweep, comparison web page generation
 - **`transition-reverse-engineering`** — precise animation/transition extraction (WAAPI scrubbing, canvas/WebGL, character stagger, frame-by-frame comparison)
 
 ## When called from a ralph worker

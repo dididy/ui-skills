@@ -103,7 +103,7 @@ For page-load animations that need WAAPI scrubbing → Read `waapi-scrubbing.md`
 
 **Option A — Full page (preferred for ralph tasks or fullpage scope):**
 
-Invoke `/ui-capture <reference-url>`. This captures full-page screenshots, scroll videos, hover/mousemove transitions with 10x10 matrix, and serves a comparison web page. Copy relevant frames to your effect directory:
+Invoke `/ui-capture <reference-url>`. This captures full-page screenshots, scroll videos, hover/mousemove transitions with raster-path sweep, and serves a comparison web page. Copy relevant frames to your effect directory:
 
 ```bash
 mkdir -p tmp/ref/<effect-name>/frames/{ref,impl}

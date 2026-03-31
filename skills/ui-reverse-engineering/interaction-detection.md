@@ -86,7 +86,7 @@ agent-browser wait 800
 agent-browser eval "(() => JSON.stringify(window.__scrollTransitions || [], null, 2))()"
 ```
 
-**Save results to** `tmp/ref/<component>/scroll-transitions.json`
+**Save results to** `tmp/ref/<component>/scroll-transitions.json` *(intermediate — contents are merged into `interactions-detected.json` at save step below)*
 
 | Result | Next step |
 |--------|-----------|

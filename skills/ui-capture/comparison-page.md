@@ -109,7 +109,7 @@ Both must pass. If Visual Gate fails or mismatches > 0 → fix CSS → re-run Ph
 
 ## Hover / Interactive States section
 
-For each `css-hover`, `js-class`, `intersection` region — show idle and active states as paired screenshots:
+For each `css-hover`, `js-class` region — show idle and active states as paired screenshots. For `intersection` — show before and after states (same layout, different file names):
 
 ```html
 <!-- idle state -->
@@ -282,7 +282,8 @@ When no implementation exists yet, generate `tmp/ref/capture/report.html` instea
 <!-- Per-region captures -->
 <h2>Captured Transitions</h2>
 
-<!-- For css-hover / js-class / intersection: show idle + active clip screenshots -->
+<!-- For css-hover / js-class: idle + active clip screenshots -->
+  <!-- For intersection: before + after clip screenshots -->
 <div class="capture">
   <h3><name> — idle / active</h3>
   <div style="display:flex;gap:8px">

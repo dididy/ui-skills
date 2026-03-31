@@ -148,16 +148,19 @@ agent-browser eval "(() => {
     el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
   } else if ('<triggerType>' === 'js-class') {
-    // Try toggling common class names
+    // Try toggling common class names — save matched class as triggerClass in regions.json
+    let matched = null;
     const classNames = ['hover', 'active', 'hovered', 'is-hover', 'flipped', 'expanded'];
     for (const cls of classNames) {
       if ([...document.styleSheets].some(s => {
         try { return [...s.cssRules].some(r => r.selectorText?.includes(cls)); } catch(e) { return false; }
       })) {
         el.classList.add(cls);
+        matched = cls;
         break;
       }
     }
+    // matched → save as "triggerClass" field in this region's regions.json entry
   } else if ('<triggerType>' === 'intersection') {
     el.dataset.inView = 'true';
     el.classList.add('in-view', 'is-visible');
