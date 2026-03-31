@@ -5,6 +5,7 @@
 > **STOP. Do not generate code if ANY of these files are missing. Go back to the extraction step that produces the missing artifact.**
 
 - [ ] `structure.json` — DOM hierarchy (from Step 2)
+- [ ] `head.json` + `assets.json` — head metadata + downloaded assets (from Step 2.5)
 - [ ] `styles.json` — computed styles per element (from Step 3)
 - [ ] Detected breakpoints + per-breakpoint styles (from Step 4 — `responsive-detection.md`)
 - [ ] Interaction delta (hover/click states + transition values) (from Step 5)
@@ -28,6 +29,7 @@ Styles: [styles.json content]
 Responsive: detected breakpoints from responsive-detection.md (e.g. sm=640 md=768 lg=1024)
   Per-breakpoint styles from styles-<width>.json files
 Interactions: hover delta={...}, transition="..."
+Scroll behavior: [scrollBehavior from interactions-detected.json — snap/smooth/overscroll, if any]
 Keyframes / animations: [extracted.json or keyframes if any]
 ═══ END EXTRACTED DATA ═══
 
@@ -47,8 +49,9 @@ Rules:
     - Next.js App Router: add to `src/app/globals.css`
     - Vite/CRA: add to `src/index.css` or `src/App.css`
     - Tailwind v4: use `@keyframes` inside `@theme` block; v3: use `theme.extend.keyframes` in `tailwind.config`
+- Apply scroll behavior CSS: `scroll-snap-type` → Tailwind `snap-y snap-mandatory`; `scroll-behavior: smooth` → `scroll-smooth`; `overscroll-behavior: contain` → `overscroll-contain`. If a JS scroll library (Lenis, GSAP ScrollSmoother, Locomotive) was detected, install the package and initialize with extracted parameters from `scroll-library.json`
 - Make interactions FUNCTIONAL — do not stub click/hover handlers
-- For images: use descriptive placeholder if original is inaccessible
+- For images: use downloaded assets from `assets/` if available, otherwise use descriptive placeholder
 - If functionality requires backend data, mock it inline
 - Component must be self-contained (no external data dependencies)
 ```

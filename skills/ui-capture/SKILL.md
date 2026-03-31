@@ -71,11 +71,17 @@ Phase 2: Transition Detection   — Read detection.md, execute
   ↓
 Phase 2B–2E: Capture Transitions — Read capture-transitions.md, execute per region type
   ↓
-Phase 3: Implementation Capture — repeat Phase 1 + 2B–2E on local-url (if provided)
-  ↓
-Phase 4: Comparison Page        — Read comparison-page.md, generate compare.html
-  ↓
-Phase 5: User Review            — present URL, wait for feedback
+  ├── local-url provided? ─── YES ──→ Phase 3: Implementation Capture
+  │                                      ↓
+  │                                    Phase 4A: Pixel-Perfect Diff
+  │                                      ↓
+  │                                    Phase 4B: compare.html (원본 vs 클론)
+  │                                      ↓
+  │                                    Phase 5: Completion Gate
+  │
+  └── NO (standalone) ──────────────→ Phase R: report.html (원본 분석 리포트)
+                                       ↓
+                                     Phase 5: User Review
 ```
 
 ---
@@ -153,7 +159,36 @@ Execute per region type from `regions.json`:
 
 ---
 
-## Phase 3: Implementation Capture
+## Phase R: Analysis Report (standalone — no local-url)
+
+When no `local-url` is provided, generate `tmp/ref/capture/report.html` showing what was captured from the original site.
+
+> **Read `comparison-page.md` "Report Mode" section before executing this phase.**
+
+### report.html contents
+
+- Fullpage screenshot
+- `regions.json` summary table: each element with selector, trigger type, and capture preview
+- Per-region captures: clip screenshots (idle/active states) and videos (scroll/mousemove/timer)
+- "To clone this site, run `/ui-reverse-engineering <url>`" call-to-action
+
+### User Review (standalone)
+
+```
+"Analysis report ready at <url>.
+
+Detected N interactive regions:
+  - N scroll-driven transitions
+  - N hover effects (css-hover / js-class / intersection)
+  - N cursor-reactive elements
+  - N auto-timer animations
+
+Review the report. To clone specific sections, run /ui-reverse-engineering <url>."
+```
+
+---
+
+## Phase 3: Implementation Capture (requires local-url)
 
 Execute **identical** capture sequences on `<local-url>` (default `http://localhost:3000`):
 - Full-page screenshot → `static/impl/`
@@ -174,7 +209,9 @@ Execute **identical** capture sequences on `<local-url>` (default `http://localh
 
 ---
 
-## Phase 5: User Review
+## Phase 5: Completion Gate
+
+### Interactive mode (user present)
 
 > **Do not proceed autonomously. Wait for user feedback.**
 
@@ -188,6 +225,29 @@ Execute **identical** capture sequences on `<local-url>` (default `http://localh
 
 Please review and tell me which sections need work."
 ```
+
+### Autonomous mode (ralph-loop / automated pipeline)
+
+When called from an automated pipeline (ralph-loop, ralph-kage-bunshin), use `pixel-perfect-diff.json` as the objective gate:
+
+```
+pixel-perfect-diff.json result:
+  ├── "result": "pass" AND "mismatches": 0
+  │   → Completion: all elements match. Proceed to next task.
+  │
+  └── Any fail OR mismatches > 0
+      → Auto-fix attempt: identify failing elements, apply CSS fix, re-run Phase 4A
+      → Retry up to 3 times
+      → Still failing after 3 attempts:
+          → Generate compare.html with failures highlighted
+          → STOP and escalate to user:
+            "Pixel-perfect verification failed after 3 fix attempts.
+             Failing elements: [list from diff.json]
+             Compare page: <url>
+             Please review and provide guidance."
+```
+
+The pixel-perfect diff is the **only** completion criterion in autonomous mode. "Looks close enough" is never a valid pass — the gate is binary.
 
 ---
 

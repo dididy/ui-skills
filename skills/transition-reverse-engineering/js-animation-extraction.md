@@ -159,6 +159,86 @@ agent-browser eval "(async () => {
 - `inset: -720px` (computed) vs `inset: -100%` (actual) — percentage-based inset is responsive, pixel value is not
 - `width: 213px` (computed) vs `width: calc(100cqw / var(--num-items))` (actual) — container query units are essential for responsiveness
 
+## Scroll library parameter extraction
+
+When `interaction-detection.md` detects a JS scroll library (Lenis, GSAP ScrollSmoother, Locomotive), extract configuration parameters from the bundle.
+
+### Detection signatures
+
+| Library | Bundle grep patterns |
+|---------|---------------------|
+| Lenis | `new Lenis`, `lenis`, `smoothWheel`, `wheelMultiplier`, `lerp`, `duration` |
+| GSAP ScrollSmoother | `ScrollSmoother.create`, `smoother`, `smooth:`, `normalizeScroll` |
+| Locomotive | `locomotive-scroll`, `data-scroll`, `data-scroll-speed`, `lerp`, `multiplier` |
+
+### Extraction
+
+```bash
+# Lenis — extract constructor options
+grep -oE 'new\s+\w*[Ll]enis\w*\(\{[^}]{1,500}\}' tmp/ref/<effect-name>/bundles/*.js | head -5
+
+# GSAP ScrollSmoother — extract create options
+grep -oE 'ScrollSmoother\.create\(\{[^}]{1,500}\}' tmp/ref/<effect-name>/bundles/*.js | head -5
+
+# Locomotive — extract constructor options
+grep -oE 'new\s+\w*[Ll]ocomotive\w*\(\{[^}]{1,500}\}' tmp/ref/<effect-name>/bundles/*.js | head -5
+```
+
+### Key parameters to extract
+
+| Parameter | What it controls |
+|-----------|-----------------|
+| `lerp` / `smoothness` | Interpolation factor (0–1, lower = smoother/slower) |
+| `duration` | Scroll animation duration in seconds |
+| `wheelMultiplier` | Scroll wheel sensitivity multiplier |
+| `smooth` | Smooth intensity value |
+| `wrapper` / `content` | Wrapper and content element selectors |
+| `normalizeScroll` | Whether native scroll is replaced |
+
+Save extracted config to `tmp/ref/<effect-name>/scroll-library.json`:
+
+```json
+{
+  "library": "lenis",
+  "config": {
+    "lerp": 0.1,
+    "duration": 1.2,
+    "wheelMultiplier": 1,
+    "smoothWheel": true
+  },
+  "wrapper": null,
+  "content": null
+}
+```
+
+### Reference: scroll library initialization (for Step 7 component generation)
+
+> This section is a reference for `component-generation.md` — do NOT generate code during extraction. Only extract and save `scroll-library.json`.
+
+Example Lenis initialization using extracted parameters:
+
+```tsx
+// npm install lenis
+import Lenis from 'lenis';
+
+useEffect(() => {
+  const lenis = new Lenis({
+    lerp: 0.1,        // from scroll-library.json
+    duration: 1.2,    // from scroll-library.json
+    wheelMultiplier: 1,
+    smoothWheel: true,
+  });
+  function raf(time: number) {
+    lenis.raf(time);
+    requestAnimationFrame(raf);
+  }
+  requestAnimationFrame(raf);
+  return () => lenis.destroy();
+}, []);
+```
+
+---
+
 ## Common pitfalls
 
 ### 1. "Computed values match but animation looks wrong"

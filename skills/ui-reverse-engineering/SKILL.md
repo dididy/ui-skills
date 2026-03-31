@@ -91,6 +91,9 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
 2. Extract Structure      — Read dom-extraction.md, execute Step 2
   ↓                         Save → tmp/ref/<component>/structure.json
   ↓
+2.5 Extract Head + Assets — Read dom-extraction.md, execute Step 2.5
+  ↓                         Save → head.json, assets.json, assets/ directory
+  ↓
 3. Extract Styles         — Read style-extraction.md, execute Step 3
   ↓                         Save → tmp/ref/<component>/styles.json
   ↓
@@ -101,16 +104,16 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓
 5b. Capture C3 (deferred) — If interactions-detected.json reveals NEW interactive elements
   ↓                          not already captured by /ui-capture Phase 2, re-run
-  ↓                          /ui-capture with --sections flag targeting those elements
+  ↓                          /ui-capture Phase 2B–2E targeting those specific regions
   ↓
 6. Analyze JS (if needed) — Read interaction-detection.md, execute Step 6
      ↓ complex animation?
      → invoke transition-reverse-engineering skill, then resume at Step 7
   ↓
-6b. Assemble extracted.json — Combine data from Steps 2-5 into the summary file:
-  ↓                            structure.json + styles.json + detected-breakpoints.json
-  ↓                            + interactions-detected.json → extracted.json
-  ↓                            (see Output section for schema)
+6b. Assemble extracted.json — Combine data from Steps 2-6 into the summary file:
+  ↓                            structure.json + head.json + assets.json + styles.json
+  ↓                            + detected-breakpoints.json + interactions-detected.json
+  ↓                            → extracted.json (see Output section for schema)
   ↓
   ↓  ┌─────────────────────────────────────────────┐
   ↓  │ GATE: Run these validation commands.        │
@@ -314,9 +317,12 @@ Save extracted data summary to `tmp/ref/<component>/extracted.json`:
 {
   "url": "https://target-site.com",
   "component": "HeroSection",
+  "head": { "title": "...", "favicon": "assets/favicon.ico", "viewport": "..." },
+  "assets": [{ "type": "image", "src": "https://...", "local": "assets/hero.webp", "element": "img.hero" }],
   "breakpoints": { "detected": [640, 768, 1024], "tailwind": { "sm": 640, "md": 768, "lg": 1024 } },
   "tokens": { "colors": {}, "spacing": {}, "typography": {} },
-  "interactions": { "hover": {}, "scroll": [], "animations": [] }
+  "interactions": { "hover": {}, "scroll": [], "animations": [] },
+  "scrollBehavior": { "snap": [], "smooth": [], "overscroll": [] }
 }
 ```
 
@@ -341,7 +347,7 @@ agent-browser close                         # Kill session
 
 > **REMINDER: You must Read each file when you reach its step. They are not optional references.**
 
-- **dom-extraction.md** — Steps 1–2: open, snapshot, DOM hierarchy
+- **dom-extraction.md** — Steps 1–2.5: open, snapshot, DOM hierarchy, head metadata + asset download
 - **style-extraction.md** — Step 3: computed styles, design tokens
 - **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
 - **interaction-detection.md** — Steps 5–6: hover/scroll/keyframes, JS bundle analysis

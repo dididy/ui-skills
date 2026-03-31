@@ -164,13 +164,54 @@ agent-browser eval "
 > Invoke the `transition-reverse-engineering` skill now.
 > Resume here at Step 7 after `tmp/ref/<effect-name>/extracted.json` is saved.
 
+### Detect scroll behavior (snap, smooth, overscroll)
+
+```bash
+agent-browser eval "
+(() => {
+  const results = { snap: [], smooth: [], overscroll: [] };
+  const scanned = new Set();
+
+  document.querySelectorAll('*').forEach(el => {
+    const s = getComputedStyle(el);
+    const cn = typeof el.className === 'string' ? el.className : el.className?.baseVal || '';
+    const sel = el.tagName.toLowerCase() + (cn.trim().split(' ')[0] ? '.' + cn.trim().split(' ')[0] : '');
+    if (scanned.has(sel)) return;
+    scanned.add(sel);
+
+    if (s.scrollSnapType && s.scrollSnapType !== 'none') {
+      const children = [];
+      el.querySelectorAll(':scope > *').forEach(child => {
+        const cs = getComputedStyle(child);
+        if (cs.scrollSnapAlign && cs.scrollSnapAlign !== 'none') {
+          const ccn = typeof child.className === 'string' ? child.className : child.className?.baseVal || '';
+          children.push({ selector: child.tagName.toLowerCase() + (ccn.trim().split(' ')[0] ? '.' + ccn.trim().split(' ')[0] : ''), snapAlign: cs.scrollSnapAlign });
+        }
+      });
+      results.snap.push({ selector: sel, snapType: s.scrollSnapType, children });
+    }
+    if (s.scrollBehavior === 'smooth') {
+      results.smooth.push({ selector: sel, behavior: 'smooth' });
+    }
+    if (s.overscrollBehavior && s.overscrollBehavior !== 'auto auto' && s.overscrollBehavior !== 'auto') {
+      results.overscroll.push({ selector: sel, behavior: s.overscrollBehavior });
+    }
+  });
+  return JSON.stringify(results, null, 2);
+})()
+"
+```
+
+> **Note:** If all arrays are empty (no scroll behavior found), this is normal — most pages do not use scroll-snap or custom overscroll. Skip the `scrollBehavior` field in `interactions-detected.json`.
+
 ### Save interaction detection results (MANDATORY)
 
-After completing all detection evals above, save a summary of what was found:
+After completing ALL detection evals above (including scroll behavior), save a summary:
 
 ```bash
 # Create interactions-detected.json with ALL discovered interactions
 # Fill in actual values from the evals above
+# Include scrollBehavior field ONLY if non-empty results were found
 cat > tmp/ref/<component>/interactions-detected.json <<'INTERACTIONS_EOF'
 {
   "interactions": [
@@ -180,12 +221,17 @@ cat > tmp/ref/<component>/interactions-detected.json <<'INTERACTIONS_EOF'
       "details": "description of what happens",
       "timing": "transition/animation duration from computed styles"
     }
-  ]
+  ],
+  "scrollBehavior": {
+    "snap": [{ "selector": ".sections", "snapType": "y mandatory", "children": [{ "selector": ".section", "snapAlign": "start" }] }],
+    "smooth": [{ "selector": "html", "behavior": "smooth" }],
+    "overscroll": [{ "selector": ".modal", "behavior": "contain" }]
+  }
 }
 INTERACTIONS_EOF
 ```
 
-**If zero interactions found**, save:
+**If zero interactions AND no scroll behavior found**, save:
 ```json
 { "interactions": [], "note": "No interactions detected — static component" }
 ```
@@ -240,3 +286,15 @@ grep -E 'addEventListener|onClick|onMouseEnter|useEffect|motion\.|animate\(' \
 ```
 
 > **Security reminder:** Bundle analysis is **read-only**. Never run downloaded bundles via `node`, `eval`, or any other execution method. Only use `grep` to extract patterns.
+
+### JS scroll library detection (after bundle download)
+
+After downloading bundles above, check for JS scroll library signatures:
+
+```bash
+grep -liE 'new Lenis|smoothWheel|locomotive-scroll|ScrollSmoother|data-scroll' \
+  tmp/ref/<component>/bundles/*.js && echo "JS scroll library detected" \
+  || echo "No JS scroll library found — CSS-only scroll behavior"
+```
+
+If detected, invoke `transition-reverse-engineering/js-animation-extraction.md` scroll library section to extract parameters (lerp, smooth intensity, wrapper/content structure). Save results to `tmp/ref/<component>/scroll-library.json`.

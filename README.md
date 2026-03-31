@@ -2,7 +2,7 @@
 
 A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component — from the actual source, not a screenshot.
 
-Give it a live URL and it extracts computed CSS, DOM structure, JS interactions, responsive breakpoints, and animations — actual values from `getComputedStyle`, not pixel guesses. Screenshots and screen recordings are also accepted as fallback inputs (analyzed via Claude Vision), but only URL input gives exact values.
+Give it a live URL and it extracts computed CSS, DOM structure, JS interactions, responsive breakpoints, animations, and visual assets (favicon, title, images) — actual values from `getComputedStyle`, not pixel guesses. Screenshots and screen recordings are also accepted as fallback inputs (analyzed via Claude Vision), but only URL input gives exact values.
 
 > **vs. screenshot-to-code tools:** Those tools copy what's visible. For URL input, `ui-skills` reads `getComputedStyle`, greps JS bundles, and scrubs WAAPI animations frame-by-frame — so hover states, easing curves, and stagger timing are extracted, not approximated.
 
@@ -74,6 +74,8 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
 1.  Open & Snapshot        — DOM tree, full-page screenshot
   ↓
 2.  Extract Structure      — HTML hierarchy, component boundaries
+  ↓
+2.5 Extract Head + Assets  — title, favicon, visible images downloaded to assets/
   ↓
 3.  Extract Styles         — computed CSS, colors, typography, spacing, design tokens
   ↓
@@ -159,6 +161,7 @@ Step  4: Verify                   — frame comparison + Phase 1 Visual Gate (cl
 | Three.js / custom WebGL | Bundle download + grep patterns |
 | Spline / Rive / Lottie | Engine detection → scene URL reference |
 | Scroll-driven (Motion/GSAP/rAF) | **JS bundle analysis** — extracts `useTransform`/`useScroll` keyframes, interpolation ranges, scroll offsets |
+| Scroll behavior (snap/smooth/overscroll) | **CSS detection** (`scroll-snap-*`, `scroll-behavior`, `overscroll-behavior`) + **JS library extraction** (Lenis, GSAP ScrollSmoother, Locomotive) when detected in bundles |
 | CSS-in-JS responsive layout | **Raw stylesheet extraction** — `calc()`, `cqw`, `%`, custom properties |
 
 ---

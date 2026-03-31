@@ -386,6 +386,50 @@
         "pixel-perfect-diff.json saved with result: pass and mismatches: 0",
         "No other properties changed as side effect of the fix"
       ]
+    },
+    {
+      "id": 28,
+      "prompt": "Clone https://example.com — the page has a favicon, a page title, and hero images. Make sure all visual assets are downloaded and included in the component, not replaced with placeholders.",
+      "expected_output": "head.json extracted with title and favicon URL. Visible images collected and downloaded to assets/ directory. Component references downloaded assets, not placeholders.",
+      "files": [],
+      "expectations": [
+        "head.json exists in tmp/ref/ with title, favicon, and viewport fields",
+        "assets.json exists listing all downloaded assets with type, src, and local fields",
+        "Favicon downloaded to tmp/ref/<component>/assets/ directory",
+        "Visible images (getBoundingClientRect height > 0) collected — not all page images",
+        "Downloaded assets referenced in component via public/assets/ path, not placeholder text",
+        "extracted.json contains head and assets fields merged from head.json and assets.json",
+        "All asset downloads use HTTPS — no HTTP or data: URI downloads"
+      ]
+    },
+    {
+      "id": 29,
+      "prompt": "Clone https://example.com — the page uses scroll-snap for section-by-section navigation, smooth scrolling on the html element, and overscroll-behavior: contain on a modal. Detect all scroll behaviors.",
+      "expected_output": "All three scroll behavior types detected and saved to interactions-detected.json under scrollBehavior field. Component applies corresponding CSS.",
+      "files": [],
+      "expectations": [
+        "scroll-snap-type detected on the container element with correct value (e.g. y mandatory)",
+        "scroll-snap-align detected on child section elements",
+        "scroll-behavior: smooth detected on html element",
+        "overscroll-behavior: contain detected on the modal element",
+        "interactions-detected.json contains scrollBehavior field with snap, smooth, and overscroll arrays",
+        "Component applies scroll-snap, scroll-smooth, and overscroll-contain via Tailwind utilities or CSS"
+      ]
+    },
+    {
+      "id": 30,
+      "prompt": "Clone https://example.com — the page uses Lenis for smooth scrolling. The JS bundle contains new Lenis({ lerp: 0.075, duration: 1.5, wheelMultiplier: 0.8 }). Extract the library config and implement it.",
+      "expected_output": "Lenis detected via bundle grep. Config parameters extracted to scroll-library.json. Component initializes Lenis with exact extracted parameters.",
+      "files": [],
+      "expectations": [
+        "Bundle grep detects Lenis signature (new Lenis or smoothWheel pattern)",
+        "scroll-library.json saved with library: lenis and config containing lerp, duration, wheelMultiplier",
+        "lerp value matches bundle (0.075), not a default guess",
+        "Component installs and imports lenis package",
+        "useEffect initializes Lenis with extracted config parameters",
+        "Lenis cleanup (destroy) called in useEffect return",
+        "No hardcoded Lenis defaults used — all values from scroll-library.json"
+      ]
     }
   ]
 }

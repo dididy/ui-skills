@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.0.11] - 2026-03-31
+
+### Added
+- **`ui-reverse-engineering`**: `dom-extraction.md` — Step 2.5: head metadata extraction (`<title>`, favicon, viewport) + visible image collection and download. Images filtered by `getBoundingClientRect().height > 0`. Assets saved to `tmp/ref/<component>/assets/`. HTTPS only, 10MB limit.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — scroll behavior detection step: scans all elements for `scroll-snap-type/align/stop`, `scroll-behavior: smooth`, `overscroll-behavior`. Results saved to `interactions-detected.json` under `scrollBehavior` field. JS scroll library detection (Lenis, GSAP ScrollSmoother, Locomotive) via bundle grep.
+- **`transition-reverse-engineering`**: `js-animation-extraction.md` — scroll library parameter extraction section: detection signatures, config extraction (lerp, duration, wheelMultiplier, smooth, wrapper/content), `scroll-library.json` schema, and Lenis component generation example.
+
+### Evals
+- **`ui-reverse-engineering`**: `evals/evals.json` — evals 28–30 added: asset download (favicon + visible images), scroll behavior detection (snap/smooth/overscroll), and Lenis JS scroll library extraction.
+- **`transition-reverse-engineering`**: `evals/evals.json` — eval 22 added: GSAP ScrollSmoother config extraction from bundle.
+
+### Changed
+- **`ui-reverse-engineering`**: `component-generation.md` — input checklist updated with `head.json` + `assets.json`; image rule updated to prefer downloaded assets over placeholders; scroll behavior added to generation prompt template with Tailwind utility mapping.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — JS scroll library detection moved from Step 5 to Step 6 (after bundle download, where bundles actually exist).
+- **`ui-reverse-engineering`**: `SKILL.md` — pipeline diagram updated with Step 2.5 (head + assets extraction); Step 6b assembly list includes head.json + assets.json; Output schema includes head/assets/scrollBehavior fields; Reference Files updated.
+- **`ui-capture`**: `SKILL.md` — Phase R added: standalone report mode (`report.html`) when no local-url provided. Shows fullpage screenshot, detected regions table, per-region captures, and CTA. Process flow diagram updated with branching (local-url → compare mode, no local-url → report mode).
+- **`ui-capture`**: `SKILL.md` — Phase 5 rewritten from "User Review" to "Completion Gate" with two paths: interactive mode (wait for user feedback) and autonomous mode (ralph-loop). Autonomous mode uses `pixel-perfect-diff.json` as binary pass/fail gate with 3 auto-fix retries before escalation.
+- **`ui-capture`**: `comparison-page.md` — Report Mode section added with full `report.html` template: regions table with trigger-type badges, per-region capture previews (clip screenshots + videos), and usage conditions (standalone vs comparison).
+- `README.md` — pipeline diagram updated with Step 2.5; scroll behavior row added to animation types table; description updated to mention asset extraction.
+- `plugin.json`, `marketplace.json` — version bumped to 0.0.11; keywords updated.
+
 ## [0.0.10] - 2026-03-30
 
 ### Security

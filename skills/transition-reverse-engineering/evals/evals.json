@@ -300,6 +300,20 @@
         "pixel-perfect-diff.json updated to result: pass and mismatches: 0",
         "No comment like 'approximately matches' or 'visually correct' used as justification"
       ]
+    },
+    {
+      "id": 22,
+      "prompt": "Extract the scroll animation from https://example.com — the site uses GSAP ScrollSmoother with smooth: 2 and normalizeScroll: true. The bundle also shows a wrapper/content selector pair. Extract the full config.",
+      "expected_output": "GSAP ScrollSmoother detected via bundle grep. Config parameters extracted to scroll-library.json including smooth value, normalizeScroll flag, and wrapper/content selectors.",
+      "files": [],
+      "expectations": [
+        "Bundle grep detects ScrollSmoother.create signature",
+        "scroll-library.json saved with library: gsap-scroll-smoother",
+        "smooth value extracted as 2 (not a default)",
+        "normalizeScroll extracted as true",
+        "wrapper and content selectors extracted from bundle",
+        "Bundle analysis is read-only — no code execution"
+      ]
     }
   ]
 }
