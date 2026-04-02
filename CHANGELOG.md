@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.12] - 2026-04-02
+
+### Added
+- **`ui-reverse-engineering`**: `interaction-detection.md` — auto-timer detection section: `setInterval`/`setTimeout` carousel/slideshow/rotating-text detection via timed screenshot comparison and bundle grep. Results saved to `interactions-detected.json` under `autoTimer` key.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — JS animation library detection section: bundle grep patterns for Framer Motion, GSAP, and pure CSS transitions. Extracts spring params, ease presets, duration/stagger from minified code.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — spring-to-cubic-bezier mapping table: common spring/ease configs → CSS `cubic-bezier` equivalents.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — known issues: `agent-browser record start` page reload workaround (rapid sequential screenshots), intro animation scroll blocking (5–8s wait).
+
+### Changed
+- `plugin.json`, `marketplace.json` — version bumped to 0.0.12; description and keywords updated.
+- `README.md` — animation types table updated with auto-timer and animation library extraction rows.
+
 ## [0.0.11] - 2026-03-31
 
 ### Added

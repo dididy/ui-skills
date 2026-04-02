@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads visual assets (favicon, title, images). Auto-detects responsive breakpoints via viewport sweep. Detects scroll behavior (scroll-snap, smooth scroll, overscroll-behavior) and extracts JS scroll library configs (Lenis, GSAP ScrollSmoother, Locomotive). Verifies output with DOM clip screenshot pixel diff (AE/SSIM per element per state) as the Visual Gate; getComputedStyle numerical diagnosis always runs in parallel to catch sub-pixel mismatches. Hover/interactive states captured as eval + clip screenshots (no video). Scroll-driven: exploration video to find transition bounds, then clip screenshots at before/mid/after for easing-curve verification. Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture & comparison, trigger-type-aware recording, and timestamp-based scroll crop.",
-      "version": "0.0.11",
+      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads visual assets (favicon, title, images). Auto-detects responsive breakpoints via viewport sweep. Detects scroll behavior (scroll-snap, smooth scroll, overscroll-behavior) and extracts JS scroll library configs (Lenis, GSAP ScrollSmoother, Locomotive). Auto-timer detection for carousels/slideshows. JS animation library parameter extraction from bundles. Verifies output with DOM clip screenshot pixel diff (AE/SSIM per element per state) as the Visual Gate; getComputedStyle numerical diagnosis always runs in parallel to catch sub-pixel mismatches. Hover/interactive states captured as eval + clip screenshots (no video). Scroll-driven: exploration video to find transition bounds, then clip screenshots at before/mid/after for easing-curve verification. Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture & comparison, trigger-type-aware recording, and timestamp-based scroll crop.",
+      "version": "0.0.12",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -66,7 +66,12 @@
         "scroll-smooth",
         "overscroll-behavior",
         "lenis",
-        "scroll-behavior"
+        "scroll-behavior",
+        "auto-timer",
+        "carousel-detection",
+        "framer-motion",
+        "spring-to-cubic-bezier",
+        "animation-library"
       ]
     }
   ]

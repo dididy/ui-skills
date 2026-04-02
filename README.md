@@ -162,6 +162,9 @@ Step  4: Verify                   — frame comparison + Phase 1 Visual Gate (cl
 | Spline / Rive / Lottie | Engine detection → scene URL reference |
 | Scroll-driven (Motion/GSAP/rAF) | **JS bundle analysis** — extracts `useTransform`/`useScroll` keyframes, interpolation ranges, scroll offsets |
 | Scroll behavior (snap/smooth/overscroll) | **CSS detection** (`scroll-snap-*`, `scroll-behavior`, `overscroll-behavior`) + **JS library extraction** (Lenis, GSAP ScrollSmoother, Locomotive) when detected in bundles |
+| Auto-timer (carousel/slideshow) | **Timed screenshot comparison** (4s interval) + `setInterval`/`setTimeout` bundle grep |
+| Framer Motion springs | **Bundle grep** — `stiffness`/`damping`/`mass`, `AnimatePresence` mode, motion props → cubic-bezier mapping |
+| GSAP tweens | **Bundle grep** — `gsap.to`/`fromTo`/`timeline`, `ScrollTrigger`, ease/duration/stagger |
 | CSS-in-JS responsive layout | **Raw stylesheet extraction** — `calc()`, `cqw`, `%`, custom properties |
 
 ---

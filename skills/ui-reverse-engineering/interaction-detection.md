@@ -297,4 +297,109 @@ grep -liE 'new Lenis|smoothWheel|locomotive-scroll|ScrollSmoother|data-scroll' \
   || echo "No JS scroll library found — CSS-only scroll behavior"
 ```
 
+### Auto-timer detection (carousel, slideshow, rotating text)
+
+Auto-timer transitions are **not triggered by user interaction** — they run on `setInterval`/`setTimeout`. They are invisible to hover/scroll/click detection and require separate handling.
+
+**Detection:**
+
+```bash
+# 1. Take 2 screenshots 4s apart without any interaction — if content changed, auto-timer exists
+agent-browser screenshot tmp/ref/<component>/timer-t0.png
+agent-browser wait 4000
+agent-browser screenshot tmp/ref/<component>/timer-t1.png
+# Compare visually — if different, auto-timer is active
+```
+
+```bash
+# 2. Find interval timing in JS bundles
+grep -oE 'setInterval\([^,]+,\s*[0-9]+' tmp/ref/<component>/bundles/*.js | head -10
+# Common patterns: setInterval(fn, 2000), setInterval(fn, 3e3), setInterval(fn, 5000)
+```
+
+**Save detected timer intervals** to `interactions-detected.json` under `"autoTimer"` key.
+
+### Animation library detection (after bundle download)
+
+Different libraries store transition parameters in different places. `getComputedStyle` often returns `"all"` or empty values when animation is JS-driven. **Bundle grep is required.**
+
+#### Framer Motion / Motion One
+
+```bash
+# Spring parameters — the most commonly missed values
+grep -oE '(stiffness|damping|mass|bounce|velocity)\s*:\s*[0-9.]+' \
+  tmp/ref/<component>/bundles/*.js | head -20
+
+# Transition objects
+grep -oE 'transition:\{[^}]{0,200}\}' \
+  tmp/ref/<component>/bundles/*.js | head -20
+
+# Motion component usage patterns
+grep -oE '(motion\.\w+|m\.\w+|P\.div|P\.img)' \
+  tmp/ref/<component>/bundles/*.js | sort -u | head -10
+
+# animate/initial/exit props (framer pattern)
+grep -oE '(initial|animate|exit|whileHover|whileTap):\{[^}]{0,150}\}' \
+  tmp/ref/<component>/bundles/*.js | head -20
+
+# AnimatePresence mode
+grep -oE 'mode:\s*"(wait|sync|popLayout)"' \
+  tmp/ref/<component>/bundles/*.js | head -5
+```
+
+**Key insight:** In minified Framer Motion bundles, spring config often appears as standalone variables (e.g., `tO={type:"spring",stiffness:250,damping:30}`). Search near the component code, not at the top of the bundle.
+
+#### GSAP / GreenSock
+
+```bash
+# GSAP timeline and tween patterns
+grep -oE '(gsap\.(to|from|fromTo|timeline)|ScrollTrigger|\.tweenTo|\.tweenFromTo)' \
+  tmp/ref/<component>/bundles/*.js | head -10
+
+# Duration and ease
+grep -oE '(duration:\s*[0-9.]+|ease:\s*"[^"]+"|stagger:\s*[0-9.]+)' \
+  tmp/ref/<component>/bundles/*.js | head -20
+
+# ScrollTrigger config
+grep -oE 'ScrollTrigger\s*\{[^}]{0,300}\}' \
+  tmp/ref/<component>/bundles/*.js | head -5
+```
+
+#### CSS Transition (no library)
+
+When `getComputedStyle(el).transition` returns a full value (not just `"all"`), the site uses pure CSS:
+
+```bash
+agent-browser eval "
+(() => {
+  const el = document.querySelector('.target');
+  const s = getComputedStyle(el);
+  return JSON.stringify({
+    transition: s.transition,
+    transitionDuration: s.transitionDuration,
+    transitionTimingFunction: s.transitionTimingFunction,
+    transitionDelay: s.transitionDelay,
+    transitionProperty: s.transitionProperty,
+  });
+})()
+"
+```
+
+#### Mapping to implementation
+
+| Source | CSS equivalent | @beyond equivalent |
+|--------|----------------|-------------------|
+| FM spring `stiffness:250, damping:30` | `cubic-bezier(0.25, 1, 0.5, 1)` ~0.4s | `ease: 'spring.medium'` |
+| FM spring `stiffness:150, damping:16` | `cubic-bezier(0.22, 1, 0.36, 1)` ~0.5s (bouncy) | `ease: 'spring.basic'` |
+| FM spring `stiffness:400, damping:40` | `cubic-bezier(0.33, 1, 0.68, 1)` ~0.3s (snappy) | `ease: 'spring.small'` |
+| GSAP `ease: "power2.out"` | `cubic-bezier(0.22, 1, 0.36, 1)` | `ease: [0.22, 1, 0.36, 1]` |
+| GSAP `ease: "power3.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: [0.16, 1, 0.3, 1]` |
+| GSAP `ease: "expo.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: 'bezier.expo'` |
+| GSAP `ease: "back.out(1.7)"` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `ease: [0.34, 1.56, 0.64, 1]` |
+
+### Known issues
+
+- **`agent-browser record start` reloads the page**, resetting scroll position. Workaround: take rapid sequential screenshots (0.3s intervals) instead of video recording when capturing scroll-dependent transitions.
+- **Intro/loading animations block scroll**: Some sites (e.g., realfood.gov) have intro animations that prevent scroll until complete. Wait 5-8s after page load before scrolling.
+
 If detected, invoke `transition-reverse-engineering/js-animation-extraction.md` scroll library section to extract parameters (lerp, smooth intensity, wrapper/content structure). Save results to `tmp/ref/<component>/scroll-library.json`.
