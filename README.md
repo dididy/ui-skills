@@ -10,7 +10,7 @@ Three skills included, plus one shared verification document:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
-3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Classifies each effect by trigger type before capturing: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval + clip screenshot (before + after); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
+3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Auto-detects custom scroll containers (Lenis, Locomotive, `overflow: hidden`) and uses real mouse-wheel events for accurate scroll recording. Captures section-by-section viewport-resized screenshots. Classifies each effect by trigger type before capturing: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval + clip screenshot (before + after); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
 4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory visual verification gate invoked by all three skills. Phase 1 captures DOM clip screenshots per element per state (idle / active / before / mid / after by triggerType) and diffs with AE/SSIM — this is the pass/fail criterion. Phase 2 runs `getComputedStyle` always (regardless of Phase 1 result) to catch sub-pixel mismatches like `font-size: 15px vs 16px` that AE/SSIM passes. Both must pass. "Looks the same" is not a valid completion criterion.
 
 ## Requirements
@@ -87,9 +87,13 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 5b. Capture C3 (deferred)  — interaction/transition videos using selectors from Step 5
   ↓
-6.  Analyze JS (if needed) — bundle grep for complex interactions
+6.  Detect Animations      — frame extraction (fps=2) → consecutive pair comparison
+                             → DOM mapping → classify (scroll-reveal, parallax, sticky,
+                               scale, clip-path, auto-timer) → per-animation capture
+      ↓ (scroll-driven/canvas/WebGL found)
+      → transition-reverse-engineering for JS extraction
   ↓
-6b. Assemble extracted.json — combine structure + styles + breakpoints + interactions
+6b. Assemble extracted.json — combine structure + styles + breakpoints + interactions + animations
   ↓
 7.  Generate Component     — React + Tailwind, exact values, functional JS
   ↓
@@ -194,7 +198,9 @@ Take a baseline screenshot of https://example.com before I start cloning
 ### How It Works
 
 ```
-Phase 1: Full Page Capture   — static screenshot + full scroll video
+Phase 1: Full Page Capture   — section screenshots (viewport-resized) + full scroll video
+  ↓                            auto-detects custom scroll containers (Lenis, Locomotive, etc.)
+  ↓                            uses mouse-wheel events for custom scroll sites
   ↓
 Phase 2: Transition Detection — classify all effects by trigger type, save regions.json
   ↓

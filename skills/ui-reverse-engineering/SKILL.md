@@ -106,13 +106,43 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓                          not already captured by /ui-capture Phase 2, re-run
   ↓                          /ui-capture Phase 2B–2E targeting those specific regions
   ↓
-6. Analyze JS (if needed) — Read interaction-detection.md, execute Step 6
-     ↓ complex animation?
-     → invoke transition-reverse-engineering skill, then resume at Step 7
+6. Detect Animations      — Analyze the full scroll video from /ui-capture Phase 1:
+  ↓
+  ↓   a. Extract frames at 0.5s intervals from the scroll video:
+  ↓      ffmpeg -i full-scroll.webm -vf fps=2 frames/frame-%04d.png
+  ↓
+  ↓   b. Compare consecutive frame pairs — regions with visual change
+  ↓      between frames indicate scroll-driven animations. Record:
+  ↓      - frame range (which scroll positions show change)
+  ↓      - approximate viewport Y position
+  ↓
+  ↓   c. For each detected animation region, identify the DOM element:
+  ↓      scroll to that Y position, eval getComputedStyle to find
+  ↓      elements with transform/opacity/clip-path that differ from
+  ↓      their static state. Save selector + observed properties.
+  ↓
+  ↓   d. Classify each animation:
+  ↓      - scroll-reveal (opacity 0→1, translateY)
+  ↓      - parallax (translateY at different rate than scroll)
+  ↓      - sticky/pinned (position changes during scroll range)
+  ↓      - scale/zoom (transform: scale changes on scroll)
+  ↓      - clip-path reveal (clip-path animates on scroll)
+  ↓      - auto-timer (changes without scroll — carousel, slideshow)
+  ↓
+  ↓   e. Capture each animation region:
+  ↓      - Scroll-driven: 3 screenshots (before trigger / mid / after)
+  ↓      - Auto-timer: short video (2-3 cycles)
+  ↓      Save → tmp/ref/<component>/animations-detected.json
+  ↓
+  ↓   f. If ANY scroll-driven, canvas, or WebGL animations found:
+  ↓      → invoke /transition-reverse-engineering for JS extraction
+  ↓      This is NOT optional — these cannot be reproduced from CSS alone.
+  ↓      Resume at Step 6b after transition skill completes.
   ↓
 6b. Assemble extracted.json — Combine data from Steps 2-6 into the summary file:
   ↓                            structure.json + head.json + assets.json + styles.json
   ↓                            + detected-breakpoints.json + interactions-detected.json
+  ↓                            + animations-detected.json
   ↓                            → extracted.json (see Output section for schema)
   ↓
   ↓  ┌─────────────────────────────────────────────┐
@@ -131,6 +161,10 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │                                              │
   ↓  │ $ cat tmp/ref/<c>/interactions-detected.json │
   ↓  │  □ Exists (even if 0 interactions found)    │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/animations-detected.json  │
+  ↓  │  □ Exists (even if 0 animations found)      │
+  ↓  │  □ Each entry has: selector, type, captures │
   ↓  │                                              │
   ↓  │ If ANY fails → go back to failing step.     │
   ↓  └─────────────────────────────────────────────┘

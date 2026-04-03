@@ -103,36 +103,64 @@ mkdir -p tmp/ref/capture/clip/{ref,impl,diff}
 agent-browser --session <project-name> open <reference-url>
 agent-browser --session <project-name> set viewport 1440 900
 agent-browser --session <project-name> wait 3000
-agent-browser --session <project-name> eval "(() => JSON.stringify({ totalHeight: document.body.scrollHeight, viewportHeight: window.innerHeight, viewportWidth: window.innerWidth }))()"
 ```
 
-### Full-page screenshot
+**Detect scroll type and sections:**
 
 ```bash
-agent-browser eval "(() => window.scrollTo(0, 0))()"
-agent-browser wait 500
-agent-browser screenshot tmp/ref/capture/static/ref/fullpage.png --fullpage
+agent-browser --session <project-name> eval "(() => {
+  const htmlOF = getComputedStyle(document.documentElement).overflow;
+  const bodyOF = getComputedStyle(document.body).overflow;
+  const known = '[data-lenis],.lenis,[data-scroll-container],.locomotive-scroll,[data-smooth-scroll],.smooth-scroll';
+  let cEl = document.querySelector(known);
+  if (!cEl && (htmlOF === 'hidden' || bodyOF === 'hidden'))
+    cEl = [...document.body.children].find(e => e.scrollHeight > e.clientHeight + 100) || null;
+  const sEl = cEl || document.documentElement;
+  const sel = cEl ? cEl.tagName.toLowerCase() + (cEl.id ? '#'+cEl.id : '.'+cEl.className.trim().split(/\s+/).join('.')) : 'window';
+  let secs = [...document.querySelectorAll('section')];
+  if (!secs.length) secs = [...(cEl||document.querySelector('main')||document.body).children]
+    .filter(e => e.getBoundingClientRect().height > 50 && !['SCRIPT','STYLE','LINK'].includes(e.tagName));
+  return JSON.stringify({ scrollType: cEl?'custom':'native', scrollSelector: sel,
+    totalHeight: sEl.scrollHeight, viewportHeight: innerHeight,
+    sections: secs.map(s => ({ class: s.className,
+      top: Math.round(s.getBoundingClientRect().top + sEl.scrollTop),
+      height: Math.round(s.getBoundingClientRect().height) }))
+  });
+})()"
 ```
 
-If `--fullpage` is not supported, stitch viewport-height screenshots: scroll to `i * viewportHeight`, screenshot `section-<i>.png`, for each section.
+Result gives `scrollType` (`native`|`custom`) and `scrollSelector` — use these for all subsequent operations.
+
+**Scroll rules:**
+- **Instant positioning** (for screenshots): `scrollTo(0, Y)` works on both types — use `window` or `document.querySelector('<scrollSelector>')` accordingly
+- **Animated scroll** (for video recording): `native` → `window.scrollTo` in a loop; `custom` → **must use `agent-browser mouse wheel <deltaY>`** (only real wheel events trigger custom scroll libraries)
+
+### Section screenshots
+
+Capture one screenshot per section, **sized to the section's actual height**:
+
+1. `set viewport 1440 <sectionHeight>` — resize viewport to match
+2. `scrollTo(0, <sectionTop>)` — position section at top
+3. `wait 800` → `screenshot <sectionName>.png`
+4. After all sections: `set viewport 1440 900` to restore
 
 ### Full scroll video
 
 ```bash
-agent-browser record start tmp/ref/capture/scroll-video/ref/full-scroll.webm
-agent-browser set viewport 1440 900
-agent-browser wait 3000  # wait for fresh context to load
-agent-browser eval "(() => window.scrollTo(0, 0))()"
+# Reset to top, start recording
+agent-browser record start tmp/ref/capture/scroll-video/ref/full-scroll-raw.webm
+agent-browser wait 300
+
+# native: eval scrollTo loop (pos += 120, setTimeout 60ms)
+# custom: for i in $(seq 1 <ceil(totalHeight/200)*1.5>); do agent-browser mouse wheel 200; done
+
 agent-browser wait 500
-agent-browser eval "(() => {
-  const h = document.body.scrollHeight;
-  let pos = 0;
-  const step = () => { pos += 120; window.scrollTo(0, pos); if (pos < h) setTimeout(step, 80); };
-  step();
-})()"
-agent-browser wait 4000
-agent-browser wait 1000
 agent-browser record stop
+```
+
+**Always trim** — `record start`/`stop` add dead frames:
+```bash
+ffmpeg -y -i full-scroll-raw.webm -ss 0.3 -t <activeDuration> -c:v libvpx-vp9 -b:v 1M full-scroll.webm
 ```
 
 ---
@@ -293,6 +321,12 @@ After video → Check:
 | eval returns empty array | Wait longer, fallback to class-name detection |
 | Video is 0 bytes | Close agent-browser, reopen, retry |
 | Sticky header/overlay | `document.querySelectorAll('[class*=cookie],[class*=banner],[class*=modal],[class*=overlay]').forEach(el => el.remove())` |
+| `body.scrollHeight` equals viewport height | Site uses a custom scroll container (`scrollType: "custom"`). The detection script handles this — use the detected `scrollSelector`'s `scrollHeight` instead of `body.scrollHeight`. |
+| `window.scrollTo()` has no visual effect | `scrollType` is `"custom"` — the scroll library intercepts wheel/touch but not programmatic scroll on the wrong element. For instant positioning, use `document.querySelector('<scrollSelector>').scrollTo()`. For animated scroll (videos), use `agent-browser mouse wheel`. |
+| Selector-based screenshot (`agent-browser screenshot <sel>`) is blank | Element is inside an `overflow: hidden` container and clipped. Instead: resize viewport to section height, scroll section into view, take a viewport screenshot. |
+| Section screenshots all identical height | Viewport was not resized per section. Before each capture: `set viewport 1440 <sectionHeight>`, scroll, screenshot. Restore to 1440×900 after. |
+| Scroll video has long dead time at start/end | `record start`/`stop` always add dead frames. Trim with ffmpeg: `ffmpeg -ss 0.3 -t <activeDuration>`. Never serve the raw recording. |
+| Scroll video jumps instantly instead of smooth scrolling | Using `scrollTo` or synthetic `WheelEvent` on a `"custom"` scroll site. Use `agent-browser mouse wheel <deltaY>` which dispatches real browser-level events. |
 | Video shows wrong scroll position (hero instead of target section) | `record start` creates a fresh context — always scroll AFTER record start, not before. See capture-transitions.md "Critical" section. |
 | Video has 1-4s blank/wrong-state at start | Normal — `record start` has inherent delay. Crop with ffmpeg using stdev threshold. See capture-transitions.md for auto-crop script. |
 | Video sync in compare.html causes infinite pause/play loop | `pause` event fires during buffering too. Use `!a.ended` guard in pause listener. See comparison-page.md for correct sync code. |

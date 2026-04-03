@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.13] - 2026-04-03
+
+### Added
+- **`ui-capture`**: Phase 1 — custom scroll container auto-detection (`data-lenis`, `.locomotive-scroll`, `overflow: hidden` fallback). Returns `scrollType` (`native`|`custom`) and `scrollSelector` for all subsequent scroll operations.
+- **`ui-capture`**: Phase 1 — section-by-section screenshot capture: resize viewport to each section's actual height, scroll into view, capture. Replaces single fullpage screenshot.
+- **`ui-capture`**: Phase 1 — `mouse wheel`-based scroll recording for custom scroll sites (Lenis, Locomotive, etc.) — only real wheel events trigger these libraries.
+- **`ui-capture`**: Phase 1 — mandatory ffmpeg trim for scroll videos (`-ss 0.3 -t <activeDuration>`) to remove dead frames from `record start`/`stop`.
+- **`ui-reverse-engineering`**: Step 6 — animation detection pipeline: frame extraction (`ffmpeg fps=2`) → consecutive frame comparison → DOM element mapping → classification (scroll-reveal, parallax, sticky, scale, clip-path, auto-timer) → per-animation capture. Results saved to `animations-detected.json`.
+- **`ui-reverse-engineering`**: Step 6 — automatic `/transition-reverse-engineering` invocation when scroll-driven, canvas, or WebGL animations detected.
+
+### Changed
+- **`ui-capture`**: Phase 1 troubleshooting table expanded with 6 new entries: custom scroll container detection, `scrollTo` no-op on custom sites, blank selector screenshots, identical section heights, scroll video dead time, and scroll video instant-jump.
+- **`ui-reverse-engineering`**: Step 6b assembly list now includes `animations-detected.json`.
+- **`ui-reverse-engineering`**: Extraction gate checklist now requires `animations-detected.json` with selector/type/captures per entry.
+- `plugin.json`, `marketplace.json` — version bumped to 0.0.13; description and keywords updated.
+- `README.md` — pipeline diagram updated with animation detection step; ui-capture description updated with custom scroll and section screenshots.
+
 ## [0.0.12] - 2026-04-02
 
 ### Added
