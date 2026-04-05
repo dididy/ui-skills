@@ -2,7 +2,7 @@
 
 A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component — from the actual source, not a screenshot.
 
-Give it a live URL and it extracts computed CSS, DOM structure, JS interactions, responsive breakpoints, animations, and visual assets (favicon, title, images) — actual values from `getComputedStyle`, not pixel guesses. Screenshots and screen recordings are also accepted as fallback inputs (analyzed via Claude Vision), but only URL input gives exact values.
+Give it a live URL and it extracts computed CSS, DOM structure, JS interactions, responsive breakpoints, animations, visual assets (favicon, title, images), and inline SVGs verbatim — actual values from `getComputedStyle`, not pixel guesses. Detects custom scroll engines, portal-escaped fixed elements, mouse-follow interactions, and stroke-based SVG hover animations. Screenshots and screen recordings are also accepted as fallback inputs (analyzed via Claude Vision), but only URL input gives exact values.
 
 > **vs. screenshot-to-code tools:** Those tools copy what's visible. For URL input, `ui-skills` reads `getComputedStyle`, greps JS bundles, and scrubs WAAPI animations frame-by-frame — so hover states, easing curves, and stagger timing are extracted, not approximated.
 
@@ -81,7 +81,7 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 4.  Detect Responsive      — 2-pass viewport sweep (coarse 40px → fine 5px) to find real breakpoints
   ↓
-5.  Detect Interactions    — hover/click/scroll transitions and animations
+5.  Detect Interactions    — hover/click/scroll transitions, mouse-follow, stroke animations
       ↓ (complex animation detected)
       → transition-reverse-engineering — 11-point measurement + frame comparison
   ↓
@@ -93,9 +93,13 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
       ↓ (scroll-driven/canvas/WebGL found)
       → transition-reverse-engineering for JS extraction
   ↓
-6b. Assemble extracted.json — combine structure + styles + breakpoints + interactions + animations
+6b. Assemble extracted.json — combine structure + portal-candidates + inline-svgs + styles
+                             + breakpoints + scroll-engine + interactions + animations
   ↓
-7.  Generate Component     — React + Tailwind, exact values, functional JS
+6c. Pre-generation audit   — typography scale table, interaction state table,
+                             decorative SVG inventory → gate before code generation
+  ↓
+7.  Generate Component     — React + Tailwind, exact values, functional JS, verbatim SVGs
   ↓
 8.  Visual Verification    — Phase A/B/C (frame comparison) + Phase D (pixel-perfect visual gate)
   ↓
@@ -170,6 +174,8 @@ Step  4: Verify                   — frame comparison + Phase 1 Visual Gate (cl
 | Framer Motion springs | **Bundle grep** — `stiffness`/`damping`/`mass`, `AnimatePresence` mode, motion props → cubic-bezier mapping |
 | GSAP tweens | **Bundle grep** — `gsap.to`/`fromTo`/`timeline`, `ScrollTrigger`, ease/duration/stagger |
 | CSS-in-JS responsive layout | **Raw stylesheet extraction** — `calc()`, `cqw`, `%`, custom properties |
+| Mouse-follow / parallax tilt | **DOM detection** — absolutely-positioned `pointer-events: none` children of interactive rows |
+| Stroke-based SVG hover | **Stroke delta** — idle/active `stroke-dasharray` + `stroke-dashoffset` on SVG children |
 
 ---
 

@@ -90,12 +90,14 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓
 2. Extract Structure      — Read dom-extraction.md, execute Step 2
   ↓                         Save → tmp/ref/<component>/structure.json
+  ↓                         + portal-candidates.json + sticky-elements.json
   ↓
 2.5 Extract Head + Assets — Read dom-extraction.md, execute Step 2.5
   ↓                         Save → head.json, assets.json, assets/ directory
   ↓
 3. Extract Styles         — Read style-extraction.md, execute Step 3
   ↓                         Save → tmp/ref/<component>/styles.json
+  ↓                         + advanced-styles.json + body-state.json
   ↓
 4. Detect Responsive      — Read responsive-detection.md, execute Steps 4-A through 4-E
   ↓
@@ -140,8 +142,10 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓      Resume at Step 6b after transition skill completes.
   ↓
 6b. Assemble extracted.json — Combine data from Steps 2-6 into the summary file:
-  ↓                            structure.json + head.json + assets.json + styles.json
-  ↓                            + detected-breakpoints.json + interactions-detected.json
+  ↓                            structure.json + portal-candidates.json
+  ↓                            + head.json + assets.json + inline-svgs.json
+  ↓                            + styles.json + detected-breakpoints.json
+  ↓                            + interactions-detected.json + scroll-engine.json
   ↓                            + animations-detected.json
   ↓                            → extracted.json (see Output section for schema)
   ↓
@@ -152,12 +156,27 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │ $ jq '.tag' tmp/ref/<c>/structure.json      │
   ↓  │  □ Valid JSON, has tag + children keys       │
   ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/portal-candidates.json    │
+  ↓  │  □ Exists (even if no portals needed)       │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/inline-svgs.json          │
+  ↓  │  □ Exists, SVG outerHTML captured verbatim  │
+  ↓  │                                              │
   ↓  │ $ jq 'keys | length' tmp/ref/<c>/styles.json│
   ↓  │  □ ≥3 selectors with ≥2 properties each    │
   ↓  │                                              │
-  ↓  │ $ cat tmp/ref/<c>/extracted.json              │
-  ↓  │  □ Exists (assembled from Steps 2-5 data)  │
-  ↓  │  □ Has breakpoints, tokens, interactions    │
+  ↓  │ $ cat tmp/ref/<c>/advanced-styles.json       │
+  ↓  │  □ Exists (mix-blend-mode, gradient text)   │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/body-state.json            │
+  ↓  │  □ Exists (body class toggles + transitions)│
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/sticky-elements.json       │
+  ↓  │  □ Exists (even if 0 sticky elements)       │
+  ↓  │  □ Container heights are exact values       │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/scroll-engine.json        │
+  ↓  │  □ Exists, type field populated             │
   ↓  │                                              │
   ↓  │ $ cat tmp/ref/<c>/interactions-detected.json │
   ↓  │  □ Exists (even if 0 interactions found)    │
@@ -166,7 +185,63 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │  □ Exists (even if 0 animations found)      │
   ↓  │  □ Each entry has: selector, type, captures │
   ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/extracted.json              │
+  ↓  │  □ Exists (assembled from all above)        │
+  ↓  │                                              │
   ↓  │ If ANY fails → go back to failing step.     │
+  ↓  └─────────────────────────────────────────────┘
+  ↓
+6c. Pre-generation audit — Three checks before any code.
+  ↓   Skip any sub-step that does not apply to the extraction scope.
+  ↓
+  ↓   a. TYPOGRAPHY SCALE TABLE (multi-section only)
+  ↓      Group all text elements from styles.json by visual role.
+  ↓      Populate only roles that exist — omit empty rows.
+  ↓      Elements with the same role MUST have identical values.
+  ↓
+  ↓      | Role       | fontSize | fontWeight | fontFamily | lineHeight | letterSpacing |
+  ↓      |------------|----------|------------|------------|------------|---------------|
+  ↓      | (role)     | ?        | ?          | ?          | ?          | ?             |
+  ↓
+  ↓      If values vary by ≤1px within a role → site uses one token, pick the mode.
+  ↓      NEVER round extracted values. Use the exact px from getComputedStyle.
+  ↓      Save → tmp/ref/<c>/typography-scale.json
+  ↓      For single-section extractions: skip (no cross-section drift possible).
+  ↓
+  ↓   b. MULTI-STATE INTERACTION TABLE (if interactions exist)
+  ↓      For each interactive element in interactions-detected.json,
+  ↓      extract BOTH idle AND active state:
+  ↓
+  ↓      | Element     | Trigger | Property          | Idle value    | Active value    |
+  ↓      |-------------|---------|-------------------|---------------|-----------------|
+  ↓      | (selector)  | hover   | (css property)    | (extracted)   | (extracted)     |
+  ↓
+  ↓      For SVG children: also capture stroke-dasharray/offset if present.
+  ↓      Verify end-states are TERMINAL (element fully hidden/visible, not partial).
+  ↓      Save → tmp/ref/<c>/interaction-states.json
+  ↓      If zero interactions: save { "states": [] } and proceed.
+  ↓
+  ↓   c. DECORATIVE SVG INVENTORY (if decorative SVGs exist)
+  ↓      For each SVG with position:absolute, aria-hidden, or no text content:
+  ↓      - Copy outerHTML verbatim (NEVER approximate path d= attributes)
+  ↓      - Note if stroke-dasharray is animated (scroll-driven draw)
+  ↓      Save → tmp/ref/<c>/decorative-svgs.json
+  ↓      If zero decorative SVGs: save { "svgs": [] } and proceed.
+  ↓
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: Pre-generation audit.                 │
+  ↓  │ (Skip for single-section/single-element)    │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/typography-scale.json      │
+  ↓  │  □ Exists, roles have consistent values      │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/interaction-states.json    │
+  ↓  │  □ Exists (even if empty)                    │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/decorative-svgs.json       │
+  ↓  │  □ Exists (even if empty)                    │
+  ↓  │                                              │
+  ↓  │ If ANY fails → go back and extract.          │
   ↓  └─────────────────────────────────────────────┘
   ↓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -384,10 +459,12 @@ agent-browser close                         # Kill session
 - **dom-extraction.md** — Steps 1–2.5: open, snapshot, DOM hierarchy, head metadata + asset download
 - **style-extraction.md** — Step 3: computed styles, design tokens
 - **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
-- **interaction-detection.md** — Steps 5–6: hover/scroll/keyframes, JS bundle analysis
+- **interaction-detection.md** — Step 5: hover/click/intersection interactions, JS bundle analysis
+- **animation-detection.md** — Step 6: 3-phase motion detection (idle capture → scroll capture → per-element tracking). Detects splash, auto-timers, parallax, scroll-zoom, clip-reveal, sticky, word-stagger. **MANDATORY for sites with scroll-driven animations.**
 - **component-generation.md** — Step 7: generation prompt, iteration rules
 - **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures (clip screenshots for css-hover/js-class/intersection, video for scroll-driven/mousemove/auto-timer). Phase D requires `pixel-perfect-diff.md`.
 - **../pixel-perfect-diff.md** — Step 8 Phase D (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
+- **style-audit.md** — Post-generation class-level computed style comparison (ref vs impl). Catches wrong font-size, font-weight, missing SVGs, wrong images, spacing mismatches. Runs in parallel with Step 8.
 
 ## Sub-skills
 

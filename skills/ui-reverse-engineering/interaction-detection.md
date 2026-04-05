@@ -94,10 +94,54 @@ agent-browser eval "(() => JSON.stringify(window.__scrollTransitions || [], null
 | CSS transition values | Implement with `IntersectionObserver` + CSS transitions |
 | Complex WAAPI / stagger | **Invoke `transition-reverse-engineering` skill now.** Resume at Step 7 after `extracted.json` is saved. |
 
+### Detect mouse-tracking interactions
+
+Elements that follow the cursor position (image tooltips, custom cursors, parallax tilt, spotlight effects):
+
+```bash
+agent-browser eval "
+(() => {
+  // Find elements with mousemove listeners or cursor-driven positioning
+  const candidates = document.querySelectorAll('[class*=preview], [class*=tooltip], [class*=cursor], [class*=follow], [class*=hover-image]');
+
+  // Also detect by checking for absolutely-positioned hidden elements near interactive rows
+  const rows = document.querySelectorAll('a, [class*=row], [class*=card], [class*=item]');
+  const mouseTracked = [];
+  rows.forEach(row => {
+    const absChildren = [...row.querySelectorAll('*')].filter(el => {
+      const s = getComputedStyle(el);
+      return s.position === 'absolute' && s.pointerEvents === 'none' && el.offsetHeight > 20;
+    });
+    if (absChildren.length > 0) {
+      mouseTracked.push({
+        parent: row.tagName + '.' + (row.className?.split(' ')[0] || ''),
+        children: absChildren.map(c => ({
+          tag: c.tagName,
+          class: c.className?.slice(0, 40),
+          width: c.offsetWidth,
+          height: c.offsetHeight,
+          hasImage: !!c.querySelector('img'),
+        })),
+      });
+    }
+  });
+
+  return JSON.stringify({
+    candidates: candidates.length,
+    mouseTracked,
+  });
+})()
+"
+```
+
+If `mouseTracked` is non-empty → these elements follow the cursor on `mousemove`. Record in `interactions-detected.json` as `type: "mouse-follow"` with the parent selector and child dimensions.
+
+**Generation pattern:** Parent gets `onMouseMove` handler that reads `e.clientX/Y`, converts to element-relative coordinates, and sets `left`/`top` on the absolute child. Add `pointer-events: none` to the child.
+
 ### Capture hover state delta
 
 ```bash
-# Before hover — record baseline
+# Before hover — record baseline (including ALL children's stroke properties)
 agent-browser eval "
 (() => {
   const el = document.querySelector('.target');
@@ -109,14 +153,21 @@ agent-browser eval "
     color: s.color, filter: s.filter,
     borderRadius: s.borderRadius, border: s.border,
   };
-  return JSON.stringify(window.__before);
+  // Capture stroke properties on ALL SVG children (path, rect, circle, line)
+  window.__beforeStrokes = [...el.querySelectorAll('path, rect, circle, line')].map(p => ({
+    tag: p.tagName,
+    d: p.getAttribute('d')?.slice(0, 40),
+    strokeDasharray: getComputedStyle(p).strokeDasharray,
+    strokeDashoffset: getComputedStyle(p).strokeDashoffset,
+  }));
+  return JSON.stringify({ main: window.__before, strokes: window.__beforeStrokes });
 })()
 "
 
 agent-browser hover .target
 agent-browser wait 600
 
-# After hover — compute delta
+# After hover — compute delta (including stroke changes)
 agent-browser eval "
 (() => {
   const el = document.querySelector('.target');
@@ -132,7 +183,21 @@ agent-browser eval "
   Object.keys(after).forEach(k => {
     if (after[k] !== window.__before[k]) delta[k] = { from: window.__before[k], to: after[k] };
   });
-  return JSON.stringify({ transition: s.transition, delta }, null, 2);
+  // Compare stroke states
+  const afterStrokes = [...el.querySelectorAll('path, rect, circle, line')].map(p => ({
+    tag: p.tagName,
+    d: p.getAttribute('d')?.slice(0, 40),
+    strokeDasharray: getComputedStyle(p).strokeDasharray,
+    strokeDashoffset: getComputedStyle(p).strokeDashoffset,
+  }));
+  const strokeDelta = afterStrokes.map((a, i) => {
+    const b = window.__beforeStrokes[i] || {};
+    const changes = {};
+    if (a.strokeDasharray !== b.strokeDasharray) changes.strokeDasharray = { from: b.strokeDasharray, to: a.strokeDasharray };
+    if (a.strokeDashoffset !== b.strokeDashoffset) changes.strokeDashoffset = { from: b.strokeDashoffset, to: a.strokeDashoffset };
+    return Object.keys(changes).length ? { tag: a.tag, d: a.d, ...changes } : null;
+  }).filter(Boolean);
+  return JSON.stringify({ transition: s.transition, delta, strokeDelta }, null, 2);
 })()
 "
 ```
@@ -287,14 +352,125 @@ grep -E 'addEventListener|onClick|onMouseEnter|useEffect|motion\.|animate\(' \
 
 > **Security reminder:** Bundle analysis is **read-only**. Never run downloaded bundles via `node`, `eval`, or any other execution method. Only use `grep` to extract patterns.
 
-### JS scroll library detection (after bundle download)
+### Custom scroll engine detection (MANDATORY for all sites)
 
-After downloading bundles above, check for JS scroll library signatures:
+Many design-heavy sites override native scroll with a JS-driven scroll engine. This fundamentally changes how every scroll-dependent component works. **Detect before any scroll animation extraction.**
+
+**Step 1: Behavioral detection (no bundle needed)**
+
+```bash
+agent-browser eval "
+(() => {
+  const html = document.documentElement;
+  const body = document.body;
+  const htmlS = getComputedStyle(html);
+  const bodyS = getComputedStyle(body);
+
+  // Signal 1: overflow hidden on html/body = native scroll disabled
+  const nativeScrollDisabled = htmlS.overflow === 'hidden' || bodyS.overflow === 'hidden';
+
+  // Signal 2: a fixed/absolute full-viewport container wrapping all content
+  const wrappers = [...document.querySelectorAll('*')].filter(el => {
+    const s = getComputedStyle(el);
+    return (s.position === 'fixed' || s.position === 'absolute') &&
+           el.scrollHeight > window.innerHeight * 2 &&
+           el.offsetWidth >= window.innerWidth * 0.9;
+  });
+
+  // Signal 3: body.scrollHeight vs actual content height
+  const contentHeight = Math.max(...[...document.querySelectorAll('section, main, footer')]
+    .map(el => el.offsetTop + el.offsetHeight));
+
+  // Signal 4: transform-based scroll (translate3d on a wrapper)
+  const transformedWrappers = wrappers.filter(el => {
+    const t = el.style.transform || getComputedStyle(el).transform;
+    return t && t !== 'none';
+  });
+
+  return JSON.stringify({
+    nativeScrollDisabled,
+    wrapperCount: wrappers.length,
+    wrappers: wrappers.map(el => ({
+      tag: el.tagName,
+      class: el.className?.slice(0, 60),
+      scrollHeight: el.scrollHeight,
+      position: getComputedStyle(el).position,
+      transform: (el.style.transform || getComputedStyle(el).transform)?.slice(0, 60),
+    })),
+    bodyScrollHeight: body.scrollHeight,
+    contentHeight,
+    hasTransformScroll: transformedWrappers.length > 0,
+  });
+})()
+"
+```
+
+| Result | Meaning |
+|--------|---------|
+| `nativeScrollDisabled: true` + `hasTransformScroll: true` | **Custom scroll engine.** Site intercepts wheel/touch events, applies `translate3d` via rAF. |
+| `nativeScrollDisabled: false` + wrapper with Lenis/Locomotive class | **Known library.** Install and configure. |
+| `nativeScrollDisabled: false` + no wrappers | **Native scroll.** Use standard `window.scrollTo` / IntersectionObserver. |
+
+**Step 2: Parameter extraction (if custom scroll detected)**
+
+```bash
+# Dispatch a wheel event and measure the response
+agent-browser eval "
+(() => {
+  const wrapper = [...document.querySelectorAll('*')].find(el =>
+    getComputedStyle(el).position === 'fixed' && el.scrollHeight > window.innerHeight * 2);
+  if (!wrapper) return 'no wrapper';
+
+  const before = wrapper.style.transform;
+
+  // Dispatch wheel event
+  window.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true }));
+
+  // Measure after 1 frame vs 500ms to detect lerp
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      const after1frame = wrapper.style.transform;
+      setTimeout(() => {
+        const after500ms = wrapper.style.transform;
+        resolve(JSON.stringify({
+          before, after1frame, after500ms,
+          isLerped: after1frame !== after500ms,
+          wrapperClass: wrapper.className?.slice(0, 60),
+        }));
+      }, 500);
+    });
+  });
+})()
+"
+```
+
+If `isLerped: true` → the scroll uses an easing/lerp loop (not instant). Save the wrapper selector and lerp behavior to `scroll-engine.json`.
+
+**Step 3: Known library detection (after bundle download)**
 
 ```bash
 grep -liE 'new Lenis|smoothWheel|locomotive-scroll|ScrollSmoother|data-scroll' \
   tmp/ref/<component>/bundles/*.js && echo "JS scroll library detected" \
-  || echo "No JS scroll library found — CSS-only scroll behavior"
+  || echo "No known JS scroll library found"
+```
+
+**Step 4: Impact on other extraction steps**
+
+If custom scroll detected:
+- `window.scrollTo` will NOT work — use wheel events or directly manipulate the wrapper transform
+- `IntersectionObserver` may not fire — the wrapper moves via transform, not scroll position
+- All scroll-dependent animations (parallax, reveal, sticky) depend on the scroll engine's value stream
+- `position: fixed` elements inside the wrapper will be broken by the parent `transform` — check for portal escapes (see dom-extraction.md)
+
+Save → `tmp/ref/<component>/scroll-engine.json`:
+```json
+{
+  "type": "custom-lerp | lenis | locomotive | gsap-smoother | native",
+  "wrapper": ".scroll-container",
+  "nativeScrollDisabled": true,
+  "hasLerp": true,
+  "parameters": { "easeStrength": "estimated from lerp curve" }
+}
 ```
 
 ### Auto-timer detection (carousel, slideshow, rotating text)
@@ -396,6 +572,22 @@ agent-browser eval "
 | GSAP `ease: "power3.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: [0.16, 1, 0.3, 1]` |
 | GSAP `ease: "expo.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: 'bezier.expo'` |
 | GSAP `ease: "back.out(1.7)"` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `ease: [0.34, 1.56, 0.64, 1]` |
+
+### Cross-component DOM manipulation detection
+
+Some sites have components that directly modify OTHER components' DOM (e.g., an intro overlay setting `main.style.transform`, a menu provider reading footer position). These cross-component side effects are invisible to per-component extraction.
+
+```bash
+# Search bundles for querySelector + style manipulation patterns
+grep -oE 'querySelector\([^)]+\)\.(style\.\w+|classList\.(add|remove|toggle))' \
+  tmp/ref/<component>/bundles/*.js | head -20
+
+# Search for scroll-position-based state changes (auto-opening menus, etc.)
+grep -oE '(scrollTop|scrollY|getBoundingClientRect|offsetTop).*\b(open|close|show|hide|toggle|active)\b' \
+  tmp/ref/<component>/bundles/*.js | head -10
+```
+
+If found, record in `interactions-detected.json` as `type: "cross-component"` with source selector, target selector, and trigger condition. These require coordinated state management in the implementation (shared context, event bus, or direct DOM refs).
 
 ### Known issues
 

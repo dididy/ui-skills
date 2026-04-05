@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.0.14] - 2026-04-05
+
+### Added
+- **`ui-reverse-engineering`**: `dom-extraction.md` — portal-escaped element detection: finds `position: fixed` elements inside `transform`-ed scroll wrappers (broken by CSS spec). Detects elements rendered outside the wrapper (already portal-escaped) and elements inside (need portal in implementation). Results saved to `portal-candidates.json`.
+- **`ui-reverse-engineering`**: `dom-extraction.md` — inline SVG collection: extracts `outerHTML` verbatim for all `<svg>` elements (logos, icons, brandmarks). Never recreates SVGs from visual appearance. Results saved to `inline-svgs.json`.
+- **`ui-reverse-engineering`**: `style-extraction.md` — decorative SVG extraction: captures `position: absolute` / `aria-hidden` SVGs with full path data (`d`, `stroke-width`, `fill`, `strokeDasharray`).
+- **`ui-reverse-engineering`**: `style-extraction.md` — stroke-based hover animation detection: captures idle + active `stroke-dasharray`/`stroke-dashoffset` values on SVG children during hover state delta.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — mouse-tracking interaction detection: finds elements that follow cursor position (image tooltips, custom cursors, parallax tilt, spotlight effects) by detecting absolutely-positioned `pointer-events: none` children.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — hover state delta now captures `stroke-dasharray`/`stroke-dashoffset` on ALL SVG children (`path`, `rect`, `circle`, `line`), not just the parent element.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — custom scroll engine detection: detects `overflow: hidden` + `transform`-based scroll (rAF lerp), extracts wrapper selector and lerp behavior via wheel event dispatch. Known library detection (Lenis, GSAP ScrollSmoother, Locomotive). Impact rules for downstream extraction steps (IntersectionObserver, window.scrollTo, portal escapes). Results saved to `scroll-engine.json`.
+- **`ui-reverse-engineering`**: `interaction-detection.md` — cross-component DOM manipulation detection: finds `querySelector + style` patterns and scroll-position-based state changes in bundles. Records as `type: "cross-component"` in `interactions-detected.json`.
+- **`ui-reverse-engineering`**: `SKILL.md` — Step 6c pre-generation audit: typography scale table (consistent values per role), multi-state interaction table (idle + active values), decorative SVG inventory (verbatim paths). Gate requires all three artifacts before code generation.
+- **`ui-reverse-engineering`**: `component-generation.md` — Tailwind v4 custom font registration rule (`@theme` block, not `:root` CSS variables). `font-[var(--my-font)]` with comma-separated values does not work in Tailwind v4.
+- **`ui-reverse-engineering`**: `component-generation.md` — font size vw conversion formula (`vw = extractedPx / viewportWidth * 100`) with `clamp()` pattern.
+- **`ui-reverse-engineering`**: `component-generation.md` — custom scroll engine generation rules: rAF lerp loop, portal escape for fixed elements, scroll context for dependent components.
+- **`ui-reverse-engineering`**: `component-generation.md` — mouse-follow interaction generation pattern (`onMouseMove` + absolute child positioning).
+- **`ui-reverse-engineering`**: `component-generation.md` — SVG verbatim rule: never recreate from visual appearance, use `outerHTML` from `inline-svgs.json` with HTML→JSX attribute conversion.
+- **`ui-reverse-engineering`**: `animation-detection.md` — NEW: 3-phase motion detection document (idle capture → scroll capture → per-element tracking). Detects splash, auto-timers, parallax, scroll-zoom, clip-reveal, sticky, word-stagger.
+- **`ui-reverse-engineering`**: `style-audit.md` — NEW: post-generation class-level computed style comparison (ref vs impl). Catches wrong font-size, font-weight, missing SVGs, wrong images, spacing mismatches. Runs in parallel with Step 8.
+
+### Changed
+- **`ui-reverse-engineering`**: `SKILL.md` — Step 6b assembly list expanded with `portal-candidates.json`, `inline-svgs.json`, `scroll-engine.json`. Extraction gate checklist updated with new artifacts.
+- **`ui-reverse-engineering`**: `SKILL.md` — Reference Files section updated: `interaction-detection.md` scoped to Step 5; new `animation-detection.md` listed for Step 6; `style-audit.md` listed as parallel post-generation check.
+- **`ui-reverse-engineering`**: `component-generation.md` — input checklist expanded with `portal-candidates.json`, `inline-svgs.json`, `scroll-engine.json`, `typography-scale.json`, `interaction-states.json`, `decorative-svgs.json`.
+- **`ui-reverse-engineering`**: `component-generation.md` — mandatory typography scale consistency check before generation.
+- `plugin.json`, `marketplace.json` — version bumped to 0.0.14; description and keywords updated.
+- `README.md` — pipeline diagram updated; new sub-documents listed.
+
 ## [0.0.13] - 2026-04-03
 
 ### Added
