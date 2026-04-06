@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads visual assets (favicon, title, images) and extracts inline SVGs verbatim. Auto-detects responsive breakpoints via viewport sweep. Detects scroll behavior (scroll-snap, smooth scroll, overscroll-behavior) and extracts JS scroll library configs (Lenis, GSAP ScrollSmoother, Locomotive). Auto-detects custom scroll containers and portal-escaped fixed elements inside transform wrappers. Section-by-section viewport-resized screenshots. Animation detection pipeline: 3-phase motion detection (idle → scroll → per-element tracking). Mouse-follow interaction detection (parallax tilt, custom cursors, image tooltips). Stroke-based SVG hover animation extraction. Pre-generation audit: typography scale consistency, multi-state interaction table, decorative SVG inventory. Tailwind v4 custom font registration and viewport-relative font sizing. Verifies output with DOM clip screenshot pixel diff (AE/SSIM) as the Visual Gate; getComputedStyle numerical diagnosis always runs in parallel. Post-generation style audit compares class-level computed styles between ref and impl. Includes sub-skills for precise animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture & comparison, trigger-type-aware recording, and timestamp-based scroll crop.",
-      "version": "0.0.14",
+      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads visual assets and extracts inline SVGs verbatim. 5-bundle design token grouping (surface, shape, type, tone, motion) with covariance rules ensures bundled properties change together. 10-point design fidelity scoring loop for fix iteration guidance with rollback on regression. 6-stage pre-generation design audit: data inventory, role identification, grouping, layout direction, bundle verification, component boundaries. Auto-detects responsive breakpoints, scroll behavior, custom scroll containers, portal-escaped elements, mouse-follow interactions, and stroke-based SVG hover animations. Animation detection: 3-phase motion detection (idle → scroll → per-element tracking). Verifies output with scoring loop (diagnostic) + DOM clip screenshot pixel diff (completion gate). Post-generation style audit compares class-level computed styles. Includes sub-skills for animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture, and trigger-type-aware recording.",
+      "version": "0.0.15",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -88,7 +88,13 @@
         "style-audit",
         "decorative-svg",
         "tailwind-v4-font",
-        "vw-font-sizing"
+        "vw-font-sizing",
+        "design-bundle",
+        "covariance-rules",
+        "design-fidelity-score",
+        "pre-generation-audit",
+        "component-boundaries",
+        "scoring-loop"
       ]
     }
   ]

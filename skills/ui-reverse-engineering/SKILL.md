@@ -145,6 +145,7 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓                            structure.json + portal-candidates.json
   ↓                            + head.json + assets.json + inline-svgs.json
   ↓                            + styles.json + detected-breakpoints.json
+  ↓                            + design-bundles.json
   ↓                            + interactions-detected.json + scroll-engine.json
   ↓                            + animations-detected.json
   ↓                            → extracted.json (see Output section for schema)
@@ -175,6 +176,9 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │  □ Exists (even if 0 sticky elements)       │
   ↓  │  □ Container heights are exact values       │
   ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/design-bundles.json       │
+  ↓  │  □ Exists, 5 bundle types populated         │
+  ↓  │                                              │
   ↓  │ $ cat tmp/ref/<c>/scroll-engine.json        │
   ↓  │  □ Exists, type field populated             │
   ↓  │                                              │
@@ -191,57 +195,75 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │ If ANY fails → go back to failing step.     │
   ↓  └─────────────────────────────────────────────┘
   ↓
-6c. Pre-generation audit — Three checks before any code.
-  ↓   Skip any sub-step that does not apply to the extraction scope.
+6c. Pre-generation design audit — Six stages before any code.
+  ↓   Skip stages that don't apply to the extraction scope.
   ↓
-  ↓   a. TYPOGRAPHY SCALE TABLE (multi-section only)
-  ↓      Group all text elements from styles.json by visual role.
-  ↓      Populate only roles that exist — omit empty rows.
-  ↓      Elements with the same role MUST have identical values.
+  ↓   a. DATA INVENTORY
+  ↓      List all extracted data elements: text blocks, images, links,
+  ↓      forms, icons — count per section.
+  ↓      Save → tmp/ref/<c>/data-inventory.json
   ↓
-  ↓      | Role       | fontSize | fontWeight | fontFamily | lineHeight | letterSpacing |
-  ↓      |------------|----------|------------|------------|------------|---------------|
-  ↓      | (role)     | ?        | ?          | ?          | ?          | ?             |
+  ↓   b. ROLE IDENTIFICATION
+  ↓      Assign each element a role: CTA, navigation, content,
+  ↓      decoration, branding. Determines visual weight and
+  ↓      interaction priority.
+  ↓      Save → tmp/ref/<c>/element-roles.json
   ↓
-  ↓      If values vary by ≤1px within a role → site uses one token, pick the mode.
-  ↓      NEVER round extracted values. Use the exact px from getComputedStyle.
-  ↓      Save → tmp/ref/<c>/typography-scale.json
-  ↓      For single-section extractions: skip (no cross-section drift possible).
+  ↓   c. GROUPING + HIERARCHY
+  ↓      Group elements by visual proximity and semantic relationship.
+  ↓      Identify primary / secondary / tertiary information layers.
+  ↓      Save → tmp/ref/<c>/element-groups.json
   ↓
-  ↓   b. MULTI-STATE INTERACTION TABLE (if interactions exist)
-  ↓      For each interactive element in interactions-detected.json,
-  ↓      extract BOTH idle AND active state:
+  ↓   d. LAYOUT DIRECTION
+  ↓      Per group, decide layout:
+  ↓      - Vertical scroll → stacked sections (flex-col)
+  ↓      - Horizontal elements → flex-row or grid
+  ↓      - Mixed → grid with spanning
+  ↓      Save → tmp/ref/<c>/layout-decisions.json
   ↓
-  ↓      | Element     | Trigger | Property          | Idle value    | Active value    |
-  ↓      |-------------|---------|-------------------|---------------|-----------------|
-  ↓      | (selector)  | hover   | (css property)    | (extracted)   | (extracted)     |
+  ↓   e. DESIGN BUNDLE VERIFICATION
+  ↓      Verify all 5 bundles (surface / shape / type / tone / motion)
+  ↓      are consistent across groups with the same role.
+  ↓      Cross-check interaction-states and decorative-SVGs.
+  ↓      Required artifacts (from prior steps):
+  ↓        - design-bundles.json (Step 3 post-processing)
+  ↓        - interaction-states.json (Step 5 hover delta)
+  ↓        - decorative-svgs.json (Step 3 SVG extraction)
+  ↓      If any bundle has inconsistent values within a role,
+  ↓      pick the mode (most common value) — the site uses one token.
   ↓
-  ↓      For SVG children: also capture stroke-dasharray/offset if present.
-  ↓      Verify end-states are TERMINAL (element fully hidden/visible, not partial).
-  ↓      Save → tmp/ref/<c>/interaction-states.json
-  ↓      If zero interactions: save { "states": [] } and proceed.
-  ↓
-  ↓   c. DECORATIVE SVG INVENTORY (if decorative SVGs exist)
-  ↓      For each SVG with position:absolute, aria-hidden, or no text content:
-  ↓      - Copy outerHTML verbatim (NEVER approximate path d= attributes)
-  ↓      - Note if stroke-dasharray is animated (scroll-driven draw)
-  ↓      Save → tmp/ref/<c>/decorative-svgs.json
-  ↓      If zero decorative SVGs: save { "svgs": [] } and proceed.
+  ↓   f. COMPONENT BOUNDARIES
+  ↓      Decide React component split points:
+  ↓      - Each visual group with its own state → separate component
+  ↓      - Repeated patterns → shared component with props
+  ↓      - Static decoration → inline JSX (no separate component)
+  ↓      Save → tmp/ref/<c>/component-map.json
   ↓
   ↓  ┌─────────────────────────────────────────────┐
-  ↓  │ GATE: Pre-generation audit.                 │
+  ↓  │ GATE: Pre-generation design audit.          │
   ↓  │ (Skip for single-section/single-element)    │
   ↓  │                                              │
-  ↓  │ $ cat tmp/ref/<c>/typography-scale.json      │
-  ↓  │  □ Exists, roles have consistent values      │
+  ↓  │ $ cat tmp/ref/<c>/data-inventory.json        │
+  ↓  │  □ Exists, element counts per section        │
   ↓  │                                              │
-  ↓  │ $ cat tmp/ref/<c>/interaction-states.json    │
-  ↓  │  □ Exists (even if empty)                    │
+  ↓  │ $ cat tmp/ref/<c>/element-roles.json         │
+  ↓  │  □ Exists, each element has a role           │
   ↓  │                                              │
-  ↓  │ $ cat tmp/ref/<c>/decorative-svgs.json       │
-  ↓  │  □ Exists (even if empty)                    │
+  ↓  │ $ cat tmp/ref/<c>/element-groups.json        │
+  ↓  │  □ Exists, groups have hierarchy level       │
   ↓  │                                              │
-  ↓  │ If ANY fails → go back and extract.          │
+  ↓  │ $ cat tmp/ref/<c>/layout-decisions.json      │
+  ↓  │  □ Exists, each group has layout direction   │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/design-bundles.json        │
+  ↓  │  □ Exists, 5 bundle types populated          │
+  ↓  │  □ interaction-states.json exists             │
+  ↓  │  □ decorative-svgs.json exists                │
+  ↓  │                                              │
+  ↓  │ $ cat tmp/ref/<c>/component-map.json         │
+  ↓  │  □ Exists, component boundaries defined      │
+  ↓  │                                              │
+  ↓  │ If ANY fails → go back and produce it.       │
   ↓  └─────────────────────────────────────────────┘
   ↓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

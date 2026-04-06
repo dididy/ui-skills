@@ -207,3 +207,91 @@ Both must pass before declaring done.
 ```
 
 If style audit finds mismatches that visual verification missed (e.g., `font-size: 15px vs 16px`), fix them and re-verify.
+
+---
+
+## 10-Point Design Fidelity Score
+
+Diagnostic scoring system for fix iteration guidance. This does NOT replace pixel-perfect-diff — it tells you **what to fix first**. pixel-perfect-diff tells you **when you're done**.
+
+### Checklist (1 point each)
+
+| # | Category | What to check | Detection |
+|---|----------|--------------|-----------|
+| 1 | **Typography scale** | type bundles match: fontSize, fontWeight, fontFamily, lineHeight, letterSpacing | Compare impl vs ref `design-bundles.json` type entries |
+| 2 | **Color tokens** | tone bundles match: text color, bg color, border color | Compare impl vs ref tone entries |
+| 3 | **Spacing system** | shape bundles match: padding, margin, gap, borderRadius | Compare impl vs ref shape entries |
+| 4 | **Surface depth** | surface bundles match: boxShadow, border, backgroundColor layers | Compare impl vs ref surface entries |
+| 5 | **Layout structure** | display, flexDirection, alignItems, justifyContent, grid correct | getComputedStyle layout props comparison |
+| 6 | **Responsive behavior** | layout transitions match at all detected breakpoints | Viewport resize + spot-check at breakpoint boundaries |
+| 7 | **Interaction states** | hover/active/focus deltas match interaction-states.json | Hover eval + getComputedStyle before/after |
+| 8 | **Motion timing** | motion bundles match: duration + easing correct | Compare impl vs ref motion entries |
+| 9 | **Asset fidelity** | SVG paths verbatim, images correct src, favicon present | DOM check: SVG `d` attr exact match, img src |
+| 10 | **Visual completeness** | No missing elements, z-index order correct, no overflow bugs | Element count ref vs impl, z-index comparison |
+
+### Scoring eval script
+
+Run on the implementation page after each fix iteration:
+
+```bash
+agent-browser --session <impl-session> eval "(() => {
+  const score = { total: 0, breakdown: {}, failures: [] };
+
+  // 1. Typography — check font-size consistency across headings
+  const headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
+  let typoPass = true;
+  headings.forEach(h => {
+    const s = getComputedStyle(h);
+    // Compare against expected from design-bundles — agent fills these from ref data
+    // If any heading fontSize/weight deviates from ref bundle → fail
+  });
+  score.breakdown.typography = typoPass ? 1 : 0;
+  score.total += score.breakdown.typography;
+
+  // 2-10: Similar pattern — compare computed style categories against ref bundles
+  // Each category: pass = 1, fail = 0, with failure details
+
+  return JSON.stringify(score, null, 2);
+})()"
+```
+
+> **Note:** The eval script above is a template. The agent must fill in the expected reference values from `design-bundles.json` before running. Each category compares impl getComputedStyle against the corresponding ref bundle values.
+
+### Scoring loop protocol
+
+1. **Run scoring at the START of each Step 8 fix iteration** (before pixel-perfect-diff)
+2. **Save score** to `tmp/ref/<component>/score-history.json` (append):
+   ```json
+   [
+     { "iteration": 1, "score": 6, "breakdown": { "typography": 1, "colors": 0 }, "failures": ["..."] },
+     { "iteration": 2, "score": 8, "breakdown": { "typography": 1, "colors": 1 }, "failures": ["..."] }
+   ]
+   ```
+3. **Score regression → rollback:**
+   If `score[n] < score[n-1]`, the last fix made things worse.
+   ```bash
+   git checkout -- src/components/<Component>.tsx
+   ```
+   Then retry with a different approach.
+4. **Fix priority:** Address the lowest-scoring category first. Within a category, fix the largest delta first.
+5. **Escalation:** If after 3 iterations the score has not reached 9+, escalate to user with:
+   - Current score + breakdown
+   - Score history (trend)
+   - Top 3 remaining failures with specific values (e.g., "font-size: 24px should be 32px on .hero h1")
+6. **Completion:** Score ≥ 9 is a prerequisite for running the final pixel-perfect-diff gate. Do not run pixel-perfect-diff until scoring passes 9+.
+
+### Relationship to pixel-perfect-diff
+
+```
+  Fix iteration loop:
+  ┌─────────────────────────────────────────────┐
+  │  1. Run 10-point score                      │ ← "what to fix"
+  │  2. Score < previous? Rollback              │
+  │  3. Score ≥ 9?                              │
+  │     NO → fix lowest category                │──→ back to 1
+  │     YES ↓                                   │
+  │  4. Run pixel-perfect-diff                  │ ← "are we done?"
+  │     FAIL → fix specific element             │──→ back to 1
+  │     PASS → DONE                             │
+  └─────────────────────────────────────────────┘
+```

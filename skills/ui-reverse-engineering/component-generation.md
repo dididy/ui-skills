@@ -20,6 +20,8 @@
 - [ ] `typography-scale.json` — consistent values per role (from Step 6c-a)
 - [ ] `interaction-states.json` — idle + active values per interactive element (from Step 6c-b)
 - [ ] `decorative-svgs.json` — verbatim SVG paths (from Step 6c-c)
+- [ ] `design-bundles.json` — 5 co-varying property bundles (from Step 3 post-processing)
+- [ ] `component-map.json` — component boundaries and nesting (from Step 6c-f)
 
 **If you find yourself writing a value that is not in the extracted data, STOP.** You are guessing. Go back and extract it.
 
@@ -217,6 +219,28 @@ useEffect(() => {
 ## Iteration (update, not rewrite)
 
 When refining after visual verification, make **targeted edits** — do not regenerate the entire component. Identify the specific mismatched property and fix only that.
+
+## Bundle covariance rules (MANDATORY during fix iterations)
+
+When fixing a visual mismatch, check if the property belongs to a design bundle (from `design-bundles.json`). If it does, verify ALL sibling properties in that bundle still match the reference.
+
+**Never change a property in isolation if it belongs to a bundle.**
+
+| If you change... | Also verify... | Bundle |
+|-----------------|---------------|--------|
+| `backgroundColor` | `border`, `boxShadow` | surface |
+| `borderRadius` | `padding` (all sides) | shape |
+| `fontSize` | `fontWeight`, `fontFamily`, `lineHeight`, `letterSpacing` | type |
+| `color` | `backgroundColor`, `borderColor` | tone |
+| `transitionDuration` | `transitionTimingFunction` | motion |
+
+**How to check:** Find the element's bundle ID in `design-bundles.json`. All elements sharing that bundle ID must have identical values for all properties in the bundle. If your fix changes one element's value, the bundle is broken — either fix all elements in the bundle, or your diagnosis is wrong.
+
+**Anti-patterns this prevents:**
+- Fixing `font-size: 15px → 16px` on one heading while leaving `line-height` at the old ratio → text looks cramped
+- Fixing `border-radius: 8px → 12px` without adjusting `padding` → element looks disproportionate
+- Fixing `background-color` on a card without matching `box-shadow` → card loses depth relationship
+- Fixing `transition-duration: 0.2s → 0.3s` without checking `easing` → timing feels wrong despite correct duration
 
 ## Animation library → wiring pattern mapping
 

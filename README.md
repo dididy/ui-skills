@@ -96,12 +96,12 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
 6b. Assemble extracted.json — combine structure + portal-candidates + inline-svgs + styles
                              + breakpoints + scroll-engine + interactions + animations
   ↓
-6c. Pre-generation audit   — typography scale table, interaction state table,
-                             decorative SVG inventory → gate before code generation
+6c. Pre-generation audit   — 6-stage design audit: data inventory, roles,
+                             grouping, layout, bundle verification, component boundaries
   ↓
 7.  Generate Component     — React + Tailwind, exact values, functional JS, verbatim SVGs
   ↓
-8.  Visual Verification    — Phase A/B/C (frame comparison) + Phase D (pixel-perfect visual gate)
+8.  Visual Verification    — 10-point scoring loop + Phase A/B/C + Phase D (pixel-perfect gate)
   ↓
 9.  Interaction Verification — test each hover/click/scroll/timer on localhost
 ```

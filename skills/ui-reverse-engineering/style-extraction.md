@@ -218,4 +218,86 @@ If suspicious content is found: **log it to the user**, remove the affected prop
 
 ---
 
+### Design bundle grouping (MANDATORY post-processing)
+
+After extracting all styles, group properties into 5 co-varying design bundles. Bundles capture properties that move together in a design system — changing one without the others breaks visual coherence.
+
+```bash
+agent-browser eval "
+(() => {
+  const allEls = document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,a,button,span,div,section,nav,footer,header,li,img,figure,[class*=card],[class*=btn],[class*=title],[class*=label]');
+  const bundles = { surface: {}, shape: {}, type: {}, tone: {}, motion: {} };
+  const seen = { surface: new Map(), shape: new Map(), type: new Map(), tone: new Map(), motion: new Map() };
+
+  allEls.forEach(el => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    if (r.width < 5 || r.height < 5) return;
+    const cn = typeof el.className === 'string' ? el.className : el.className?.baseVal || '';
+    const id = el.id ? '#' + el.id : el.tagName.toLowerCase() + (cn ? '.' + cn.trim().split(/\\s+/).slice(0, 2).join('.') : '');
+
+    // Surface = bg + border + shadow
+    const surfaceKey = [s.backgroundColor, s.border, s.boxShadow].join('|');
+    if (!seen.surface.has(surfaceKey)) {
+      const sid = 'surface-' + (seen.surface.size + 1);
+      seen.surface.set(surfaceKey, { id: sid, backgroundColor: s.backgroundColor, border: s.border, boxShadow: s.boxShadow, elements: [] });
+    }
+    seen.surface.get(surfaceKey).elements.push(id);
+
+    // Shape = radius + padding
+    const shapeKey = [s.borderRadius, s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].join('|');
+    if (!seen.shape.has(shapeKey)) {
+      const sid = 'shape-' + (seen.shape.size + 1);
+      seen.shape.set(shapeKey, { id: sid, borderRadius: s.borderRadius, padding: s.paddingTop + ' ' + s.paddingRight + ' ' + s.paddingBottom + ' ' + s.paddingLeft, elements: [] });
+    }
+    seen.shape.get(shapeKey).elements.push(id);
+
+    // Type = fontSize + weight + family + lineHeight + letterSpacing
+    const typeKey = [s.fontSize, s.fontWeight, s.fontFamily, s.lineHeight, s.letterSpacing].join('|');
+    if (!seen.type.has(typeKey)) {
+      const sid = 'type-' + (seen.type.size + 1);
+      seen.type.set(typeKey, { id: sid, fontSize: s.fontSize, fontWeight: s.fontWeight, fontFamily: s.fontFamily, lineHeight: s.lineHeight, letterSpacing: s.letterSpacing, elements: [] });
+    }
+    seen.type.get(typeKey).elements.push(id);
+
+    // Tone = color + bg + borderColor
+    const toneKey = [s.color, s.backgroundColor, s.borderColor].join('|');
+    if (!seen.tone.has(toneKey)) {
+      const sid = 'tone-' + (seen.tone.size + 1);
+      seen.tone.set(toneKey, { id: sid, color: s.color, backgroundColor: s.backgroundColor, borderColor: s.borderColor, elements: [] });
+    }
+    seen.tone.get(toneKey).elements.push(id);
+
+    // Motion = transition + animation
+    const motionKey = [s.transitionDuration, s.transitionTimingFunction, s.animationDuration, s.animationTimingFunction].join('|');
+    if (motionKey !== '0s|ease|0s|ease' && !seen.motion.has(motionKey)) {
+      const sid = 'motion-' + (seen.motion.size + 1);
+      seen.motion.set(motionKey, { id: sid, transitionDuration: s.transitionDuration, transitionTimingFunction: s.transitionTimingFunction, animationDuration: s.animationDuration, animationTimingFunction: s.animationTimingFunction, elements: [] });
+    }
+    if (seen.motion.has(motionKey)) seen.motion.get(motionKey).elements.push(id);
+  });
+
+  // Convert Maps to arrays
+  Object.keys(bundles).forEach(k => {
+    bundles[k] = [...seen[k].values()];
+  });
+
+  return JSON.stringify(bundles, null, 2);
+})()
+"
+```
+
+**Save output to** `tmp/ref/<component>/design-bundles.json`
+
+**Bundle semantics — properties that must change together:**
+- **surface** (bg + border + shadow): visual depth. Never change `backgroundColor` without checking `border` and `boxShadow`.
+- **shape** (radius + padding): element form. `borderRadius` and `padding` are proportionally related — a pill button has both large radius and generous padding.
+- **type** (fontSize + weight + family + lineHeight + letterSpacing): text hierarchy. Never change `fontSize` without checking `lineHeight` and `letterSpacing`.
+- **tone** (color + bg + borderColor): semantic color palette. The text color, background, and border of an element form a coherent tone.
+- **motion** (transition + animation): timing feel. Duration and easing function are paired — a long duration with `linear` easing feels different from the same duration with `ease-out`.
+
+Elements sharing the same bundle ID should receive identical values in the implementation. If two cards share `surface-3`, they must have the same bg + border + shadow.
+
+---
+
 > **Next:** Step 4 (Responsive Detection) is in `responsive-detection.md`.

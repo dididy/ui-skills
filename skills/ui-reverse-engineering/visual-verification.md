@@ -336,10 +336,13 @@ Compare at minimum: start frame, every 6th frame during transition (= 100ms at 6
 ### Fix protocol
 
 **For each ❌:**
-1. Write one sentence naming the root cause before touching any code: _"The gap exists because X"_
-2. If you cannot name it, run `agent-browser eval` to inspect computed styles at that moment
-3. Targeted fix → re-run Phase B only (the specific capture type that failed) → compare affected frames
-4. If the same fix has been tried twice without result, the diagnosis was wrong — re-instrument
+1. **Run 10-point score first** (see `style-audit.md` scoring section). This tells you what category to fix.
+2. Write one sentence naming the root cause before touching any code: _"The gap exists because X"_
+3. Check if the property belongs to a design bundle (`design-bundles.json`). If yes, verify all sibling properties in the bundle (see `component-generation.md` covariance rules).
+4. If you cannot name the cause, run `agent-browser eval` to inspect computed styles at that moment
+5. Targeted fix → re-run scoring → re-run the specific capture that failed → compare
+6. **Score regression → rollback:** If the 10-point score drops after a fix, `git checkout` the component and try a different approach
+7. If the same fix has been tried twice without result, the diagnosis was wrong — re-instrument
 
 ### Phase D: Pixel-Perfect Visual Gate (MANDATORY)
 
@@ -368,12 +371,21 @@ Phase D gate:
 ### Completion gate
 
 ```
-COMPLETION = C1 all ✅ AND C2 all ✅ AND C3 all ✅
+COMPLETION = 10-point score ≥ 9
+             AND C1 all ✅ AND C2 all ✅ AND C3 all ✅
              AND Phase D Visual Gate all pass
              AND Phase D mismatches = 0
 
+Fix iteration loop:
+  1. Run 10-point score (style-audit.md)
+  2. Score < previous iteration? → rollback, retry differently
+  3. Score < 9? → fix lowest category → re-run from 1
+  4. Score ≥ 9 → run Phase D pixel-perfect-diff
+  5. Phase D fail? → fix specific element → re-run from 1
+  6. Phase D pass → DONE
+
 Any single ❌ = NOT DONE.
-Max 3 full iterations before escalating to user.
+Max 3 full iterations before escalating to user with score breakdown.
 ```
 
 **Before declaring done — entry point check:**

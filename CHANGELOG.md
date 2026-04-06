@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.15] - 2026-04-06
+
+### Added
+- **`ui-reverse-engineering`**: `style-extraction.md` — design bundle grouping: post-processing step groups CSS properties into 5 co-varying bundles (surface, shape, type, tone, motion). Deduplicates identical bundles and assigns IDs. Results saved to `design-bundles.json`.
+- **`ui-reverse-engineering`**: `component-generation.md` — bundle covariance rules: when fixing a property during iterations, all sibling properties in the same bundle must be verified. Prevents isolated fixes that break visual coherence (e.g., changing fontSize without lineHeight).
+- **`ui-reverse-engineering`**: `style-audit.md` — 10-point design fidelity scoring: diagnostic checklist (typography, colors, spacing, surface, layout, responsive, interactions, motion, assets, completeness). Runs at each fix iteration to guide priority. Score regression triggers rollback. 3 iterations without 9+ triggers user escalation.
+- **`ui-reverse-engineering`**: `SKILL.md` — Step 6c expanded from 3-check audit to 6-stage pre-generation design audit: data inventory, role identification, grouping + hierarchy, layout direction, design bundle verification, component boundaries. Each stage produces a JSON artifact.
+
+### Changed
+- **`ui-reverse-engineering`**: `visual-verification.md` — fix protocol updated: 10-point scoring runs first to guide fix direction, covariance rules checked before committing changes, score regression triggers rollback.
+- **`ui-reverse-engineering`**: `visual-verification.md` — completion gate updated: score ≥ 9 required before running pixel-perfect-diff.
+- **`ui-reverse-engineering`**: `SKILL.md` — Step 6b assembly list includes `design-bundles.json`. Extraction gate includes bundle validation.
+- **`ui-reverse-engineering`**: `component-generation.md` — input checklist includes `design-bundles.json` and `component-map.json`.
+- `plugin.json`, `marketplace.json` — version bumped to 0.0.15; description and keywords updated.
+- `README.md` — pipeline diagram updated with 6-stage audit and scoring loop.
+
 ## [0.0.14] - 2026-04-05
 
 ### Added
