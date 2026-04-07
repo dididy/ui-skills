@@ -353,7 +353,7 @@ C1–C3 catches layout and motion mismatches but cannot catch subtle numerical d
 - `font-weight: 400` vs `600` (subtle at small sizes)
 - `padding: 2rem` vs `3rem` (hard to judge without a ruler)
 
-Phase D runs **in parallel with C1** (both use the static loaded page). Phase 1 and Phase 2 always both run — Phase 2 catches sub-pixel mismatches (`font-size: 15px vs 16px`, `letter-spacing` 미세 차이) that pass the Visual Gate.
+Phase D runs **in parallel with C1** (both use the static loaded page). Phase 1 and Phase 2 always both run — Phase 2 catches sub-pixel mismatches (`font-size: 15px vs 16px`, `letter-spacing` micro-differences) that pass the Visual Gate.
 
 **For each major section of the component:**
 

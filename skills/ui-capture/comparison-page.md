@@ -16,8 +16,8 @@ The diff JSON must be embedded in the compare.html output (see HTML structure be
 Gate before generating compare.html:
 ```
 □ pixel-perfect-diff.json exists at tmp/ref/capture/pixel-perfect-diff.json
-□ 모든 elements의 status = "pass" (Visual Gate 기준)
-□ mismatches = 0 (Numerical Diagnosis 기준)
+□ All elements status = "pass" (Visual Gate criterion)
+□ mismatches = 0 (Numerical Diagnosis criterion)
 ```
 
 Both must pass. If Visual Gate fails or mismatches > 0 → fix CSS → re-run Phase 1 + Phase 2 → THEN generate compare.html.
@@ -139,7 +139,7 @@ For each `css-hover`, `js-class` region — show idle and active states as paire
 </div>
 ```
 
-> idle/active 각각 Visual Gate(clip screenshot diff)를 통과해야 한다. idle은 통과했지만 active가 실패하는 경우가 흔함 — hover 색상, transform, shadow 오류.
+> Both idle and active must pass the Visual Gate (clip screenshot diff). It's common for idle to pass while active fails — hover color, transform, shadow errors.
 
 ## Scroll-Driven States section
 

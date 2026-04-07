@@ -85,9 +85,9 @@ If hero is still visible, increase crop_t by 1.0s and reconvert. Repeat until ta
 
 ## Step 2B: Scroll transitions
 
-두 단계로 진행한다: **탐색(영상)** → **검증(clip screenshot)**.
+Two phases: **exploration (video)** → **verification (clip screenshot)**
 
-### Step 2B-1: 탐색 — 영상으로 변화 구간 파악
+### Step 2B-1: Exploration — identify transition range via video
 
 ```bash
 agent-browser --session <project> record start tmp/ref/capture/transitions/ref/<name>.webm
@@ -118,17 +118,17 @@ agent-browser --session <project> record stop
 
 **Validate:** `ffprobe -v quiet -show_entries format=duration -of csv=p=0 <file>` — must be > 2s and < 30s.
 
-영상을 Read 도구로 열어 확인:
-- 변화가 시작되는 스크롤 y값 (`trigger_y`)
-- 변화가 완전히 끝나는 스크롤 y값 (`settled_y`)
-- 중간 지점 y값 (`mid_y = (trigger_y + settled_y) / 2`)
+Open the video with the Read tool to confirm:
+- Scroll y value where change begins (`trigger_y`)
+- Scroll y value where change fully ends (`settled_y`)
+- Midpoint y value (`mid_y = (trigger_y + settled_y) / 2`)
 
-### Step 2B-2: 검증 — clip screenshot으로 정밀 비교
+### Step 2B-2: Verification — precise comparison via clip screenshots
 
-탐색에서 파악한 y값으로 3개 상태를 clip screenshot 캡처한다.
+Capture 3 states as clip screenshots at y values identified during exploration.
 
 ```bash
-# before: 변화 시작 직전
+# before: just before change begins
 agent-browser --session <project> eval "(() => window.scrollTo(0, <trigger_y - 50>))()"
 agent-browser --session <project> wait 500
 agent-browser --session <project> eval "(() => {
@@ -139,7 +139,7 @@ agent-browser --session <project> eval "(() => {
 agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> \
   tmp/ref/capture/clip/ref/<name>-before.png
 
-# mid: 변화 중간 지점 (rect 재측정 — scroll 위치에 따라 transform이 바뀌어 크기가 달라질 수 있음)
+# mid: midpoint of change (re-measure rect — transform may change size depending on scroll position)
 agent-browser --session <project> eval "(() => window.scrollTo(0, <mid_y>))()"
 agent-browser --session <project> wait 500
 agent-browser --session <project> eval "(() => {
@@ -150,7 +150,7 @@ agent-browser --session <project> eval "(() => {
 agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> \
   tmp/ref/capture/clip/ref/<name>-mid.png
 
-# after: 변화 완료 후
+# after: after change completes
 agent-browser --session <project> eval "(() => window.scrollTo(0, <settled_y + 50>))()"
 agent-browser --session <project> wait 500
 agent-browser --session <project> eval "(() => {
@@ -162,23 +162,23 @@ agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> \
   tmp/ref/capture/clip/ref/<name>-after.png
 ```
 
-> **mid 상태의 역할:** before/after만 비교하면 이징 커브가 맞는지 알 수 없다. mid에서 transform/opacity 값이 정확히 50%인지 확인함으로써 linear vs ease-in-out 같은 이징 차이를 잡아낼 수 있다.
+> **Role of mid state:** Comparing only before/after cannot verify easing curves. Checking whether transform/opacity values are exactly 50% at mid catches easing differences like linear vs ease-in-out.
 
-**impl도 동일하게 반복** (`ref` → `impl` 경로 변경, 동일한 y값 사용).
+**Repeat identically for impl** (change ref → impl in paths, use the same y values).
 
 ---
 
 ## Step 2C: Hover / interactive transitions
 
-**동영상 대신 eval + clip screenshot으로 idle/active 두 상태를 캡처한다.**
-동영상은 transition 중간 과정이 중요할 때만 사용 — 대부분의 hover/class/intersection은 두 상태 비교로 충분하다.
+**Capture idle/active two states via eval + clip screenshot instead of video.**
+Use video only when mid-transition frames matter — most hover/class/intersection comparisons need only two states.
 
 **Choose activation method based on `triggerType`:**
 
 ### css-hover
 
 ```bash
-# 요소 위치 확인
+# Confirm element position
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.scrollIntoView({ block: 'center' });
@@ -187,12 +187,12 @@ agent-browser --session <project> eval "(() => {
 })()"
 agent-browser --session <project> wait 500
 
-# idle 상태 캡처
+# Capture idle state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/hover-<name>-idle.png
 
-# hover 상태 강제 적용
+# Force hover state
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -200,12 +200,12 @@ agent-browser --session <project> eval "(() => {
 })()"
 agent-browser --session <project> wait <transitionDuration + 100>
 
-# hover 상태 캡처
+# Capture hover state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/hover-<name>-active.png
 
-# hover 해제
+# Release hover
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
@@ -213,7 +213,7 @@ agent-browser --session <project> eval "(() => {
 })()"
 ```
 
-> **CSS `:hover` pseudo-class는 JS 이벤트로 트리거되지 않는 경우가 있다.** 그럴 때는 `agent-browser hover <selector>`로 CDP-level hover를 적용한 직후 screenshot:
+> **CSS `:hover` pseudo-class may not be triggered by JS events.** In that case, use `agent-browser hover <selector>` for CDP-level hover, then screenshot immediately:
 > ```bash
 > agent-browser --session <project> hover <unique-selector>
 > agent-browser --session <project> wait <transitionDuration + 100>
@@ -224,7 +224,7 @@ agent-browser --session <project> eval "(() => {
 ### js-class (e.g. flip card toggled by JS class)
 
 ```bash
-# 요소 위치 확인
+# Confirm element position
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.scrollIntoView({ block: 'center' });
@@ -233,23 +233,23 @@ agent-browser --session <project> eval "(() => {
 })()"
 agent-browser --session <project> wait 500
 
-# idle 상태 캡처
+# Capture idle state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-idle.png
 
-# active 상태 강제 적용
+# Force active state
 agent-browser --session <project> eval "(() => {
   document.querySelector('<selector>').classList.add('<triggerClass>');
 })()"
 agent-browser --session <project> wait <transitionDuration + 100>
 
-# active 상태 캡처
+# Capture active state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-active.png
 
-# 원래 상태로 복원
+# Restore original state
 agent-browser --session <project> eval "(() => {
   document.querySelector('<selector>').classList.remove('<triggerClass>');
 })()"
@@ -258,7 +258,7 @@ agent-browser --session <project> eval "(() => {
 ### intersection (scroll-triggered entry animation)
 
 ```bash
-# reset: in-view 상태 제거
+# reset: remove in-view state
 agent-browser --session <project> eval "(() => {
   document.querySelectorAll('[data-in-view]').forEach(el => el.dataset.inView = 'false');
   document.querySelectorAll('.in-view, .is-visible, .animate').forEach(el => {
@@ -266,7 +266,7 @@ agent-browser --session <project> eval "(() => {
   });
 })()"
 
-# 요소 위치 확인 (reset 후)
+# Confirm element position (after reset)
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.scrollIntoView({ block: 'center' });
@@ -275,12 +275,12 @@ agent-browser --session <project> eval "(() => {
 })()"
 agent-browser --session <project> wait 300
 
-# before-animate 상태 캡처 (클래스 없는 상태)
+# Capture before-animate state (without class)
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-before.png
 
-# in-view 상태 강제 적용
+# Force in-view state
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.classList.add('in-view');
@@ -289,18 +289,18 @@ agent-browser --session <project> eval "(() => {
 })()"
 agent-browser --session <project> wait <transitionDuration + 100>
 
-# after-animate 상태 캡처
+# Capture after-animate state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-after.png
 ```
 
-> **IntersectionObserver가 자체 클래스를 추가하는 경우:** 클래스 이름을 먼저 확인:
+> **If IntersectionObserver adds its own class:** Check the class name first:
 > ```bash
 > agent-browser eval "document.querySelector('<selector>').className"
-> # 스크롤해서 in-view로 만든 후 다시 확인
+> # Scroll to trigger in-view, then check again
 > ```
-> 확인한 클래스명으로 위 eval을 조정한다.
+> Adjust the eval above with the confirmed class name.
 
 ---
 

@@ -256,7 +256,7 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │  □ Exists, each group has layout direction   │
   ↓  │                                              │
   ↓  │ $ cat tmp/ref/<c>/design-bundles.json        │
-  ↓  │  □ Exists, 5 bundle types populated          │
+  ↓  │  □ Bundles consistent within same role       │
   ↓  │  □ interaction-states.json exists             │
   ↓  │  □ decorative-svgs.json exists                │
   ↓  │                                              │
@@ -297,7 +297,7 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │       "status": "pass" (idle + active)       │
   ↓  │  □ Phase D Numerical: mismatches = 0         │
   ↓  │                                              │
-  ↓  │ "거의 동일" (approximately same) = FAIL.    │
+  ↓  │ "Approximately same" = FAIL.                │
   ↓  │ Visual Gate PASS = PASS.                     │
   ↓  │                                              │
   ↓  │ If ANY fail:                                 │
@@ -306,7 +306,8 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  │  3. Re-run Phase B + Phase D only           │
   ↓  │  4. Max 3 full iterations                   │
   ↓  │                                              │
-  ↓  │ COMPLETION = C1+C2+C3 all ✅ AND            │
+  ↓  │ COMPLETION = 10-point score ≥ 9 AND          │
+  ↓  │   C1+C2+C3 all ✅ AND                      │
   ↓  │   Phase D Visual Gate all pass              │
   ↓  │   AND Phase D mismatches = 0                │
   ↓  │ Nothing else counts as "done".               │

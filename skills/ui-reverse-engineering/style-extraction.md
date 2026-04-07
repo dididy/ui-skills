@@ -226,7 +226,6 @@ After extracting all styles, group properties into 5 co-varying design bundles. 
 agent-browser eval "
 (() => {
   const allEls = document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,a,button,span,div,section,nav,footer,header,li,img,figure,[class*=card],[class*=btn],[class*=title],[class*=label]');
-  const bundles = { surface: {}, shape: {}, type: {}, tone: {}, motion: {} };
   const seen = { surface: new Map(), shape: new Map(), type: new Map(), tone: new Map(), motion: new Map() };
 
   allEls.forEach(el => {
@@ -278,7 +277,8 @@ agent-browser eval "
   });
 
   // Convert Maps to arrays
-  Object.keys(bundles).forEach(k => {
+  const bundles = {};
+  Object.keys(seen).forEach(k => {
     bundles[k] = [...seen[k].values()];
   });
 

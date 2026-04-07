@@ -75,11 +75,11 @@ Phase 2B–2E: Capture Transitions — Read capture-transitions.md, execute per 
   │                                      ↓
   │                                    Phase 4A: Pixel-Perfect Diff
   │                                      ↓
-  │                                    Phase 4B: compare.html (원본 vs 클론)
+  │                                    Phase 4B: compare.html (original vs clone)
   │                                      ↓
   │                                    Phase 5: Completion Gate
   │
-  └── NO (standalone) ──────────────→ Phase R: report.html (원본 분석 리포트)
+  └── NO (standalone) ──────────────→ Phase R: report.html (source analysis report)
                                        ↓
                                      Phase 5: User Review
 ```

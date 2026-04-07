@@ -17,27 +17,21 @@
 - [ ] `scroll-engine.json` — custom scroll type + parameters (from Step 5/6)
 - [ ] Keyframes or `extracted.json` from transition-reverse-engineering (if any)
 - [ ] Reference frames exist in `tmp/ref/<component>/frames/ref/` (from Phase 1)
-- [ ] `typography-scale.json` — consistent values per role (from Step 6c-a)
-- [ ] `interaction-states.json` — idle + active values per interactive element (from Step 6c-b)
-- [ ] `decorative-svgs.json` — verbatim SVG paths (from Step 6c-c)
 - [ ] `design-bundles.json` — 5 co-varying property bundles (from Step 3 post-processing)
+- [ ] `interaction-states.json` — idle + active values per interactive element (from Step 5)
+- [ ] `decorative-svgs.json` — verbatim SVG paths (from Step 3 SVG extraction)
 - [ ] `component-map.json` — component boundaries and nesting (from Step 6c-f)
 
 **If you find yourself writing a value that is not in the extracted data, STOP.** You are guessing. Go back and extract it.
 
-## Typographic scale consistency check (MANDATORY before generation)
+## Design bundle consistency check (MANDATORY before generation)
 
-Before generating code, build a **typography scale table** from `styles.json`. Group text elements by role:
+Before generating code, verify `design-bundles.json` (from Step 3 post-processing). Elements sharing the same bundle ID must receive identical values in the implementation.
 
-| Role | Elements | fontSize | fontWeight | fontFamily | lineHeight | letterSpacing |
-|------|----------|----------|------------|------------|------------|---------------|
-| Section title | All H2 section headings | ? | ? | ? | ? | ? |
-| Body heading | All large headings (H1, P.heading) | ? | ? | ? | ? | ? |
-| Button label | All CTA buttons/links | ? | ? | ? | ? | ? |
-| Body text | Paragraphs, descriptions | ? | ? | ? | ? | ? |
-| Caption | Small labels, meta text | ? | ? | ? | ? | ? |
-
-**Consistency rule:** Elements with the same visual role should have identical typography values across all sections. If the extracted values are consistent (e.g., all section titles share the same px value), use that exact value everywhere. If they vary by ≤1px, the site likely uses a single token — pick the most common value.
+**Key checks:**
+- **type bundles:** Elements with the same type bundle ID (e.g., `type-1`) must have identical fontSize, fontWeight, fontFamily, lineHeight, letterSpacing. If values vary by ≤1px within a bundle, the site uses one token — pick the mode.
+- **surface bundles:** Elements sharing a surface ID must have identical bg + border + shadow.
+- **shape bundles:** Elements sharing a shape ID must have identical borderRadius + padding.
 
 **Never round, approximate, or "clean up" extracted values.** If `getComputedStyle` returns a value, use it verbatim. Odd-looking decimal values are NOT mistakes — they are computed from the site's design token system (rem/em multiplied by root font-size). Rounding them to "clean" numbers breaks the typographic scale and creates visible inconsistencies across sections.
 

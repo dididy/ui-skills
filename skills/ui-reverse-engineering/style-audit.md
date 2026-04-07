@@ -163,25 +163,6 @@ For each selector present in both files, compare all properties. Report mismatch
 
 ---
 
-## Step A3.6: Cross-section typography consistency
-
-> **Skip for single-section and single-element extractions.** This check is only meaningful when 2+ sections are being implemented.
-
-Group all extracted elements by visual role (section titles, body headings, buttons, body text) and check that elements with the same role have identical typography values across sections.
-
-**Common failure mode:** During multi-section generation, font sizes drift between sections — one section gets a rounded value while another gets the correct extracted value for the same role. This happens when values are approximated instead of copied exactly.
-
-```
-| Role          | Expected      | Sections matching      | Sections deviating          |
-|---------------|---------------|------------------------|-----------------------------|
-| Section title | Xpx/weight    | section-a ✅, section-b ✅ | section-c ❌ (wrong value) |
-| Button label  | Ypx/weight    | section-a ✅              | section-d ❌ (wrong value) |
-```
-
-**If ANY role has inconsistent values across sections → fix all deviating sections to match the ref value.**
-
----
-
 ## Step A4: Apply fixes
 
 For each HIGH severity mismatch:
@@ -195,18 +176,24 @@ For each HIGH severity mismatch:
 
 ## Integration with verification pipeline
 
-Style audit runs **in parallel** with visual verification (Step 8):
+Style audit has two layers that work together:
 
 ```
 Step 7 (Generation)
   ↓
-  ├── Step 8: Visual Verification (screenshots + video comparison)
-  └── Style Audit (computed style comparison)
+  ├── A1-A4: Detailed property-level audit (per-selector comparison)
+  │   → Produces style-audit-diff.json (exact mismatches with severity)
+  │
+  └── 10-Point Score: Category-level summary (derived from A1-A4 results)
+      → Produces score-history.json (iteration tracking)
   ↓
-Both must pass before declaring done.
+  ├── Step 8: Visual Verification (screenshots + video comparison)
+  └── Pixel-perfect-diff (completion gate)
+  ↓
+All must pass before declaring done.
 ```
 
-If style audit finds mismatches that visual verification missed (e.g., `font-size: 15px vs 16px`), fix them and re-verify.
+**Flow:** A1-A4 runs first to produce detailed mismatches. The 10-point score is computed FROM those results — it's a summary, not a separate audit. Score guides fix priority; A1-A4 provides the specific values to fix.
 
 ---
 
@@ -255,7 +242,7 @@ agent-browser --session <impl-session> eval "(() => {
 })()"
 ```
 
-> **Note:** The eval script above is a template. The agent must fill in the expected reference values from `design-bundles.json` before running. Each category compares impl getComputedStyle against the corresponding ref bundle values.
+> **Note:** The eval script above is a template — not a standalone audit. In practice, compute the 10-point score by **categorizing mismatches from `style-audit-diff.json`** (A1-A4 output). Each HIGH/MEDIUM mismatch maps to a scoring category (e.g., fontSize mismatch → typography, backgroundColor mismatch → colors). A category scores 1 if it has zero mismatches, 0 if any. This avoids re-running getComputedStyle — A1-A4 already did that.
 
 ### Scoring loop protocol
 

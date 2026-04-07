@@ -94,7 +94,8 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
       → transition-reverse-engineering for JS extraction
   ↓
 6b. Assemble extracted.json — combine structure + portal-candidates + inline-svgs + styles
-                             + breakpoints + scroll-engine + interactions + animations
+                             + design-bundles + breakpoints + scroll-engine
+                             + interactions + animations
   ↓
 6c. Pre-generation audit   — 6-stage design audit: data inventory, roles,
                              grouping, layout, bundle verification, component boundaries
@@ -211,7 +212,7 @@ Phase 1: Full Page Capture   — section screenshots (viewport-resized) + full s
 Phase 2: Transition Detection — classify all effects by trigger type, save regions.json
   ↓
 Phase 2B–2E: Capture Transitions — per trigger type:
-  2B scroll-driven  — exploration video (파악) → clip screenshot before/mid/after (검증)
+  2B scroll-driven  — exploration video (identification) → clip screenshot before/mid/after (verification)
   2C css-hover      — eval + clip screenshot: idle + active states
      js-class       — eval classList.add + clip screenshot: idle + active states
      intersection   — eval classList.add + clip screenshot: before + after states
@@ -257,7 +258,7 @@ Screenshot comparison misses 2px font-size differences, 10px spacing errors, and
 ### How It Works
 
 ```
-Phase 1: Visual Gate (항상 실행)
+Phase 1: Visual Gate (always runs)
   V1: Define elements + states  — idle for all; active for css-hover/js-class/intersection;
                                   before/mid/after for scroll-driven
   V2: Measure rect + activate   — scrollIntoView, then eval to apply state; re-measure rect
@@ -266,7 +267,7 @@ Phase 1: Visual Gate (항상 실행)
   V5: Pass/fail judgment        — AE=0 or SSIM≥0.995 = pass
   V6: Save Visual Gate results
 
-Phase 2: Numerical Diagnosis (항상 실행 — Phase 1 결과와 무관)
+Phase 2: Numerical Diagnosis (always runs — regardless of Phase 1 result)
   P1: getComputedStyle ref      — all states, save ref-styles-<state>.json
   P2: getComputedStyle impl     — same, save impl-styles-<state>.json
   P3: Diff table                — flag ❌ per property + state, exact value reported (e.g. "24px → 16px")
@@ -283,8 +284,8 @@ Phase 2: Numerical Diagnosis (항상 실행 — Phase 1 결과와 무관)
 □ Phase 1 all elements "status": "pass" (idle / active / before / mid / after — by triggerType)
 □ Phase 2 mismatches = 0
 
-Both required. "거의 동일" = FAIL.
-Phase 2 catches what Phase 1 misses (font-size: 15px vs 16px, letter-spacing 미세 차이 등).
+Both required. "approximately same" = FAIL.
+Phase 2 catches what Phase 1 misses (font-size: 15px vs 16px, letter-spacing micro-differences, etc.).
 ```
 
 ---

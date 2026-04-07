@@ -1,21 +1,21 @@
 # Pixel-Perfect Diff — Mandatory Numerical Verification
 
-> **이 단계가 "비슷해 보임"과 "픽셀 퍼펙트"를 가른다.**
-> 시각 게이트(Phase 1)가 pass/fail 기준이다. 수치 진단(Phase 2)은 항상 실행한다 — Visual Gate를 통과해도 서브픽셀 수준 오차(`font-size: 15px vs 16px`, `letter-spacing` 미세 차이 등)는 픽셀 diff로 잡히지 않기 때문이다.
+> **This step separates "looks similar" from "pixel-perfect".**
+> The Visual Gate (Phase 1) is the pass/fail criterion. Numerical Diagnosis (Phase 2) always runs — because sub-pixel mismatches pass the Visual Gate but are caught by numerical comparison (`font-size: 15px vs 16px`, subtle `letter-spacing` differences, etc.).
 
 ---
 
-## 흐름
+## Flow
 
 ```
-Phase 1: Visual Gate (항상 실행)
-  — DOM clip screenshot으로 요소 단위 픽셀 비교
-  — pass / fail 기록
+Phase 1: Visual Gate (always runs)
+  — per-element pixel comparison via DOM clip screenshots
+  — record pass/fail
 
-Phase 2: Numerical Diagnosis (항상 실행 — Phase 1 결과와 무관)
-  — getComputedStyle로 모든 속성 수치 비교
-  — Visual Gate pass여도 수치 불일치 항목을 보고
-  — 수치 불일치 있으면 수정 후 Phase 1 재실행
+Phase 2: Numerical Diagnosis (always runs — regardless of Phase 1 result)
+  — compare all property values via getComputedStyle
+  — report numerical mismatches even if Visual Gate passes
+  — if numerical mismatches exist, fix and re-run Phase 1
 
 Gate: Phase 1 all pass AND Phase 2 mismatches = 0
 ```
@@ -24,32 +24,32 @@ Gate: Phase 1 all pass AND Phase 2 mismatches = 0
 
 ## Phase 1: Visual Gate
 
-### Step V1: 비교할 요소 목록 정의
+### Step V1: Define element list for comparison
 
-`regions.json`의 각 region + 정적 섹션(header, footer, hero)에서 핵심 요소를 선정한다:
-- 레이아웃 정의 컨테이너
-- 타이포그래피 캐리어 (heading, nav link, label)
-- 시각적으로 구별되는 요소 (card, button, image)
+Select key elements from each region in regions.json and static sections (header, footer, hero):
+- Layout-defining containers
+- Typography carriers (heading, nav link, label)
+- Visually distinct elements (card, button, image)
 
-각 요소에 대해 캡처할 **상태**도 함께 정의한다:
+Also define the **states** to capture for each element:
 
-| triggerType | 탐색 | 검증 |
+| triggerType | exploration | verification |
 |---|---|---|
-| 정적 (없음) | — | idle 1장 |
-| `css-hover` | — | idle + active 2장 |
-| `js-class` | — | idle + active 2장 |
-| `intersection` | — | before + after 2장 |
-| `scroll-driven` | 영상으로 변화 구간(trigger_y, mid_y, settled_y) 파악 | before + mid + after 3장 |
-| `mousemove` | 영상 유지 (커서 좌표 연속 반응) | — |
-| `auto-timer` | 영상 유지 (시간 기반 루프) | — |
+| static (none) | — | idle 1 shot |
+| `css-hover` | — | idle + active 2 shots |
+| `js-class` | — | idle + active 2 shots |
+| `intersection` | — | before + after 2 shots |
+| `scroll-driven` | identify transition range (trigger_y, mid_y, settled_y) via video | before + mid + after 3 shots |
+| `mousemove` | video only (continuous cursor-position response) | — |
+| `auto-timer` | video only (time-based loop) | — |
 
-> `scroll-driven`은 탐색 영상 없이 clip을 찍으면 어느 y에서 찍어야 하는지 알 수 없다. 영상으로 구간을 먼저 파악한 뒤 clip으로 검증한다.
+> For scroll-driven, without an exploration video you cannot determine which y positions to capture clips at. Identify the range via video first, then verify with clips.
 
-### Step V2: ref 요소 rect 측정 + 상태별 캡처
+### Step V2: Measure ref element rect + capture per state
 
-요소마다 triggerType에 따라 상태를 만들고 rect을 측정한다.
+For each element, activate the state per triggerType and measure the rect.
 
-**idle 상태 (모든 요소 공통):**
+**idle state (common to all elements):**
 
 ```bash
 agent-browser --session <project> eval "(() => {
@@ -70,12 +70,12 @@ agent-browser --session <project> eval "(() => {
 })()"
 ```
 
-**active 상태 (css-hover / js-class / intersection 요소):**
+**active state (css-hover / js-class / intersection elements):**
 
-상태를 eval로 적용한 직후 rect을 다시 측정한다 — hover 시 `transform: scale()` 등으로 rect이 바뀔 수 있음.
+Re-measure rect immediately after applying state via eval — rect may change due to `transform: scale()` on hover.
 
 ```bash
-# css-hover: CDP hover 적용 후 측정
+# css-hover: measure after applying CDP hover
 agent-browser --session <project> hover <selector>
 agent-browser --session <project> wait <transitionDuration + 100>
 agent-browser --session <project> eval "(() => {
@@ -84,7 +84,7 @@ agent-browser --session <project> eval "(() => {
   return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
 })()"
 
-# js-class: classList.add 후 측정
+# js-class: measure after classList.add
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.classList.add('<triggerClass>');
@@ -94,7 +94,7 @@ agent-browser --session <project> eval "(() => {
   }, <transitionDuration + 100>));
 })()"
 
-# intersection: 클래스 추가 후 측정
+# intersection: measure after adding class
 agent-browser --session <project> eval "(() => {
   const el = document.querySelector('<selector>');
   el.classList.add('in-view', 'is-visible');
@@ -104,7 +104,7 @@ agent-browser --session <project> eval "(() => {
   }, <transitionDuration + 100>));
 })()"
 
-# scroll-driven: 탐색 영상에서 파악한 y값으로 각 상태 측정
+# scroll-driven: measure each state at y values identified from exploration video
 # before (trigger_y - 50)
 agent-browser --session <project> eval "(() => window.scrollTo(0, <trigger_y - 50>))()"
 agent-browser --session <project> wait 500
@@ -130,27 +130,27 @@ agent-browser --session <project> eval "(() => {
 })()"
 ```
 
-### Step V3: 요소 단위 clip screenshot
+### Step V3: Per-element clip screenshot
 
-ref와 impl 각각, 동일한 요소를 동일한 rect으로 캡처한다. **상태별로 각각 캡처.**
+Capture the same element with the same rect for both ref and impl. **Capture each state separately.**
 
 ```bash
-# idle (정적 요소 / css-hover / js-class / intersection 공통 — 상태 적용 전)
+# idle (static / css-hover / js-class / intersection — before state activation)
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-idle.png
 
-# active (css-hover / js-class — 상태 적용 후)
+# active (css-hover / js-class — after state activation)
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-active.png
 
-# after (intersection — in-view 클래스 적용 후)
+# after (intersection — after applying in-view class)
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-after.png
 
-# scroll-driven: before / mid / after 각각
+# scroll-driven: before / mid / after respectively
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
   tmp/ref/capture/clip/ref/<name>-before.png  # trigger_y - 50
@@ -164,25 +164,25 @@ agent-browser --session <project> screenshot \
   tmp/ref/capture/clip/ref/<name>-after.png   # settled_y + 50
 ```
 
-파일명 규칙:
+Filename convention:
 - `css-hover` / `js-class`: `<name>-idle.png`, `<name>-active.png`
 - `intersection`: `<name>-idle.png` (before-animate), `<name>-after.png` (after-animate)
 - `scroll-driven`: `<name>-before.png`, `<name>-mid.png`, `<name>-after.png`
-- 정적 요소: `<name>-idle.png`
+- static elements: `<name>-idle.png`
 
-impl도 동일하게 반복 (`ref` → `impl` 경로 변경).
+Repeat identically for impl (change ref → impl in paths).
 
-> **주의:** ref와 impl의 class name이 다를 수 있음 (CSS Modules 해시). 동일한 *논리적* 요소를 찾아야 함.
+> **Note:** ref and impl may have different class names (CSS Modules hash). find the same logical element.
 
-### Step V4: 픽셀 diff 실행
+### Step V4: Run pixel diff
 
-상태별로 각각 diff를 실행한다.
+Run diff for each state separately.
 
-캡처한 모든 상태 파일에 대해 각각 실행한다.
+Run for all captured state files.
 
 ```bash
 # ImageMagick (brew install imagemagick)
-# triggerType에 따라 상태 파일명이 다름 — 아래 패턴을 적용
+# State filenames differ by triggerType — Apply patterns below
 for STATE in idle active; do           # css-hover / js-class
   compare -metric AE \
     tmp/ref/capture/clip/ref/<name>-${STATE}.png \
@@ -203,29 +203,29 @@ for STATE in before mid after; do      # scroll-driven
     tmp/ref/capture/clip/impl/<name>-${STATE}.png \
     tmp/ref/capture/clip/diff/<name>-${STATE}.png 2>&1
 done
-# → 출력값 = 다른 픽셀 수. 0이면 pass.
+# → Output = different pixel count. 0 = pass.
 
-# ImageMagick 없으면 ffmpeg SSIM으로 대체:
+# If ImageMagick unavailable, use ffmpeg SSIM instead:
 ffmpeg -i tmp/ref/capture/clip/ref/<name>-<state>.png \
        -i tmp/ref/capture/clip/impl/<name>-<state>.png \
        -lavfi "ssim" -f null - 2>&1 | grep SSIM
-# → All:1.000000 = 완전 일치
+# → All:1.000000 = exact match
 ```
 
-> idle이 pass여도 active/mid/after가 fail인 경우가 흔하다. 모든 상태를 빠짐없이 실행한다.
+> It's common for idle to pass while active/mid/after fail. Run all states without exception.
 
-### Step V5: 판정
+### Step V5: Judgment
 
-| 결과 | 기준 |
+| Result | Criterion |
 |------|------|
-| ✅ PASS | AE = 0 또는 SSIM All ≥ 0.995 |
-| ❌ FAIL | 그 외 |
+| ✅ PASS | AE = 0 or SSIM All ≥ 0.995 |
+| ❌ FAIL | Otherwise |
 
-> **"거의 같아 보임"은 FAIL이다.** Phase 2는 결과와 무관하게 항상 실행한다.
+> **"Looks approximately the same" is FAIL.** Phase 2 always runs regardless of result.
 
-diff 이미지(`diff/<name>-<state>.png`)를 Read 도구로 열어 어느 영역이 다른지 육안으로도 확인한다.
+Open diff images (`diff/<name>-<state>.png`) with the Read tool to visually confirm which regions differ.
 
-### Step V6: Visual Gate JSON 저장
+### Step V6: Save Visual Gate JSON
 
 ```json
 {
@@ -244,14 +244,14 @@ diff 이미지(`diff/<name>-<state>.png`)를 Read 도구로 열어 어느 영역
 }
 ```
 
-**Phase 1 결과와 무관하게 Phase 2를 항상 실행한다.**
+**Always run Phase 2 regardless of Phase 1 result.**
 
 ---
 
 ## Phase 2: Numerical Diagnosis
 
-> **Phase 1 결과와 무관하게 항상 실행한다.**
-> Visual Gate pass여도 서브픽셀 오차는 잡히지 않는다. 수치 진단이 완전한 보고서를 만든다.
+> **Always runs regardless of Phase 1 result.**
+> Sub-pixel mismatches are not caught even when Visual Gate passes. Numerical diagnosis produces the complete report.
 
 ### What This Measures
 
@@ -264,14 +264,14 @@ diff 이미지(`diff/<name>-<state>.png`)를 Read 도구로 열어 어느 영역
 | Visual | `backgroundColor`, `borderRadius`, `border`, `boxShadow`, `opacity`, `transform` |
 | Position | `position`, `top`, `right`, `bottom`, `left` |
 
-### Step P1: ref 측정
+### Step P1: Measure ref
 
-**idle 상태 측정:**
+**Measure idle state:**
 
 ```bash
 agent-browser --session <project> eval "(() => {
   const selectors = [
-    /* Phase 1 FAIL 요소의 selector */
+    /* selectors of Phase 1 FAIL elements */
   ];
 
   const props = [
@@ -302,14 +302,14 @@ agent-browser --session <project> eval "(() => {
 })()"
 ```
 
-`tmp/ref/<component>/ref-styles-idle.json`에 저장.
+Save to `tmp/ref/<component>/ref-styles-idle.json`.
 
-**active / mid / after 상태 측정:**
+**Measure active / mid / after states:**
 
-상태를 eval로 적용한 뒤 동일한 props를 측정한다.
+Apply state via eval then measure the same props.
 
 ```bash
-# css-hover: CDP hover 적용
+# css-hover: apply CDP hover
 agent-browser --session <project> hover <selector>
 agent-browser --session <project> wait <transitionDuration + 100>
 
@@ -317,8 +317,8 @@ agent-browser --session <project> wait <transitionDuration + 100>
 agent-browser --session <project> eval "document.querySelector('<sel>').classList.add('<cls>')"
 agent-browser --session <project> wait <transitionDuration + 100>
 
-# scroll-driven: 탐색 영상에서 파악한 y값으로 각 상태 순서대로 측정
-# before → mid → after 각각 scrollTo 후 wait 500 후 측정
+# scroll-driven: measure each state in order at y values from exploration video
+# scrollTo for each before → mid → after, wait 500, then measure
 
 agent-browser --session <project> eval "(() => {
   const sel = '<selector>';
@@ -332,25 +332,25 @@ agent-browser --session <project> eval "(() => {
 })()"
 ```
 
-상태별로 저장:
+Save per state:
 - `tmp/ref/<component>/ref-styles-active.json` (css-hover / js-class)
 - `tmp/ref/<component>/ref-styles-before.json`, `ref-styles-mid.json`, `ref-styles-after.json` (scroll-driven)
 
-> **CSS Modules 사이트 selector 탐색:**
+> **CSS Modules site selector lookup:**
 > ```bash
 > agent-browser eval "document.querySelector('header')?.className"
 > ```
 
-### Step P2: impl 측정
+### Step P2: Measure impl
 
-동일한 스크립트를 impl URL에서 실행. 저장 경로:
+Run the same script on the impl URL. Save path:
 - idle → `tmp/ref/<component>/impl-styles-idle.json`
 - active → `tmp/ref/<component>/impl-styles-active.json` (css-hover / js-class)
 - before / mid / after → `tmp/ref/<component>/impl-styles-before.json`, `impl-styles-mid.json`, `impl-styles-after.json` (scroll-driven)
 
-### Step P3: Diff Table 작성
+### Step P3: Build Diff Table
 
-state 컬럼을 포함해서 작성한다 — 같은 요소라도 idle/active/before/mid/after별로 값이 다름.
+Include a state column — The same element may have different values per idle/active/before/mid/after state.
 
 | Element | State | Property | Ref value | Impl value | Status |
 |---|---|---|---|---|---|
@@ -360,27 +360,27 @@ state 컬럼을 포함해서 작성한다 — 같은 요소라도 idle/active/be
 | `.hero-text` | mid | `transform` | `translateY(0px) scale(1)` | `translateY(12px) scale(0.95)` | ❌ |
 
 **Rules:**
-- `rgb()` vs `rgba()` alpha=1: rgb값 동일하면 ✅
-- `width: 1349px` vs `1347px`: 2px 이내 ✅ (subpixel)
+- `rgb()` vs `rgba()` alpha=1: if rgb values match → ✅
+- `width: 1349px` vs `1347px`: within 2px → ✅ (subpixel)
 - `width: 72px` vs `810px`: ❌
-- **반올림해서 같다고 선언 금지.** `16px ≠ 14px`
+- **Never declare equal by rounding.** `16px ≠ 14px`
 
-### Step P4: 수정
+### Step P4: Fix
 
-각 ❌ 행에 대해:
-1. impl에서 해당 속성을 제어하는 CSS 파일/규칙 찾기
-2. ref 값으로 수정
-3. 해당 요소만 P2 재측정
-4. ✅ 확인
+For each ❌ row:
+1. Find the CSS file/rule controlling that property in impl
+2. Fix to ref value
+3. Re-measure P2 for that element only
+4. Confirm ✅
 
-**모든 ❌가 ✅ 될 때까지 반복.**
+**Repeat until all ❌ become ✅.**
 
-### Step P5: 수정 후 재실행
+### Step P5: Re-run after fixes
 
-수정 완료 후 **Phase 1 Visual Gate + Phase 2 Numerical Diagnosis를 모두 다시 실행**한다.
+After all fixes, **re-run both Phase 1 Visual Gate and Phase 2 Numerical Diagnosis**.
 
-Phase 1 all pass AND Phase 2 mismatches = 0 → 완료.
-그 외 → 재진단.
+Phase 1 all pass AND Phase 2 mismatches = 0 → Done.
+Otherwise → Re-diagnose.
 
 ---
 
@@ -388,14 +388,14 @@ Phase 1 all pass AND Phase 2 mismatches = 0 → 완료.
 
 ```
 PIXEL-PERFECT GATE:
-□ Phase 1 Visual Gate JSON 존재
-□ 모든 elements의 status = "pass" (idle / active / before / mid / after — triggerType에 따라)
-□ Phase 2 Numerical Diagnosis 완료
+□ Phase 1 Visual Gate JSON exists
+□ all elements status = "pass" (idle / active / before / mid / after — per triggerType)
+□ Phase 2 Numerical Diagnosis complete
 □ mismatches = 0
 
-Phase 1 all pass AND mismatches = 0 → 완료.
-둘 중 하나라도 미달 → 수정 후 재실행.
-"거의 동일" = FAIL.
+Phase 1 all pass AND mismatches = 0 → Done.
+Either falls short → fix and re-run.
+"Approximately identical" = FAIL.
 ```
 
 ---
@@ -404,8 +404,8 @@ Phase 1 all pass AND mismatches = 0 → 완료.
 
 | Anti-pattern | Why forbidden |
 |---|---|
-| "스크린샷이 비슷해 보임" | 눈으로는 2px font 차이, 10px spacing 오류를 못 잡음 |
-| "Visual Gate pass니까 수치 진단 생략" | 서브픽셀 오차는 AE=0이어도 수치가 다를 수 있음. Phase 2는 항상 실행. |
-| "충분히 가깝다" | 기준 없는 선언. 수치로 판정한다. |
-| `offsetWidth` 사용 | 정수 반올림됨. `getComputedStyle` 사용. |
-| FAIL 요소만 진단 | diff 이미지로 FAIL 범위를 먼저 확인하고 전체 측정. |
+| "Screenshots look similar" | The eye cannot catch 2px font differences or 10px spacing errors |
+| "Skip numerical diagnosis because Visual Gate passed" | Sub-pixel mismatches may have different values even with AE=0. Phase 2 always runs. |
+| "Close enough" | Declaration without criteria. Judge by numbers. |
+| Using `offsetWidth` | Rounds to integer. Use `getComputedStyle`. |
+| Only diagnose FAIL elements | First check FAIL range via diff image, then measure everything. |

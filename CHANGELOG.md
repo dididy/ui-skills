@@ -14,7 +14,14 @@
 - **`ui-reverse-engineering`**: `SKILL.md` — Step 6b assembly list includes `design-bundles.json`. Extraction gate includes bundle validation.
 - **`ui-reverse-engineering`**: `component-generation.md` — input checklist includes `design-bundles.json` and `component-map.json`.
 - `plugin.json`, `marketplace.json` — version bumped to 0.0.15; description and keywords updated.
-- `README.md` — pipeline diagram updated with 6-stage audit and scoring loop.
+- `README.md` — pipeline diagram updated with 6-stage audit and scoring loop; 6b assembly list includes `design-bundles`.
+
+### Fixed
+- **`ui-reverse-engineering`**: `component-generation.md` — removed `typography-scale.json` from input checklist (absorbed by `design-bundles.json` type bundle). "Typographic scale consistency check" replaced with "Design bundle consistency check". Fixed Step 6c references in checklist (`interaction-states.json` from Step 5, `decorative-svgs.json` from Step 3).
+- **`ui-reverse-engineering`**: `style-audit.md` — removed A3.6 "Cross-section typography consistency" (duplicated by 10-point scoring #1). Clarified A1-A4 → 10-point scoring relationship (detail → summary). Removed duplicate `---` separator. Scoring eval note: 10-point score derives from A1-A4 `style-audit-diff.json`, not a separate getComputedStyle run.
+- **`ui-reverse-engineering`**: `style-extraction.md` — fixed bundle grouping eval: removed unused `bundles` initialization, declared at conversion point.
+- **`ui-reverse-engineering`**: `SKILL.md` — differentiated 6b gate (existence) from 6c gate (consistency). Phase 4 completion gate now requires `10-point score ≥ 9`.
+- All skill documents — translated remaining Korean text to English (`pixel-perfect-diff.md`, `capture-transitions.md`, `comparison-page.md`, `SKILL.md`, `visual-verification.md`, `README.md`).
 
 ## [0.0.14] - 2026-04-05
 
@@ -126,7 +133,7 @@
 - **`README.md`** — Shared Document section, trigger type table, and skill flow diagrams updated to reflect clip-screenshot approach and always-run-both behavior.
 - **`mousemove` and `auto-timer` remain video-only** — no capture method change; only css-hover/js-class/intersection (eval + clip) and scroll-driven (2-phase) changed.
 - **`plugin.json`**, **`marketplace.json`** — version 0.0.9; description updated to reflect always-run-both and scroll-driven 2-phase; keywords updated.
-- **Consistency fixes** — `capture-transitions.md` Step 2B-2 "4개 상태" corrected to "3개 상태" (before/mid/after); all clip screenshot paths in Step 2C unified to `clip/{ref,impl}/` (was incorrectly `transitions/{ref,impl}/`); `compare` command paths in `visual-verification.md` and `verification.md` prefixed with correct `tmp/ref/<component>/`; Phase D and Step 4 gate wording updated to cover all state variants (idle / active / before / mid / after).
+- **Consistency fixes** — `capture-transitions.md` Step 2B-2 "4 states" corrected to "3 states" (before/mid/after); all clip screenshot paths in Step 2C unified to `clip/{ref,impl}/` (was incorrectly `transitions/{ref,impl}/`); `compare` command paths in `visual-verification.md` and `verification.md` prefixed with correct `tmp/ref/<component>/`; Phase D and Step 4 gate wording updated to cover all state variants (idle / active / before / mid / after).
 
 ## [0.0.8] - 2026-03-28
 
