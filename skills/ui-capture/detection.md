@@ -59,8 +59,7 @@ agent-browser eval "(() => {
     results.hover.push({
       selector: sel,
       y: Math.round(rect.top + window.scrollY),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
+      bounds: { x: Math.round(rect.left + window.scrollX), width: Math.round(rect.width), height: Math.round(rect.height) },
       transitionDuration: s.transitionDuration,
       transitionProperty: s.transitionProperty,
       triggerType
@@ -78,7 +77,7 @@ agent-browser eval "(() => {
       results.scroll.push({
         selector: el.id ? '#'+el.id : el.tagName+'.'+cn.trim().split(/\s+/).slice(0,2).join('.'),
         y: Math.round(rect.top + window.scrollY),
-        height: Math.round(rect.height),
+        bounds: { x: Math.round(rect.left + window.scrollX), width: Math.round(rect.width) },
         triggerType: 'scroll-driven'
       });
     }
@@ -96,8 +95,7 @@ agent-browser eval "(() => {
       results.mousemove.push({
         selector: sel,
         y: Math.round(rect.top + window.scrollY),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
+        bounds: { x: Math.round(rect.left + window.scrollX), width: Math.round(rect.width), height: Math.round(rect.height) },
         triggerType: 'mousemove'
       });
     }
@@ -113,7 +111,7 @@ agent-browser eval "(() => {
       const sel = el.id ? '#'+el.id : el.tagName+'.'+cn.trim().split(/\s+/).slice(0,2).join('.');
       // Estimate interval from data-autoplay / data-interval attribute, fallback to 3000ms
       const intervalMs = parseInt(el.dataset.autoplaySpeed || el.dataset.interval || el.dataset.delay || '3000', 10);
-      results.timer.push({ selector: sel, y: Math.round(rect.top + window.scrollY), width: Math.round(rect.width), height: Math.round(rect.height), triggerType: 'auto-timer', interval_ms: intervalMs });
+      results.timer.push({ selector: sel, y: Math.round(rect.top + window.scrollY), bounds: { x: Math.round(rect.left + window.scrollX), width: Math.round(rect.width), height: Math.round(rect.height) }, triggerType: 'auto-timer', interval_ms: intervalMs });
     }
   }
 
@@ -200,14 +198,14 @@ Apply in order:
   "capturedAt": "<ISO timestamp>",
   "page": { "totalHeight": 14886, "viewportWidth": 1440, "viewportHeight": 900 },
   "scroll": [
-    { "name": "hero-zoom", "from": 0, "to": 1800, "selector": ".sticky-el", "changedProperties": ["transform"], "triggerType": "scroll-driven" }
+    { "name": "hero-zoom", "from": 0, "to": 1800, "selector": ".sticky-el", "bounds": { "x": 0, "width": 1440 }, "changedProperties": ["transform"], "triggerType": "scroll-driven" }
   ],
   "hover": [
     {
       "name": "nav-link",
       "selector": ".nav a",
       "y": 0,
-      "bounds": { "width": 120, "height": 40 },
+      "bounds": { "x": 32, "width": 120, "height": 40 },
       "transitionDuration": "300ms",
       "triggerType": "css-hover"
     },
@@ -215,7 +213,7 @@ Apply in order:
       "name": "passion-card",
       "selector": ".card[data-in-view]",
       "y": 5400,
-      "bounds": { "width": 420, "height": 450 },
+      "bounds": { "x": 510, "width": 420, "height": 450 },
       "transitionDuration": "750ms",
       "triggerType": "intersection"
     },
@@ -223,7 +221,7 @@ Apply in order:
       "name": "flip-card",
       "selector": ".flipCardInner",
       "y": 9500,
-      "bounds": { "width": 230, "height": 230 },
+      "bounds": { "x": 605, "width": 230, "height": 230 },
       "transitionDuration": "600ms",
       "triggerType": "js-class",
       "triggerClass": "flipped"
@@ -234,7 +232,7 @@ Apply in order:
       "name": "icon-playground",
       "selector": ".playground section",
       "y": 10400,
-      "bounds": { "width": 1376, "height": 900 },
+      "bounds": { "x": 32, "width": 1376, "height": 900 },
       "triggerType": "mousemove"
     }
   ],
@@ -243,7 +241,7 @@ Apply in order:
       "name": "hero-carousel",
       "selector": ".swiper",
       "y": 0,
-      "bounds": { "width": 1440, "height": 600 },
+      "bounds": { "x": 0, "width": 1440, "height": 600 },
       "triggerType": "auto-timer",
       "interval_ms": 4000
     }

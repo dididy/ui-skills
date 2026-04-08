@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.16] - 2026-04-08
+
+### Added
+- **`ui-capture`**: `report-page.md` — new overlay-based report page: fullpage screenshot as base layer with interactive transition overlays pinned at exact page coordinates. Sidebar region index with trigger badges, click-to-scroll navigation. Video overlays (scroll/mousemove/timer) auto-play via IntersectionObserver. Image toggle overlays (hover/intersection) show active state on mouse hover.
+- **`ui-capture`**: `detection.md` — `bounds.x` coordinate collection: all 4 region types (hover, scroll, mousemove, timer) now capture `rect.left + window.scrollX` for precise horizontal overlay positioning.
+
+### Changed
+- **`ui-capture`**: `comparison-page.md` — Report Mode section extracted to standalone `report-page.md`. Section now contains a short reference pointer instead of the full HTML template.
+- **`ui-capture`**: `detection.md` — all region types now wrap coordinates in `bounds: { x, width, height }` object, matching `regions.json` schema. Previously output raw `x`, `y`, `width`, `height` at root level.
+- **`ui-capture`**: `detection.md` — `regions.json` schema examples updated with `bounds.x` field for all region types.
+- **`ui-capture`**: `SKILL.md` — reference files list includes `report-page.md`. Phase R references updated from `comparison-page.md` to `report-page.md`.
+- `plugin.json`, `marketplace.json` — version bumped to 0.0.16; description updated with overlay report page.
+- `README.md` — ui-capture description updated with overlay-based report page and `bounds.x` coordinate collection.
+
+### Fixed
+- **`ui-capture`**: `capture-transitions.md` — removed `hover-` prefix from css-hover capture filenames (`hover-<name>-idle.png` → `<name>-idle.png`). Now consistent with comparison-page.md and report-page.md templates.
+- **`ui-capture`**: `report-page.md` — template placeholders renamed from `<xPct>/<wPct>/<hPct>` to `<topPct>/<leftPct>/<widthPct>/<heightPct>`, matching the overlay positioning rules section.
+
 ## [0.0.15] - 2026-04-06
 
 ### Added

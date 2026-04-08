@@ -190,7 +190,7 @@ agent-browser --session <project> wait 500
 # Capture idle state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
-  tmp/ref/capture/clip/ref/hover-<name>-idle.png
+  tmp/ref/capture/clip/ref/<name>-idle.png
 
 # Force hover state
 agent-browser --session <project> eval "(() => {
@@ -203,7 +203,7 @@ agent-browser --session <project> wait <transitionDuration + 100>
 # Capture hover state
 agent-browser --session <project> screenshot \
   --clip <x>,<y>,<width>,<height> \
-  tmp/ref/capture/clip/ref/hover-<name>-active.png
+  tmp/ref/capture/clip/ref/<name>-active.png
 
 # Release hover
 agent-browser --session <project> eval "(() => {
@@ -217,7 +217,7 @@ agent-browser --session <project> eval "(() => {
 > ```bash
 > agent-browser --session <project> hover <unique-selector>
 > agent-browser --session <project> wait <transitionDuration + 100>
-> agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/capture/clip/ref/hover-<name>-active.png
+> agent-browser --session <project> screenshot --clip <x>,<y>,<w>,<h> tmp/ref/capture/clip/ref/<name>-active.png
 > agent-browser --session <project> hover body
 > ```
 

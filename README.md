@@ -10,7 +10,7 @@ Three skills included, plus one shared verification document:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
-3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Auto-detects custom scroll containers (Lenis, Locomotive, `overflow: hidden`) and uses real mouse-wheel events for accurate scroll recording. Captures section-by-section viewport-resized screenshots. Classifies each effect by trigger type before capturing: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval + clip screenshot (before + after); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
+3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Standalone analysis generates an overlay-based report: fullpage screenshot as base layer with interactive transition overlays (videos/images) pinned at exact page coordinates (`bounds.x/y`), sidebar region index, and IntersectionObserver-driven auto-play. Auto-detects custom scroll containers (Lenis, Locomotive, `overflow: hidden`) and uses real mouse-wheel events for accurate scroll recording. Captures section-by-section viewport-resized screenshots. Classifies each effect by trigger type before capturing: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval + clip screenshot (before + after); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
 4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory visual verification gate invoked by all three skills. Phase 1 captures DOM clip screenshots per element per state (idle / active / before / mid / after by triggerType) and diffs with AE/SSIM — this is the pass/fail criterion. Phase 2 runs `getComputedStyle` always (regardless of Phase 1 result) to catch sub-pixel mismatches like `font-size: 15px vs 16px` that AE/SSIM passes. Both must pass. "Looks the same" is not a valid completion criterion.
 
 ## Requirements
@@ -182,7 +182,7 @@ Step  4: Verify                   — frame comparison + Phase 1 Visual Gate (cl
 
 ## Skill 3: `ui-capture` — Visual Capture & Comparison
 
-Captures baseline screenshots and transition videos from any reference URL, then generates a web-based side-by-side comparison page for verifying UI clone fidelity.
+Captures baseline screenshots and transition videos from any reference URL. Standalone mode generates an overlay-based analysis report (fullpage screenshot with interactive transition overlays). Comparison mode generates a side-by-side page for verifying UI clone fidelity.
 
 Classifies each interactive effect by trigger type before recording — preventing blank videos caused by wrong activation method.
 
@@ -205,28 +205,29 @@ Take a baseline screenshot of https://example.com before I start cloning
 ### How It Works
 
 ```
-Phase 1: Full Page Capture   — section screenshots (viewport-resized) + full scroll video
-  ↓                            auto-detects custom scroll containers (Lenis, Locomotive, etc.)
-  ↓                            uses mouse-wheel events for custom scroll sites
-  ↓
-Phase 2: Transition Detection — classify all effects by trigger type, save regions.json
+Phase 1: Full Page Capture      — section screenshots + full scroll video
+  ↓                               auto-detects custom scroll containers (Lenis, Locomotive, etc.)
+Phase 2: Transition Detection   — classify all effects by trigger type, save regions.json
   ↓
 Phase 2B–2E: Capture Transitions — per trigger type:
-  2B scroll-driven  — exploration video (identification) → clip screenshot before/mid/after (verification)
-  2C css-hover      — eval + clip screenshot: idle + active states
-     js-class       — eval classList.add + clip screenshot: idle + active states
-     intersection   — eval classList.add + clip screenshot: before + after states
-  2D mousemove      — raster-path sweep video (single video per element)
-  2E auto-timer     — passive recording for 2–3 cycles (video)
+  2B scroll-driven  — exploration video → clip screenshot before/mid/after
+  2C css-hover      — eval + clip screenshot: idle + active
+     js-class       — eval classList.add + clip screenshot: idle + active
+     intersection   — eval classList.add + clip screenshot: before + after
+  2D mousemove      — raster-path sweep video
+  2E auto-timer     — passive recording for 2–3 cycles
   ↓
-Phase 3: Implementation Capture — identical sequences on local-url
-  ↓
-Phase 4A: Pixel-Perfect Gate — Phase 1 Visual Gate (clip screenshot AE/SSIM) always runs
-  ↓                             Phase 2 Numerical Diagnosis (getComputedStyle) always runs
-  ↓                             both must pass — Phase 2 catches sub-pixel mismatches Phase 1 misses
-Phase 4B: Comparison Page    — visual gate results + side-by-side screenshots and videos
-  ↓
-Phase 5: User Review         — present URL, wait for feedback
+  ├── local-url provided? ─── YES ──→ Phase 3: Implementation Capture
+  │                                      ↓
+  │                                    Phase 4A: Pixel-Perfect Gate (AE/SSIM + getComputedStyle)
+  │                                      ↓
+  │                                    Phase 4B: compare.html (side-by-side original vs clone)
+  │                                      ↓
+  │                                    Phase 5: User Review
+  │
+  └── NO (standalone) ──────────────→ Phase R: report.html (overlay-based analysis report)
+                                        ↓
+                                      Phase 5: User Review
 ```
 
 ### Trigger Type Classification

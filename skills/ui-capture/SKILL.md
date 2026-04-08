@@ -191,13 +191,14 @@ Execute per region type from `regions.json`:
 
 When no `local-url` is provided, generate `tmp/ref/capture/report.html` showing what was captured from the original site.
 
-> **Read `comparison-page.md` "Report Mode" section before executing this phase.**
+> **Read `report-page.md` before executing this phase.**
 
 ### report.html contents
 
-- Fullpage screenshot
-- `regions.json` summary table: each element with selector, trigger type, and capture preview
-- Per-region captures: clip screenshots (idle/active states) and videos (scroll/mousemove/timer)
+- Fullpage screenshot as base layer with transition overlays pinned at exact page coordinates
+- Sidebar region index: each element with selector + trigger badge, clicking scrolls to overlay
+- Video overlays (scroll/mousemove/timer): auto-play on viewport entry via IntersectionObserver
+- Image toggle overlays (hover/intersection): show active/after state on mouse hover
 - "To clone this site, run `/ui-reverse-engineering <url>`" call-to-action
 
 ### User Review (standalone)
@@ -351,6 +352,7 @@ Always clean up after final verification. Captured assets may contain sensitive 
 - **detection.md** — Phase 2: transition detection scripts, deduplication, hover verification, regions.json schema
 - **capture-transitions.md** — Phase 2B–2E: scroll/hover/mousemove/timer capture sequences
 - **../pixel-perfect-diff.md** — Phase 4A (MANDATORY): Phase 1 Visual Gate (clip screenshot diff, primary pass/fail) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
+- **report-page.md** — Phase R: report.html generation (fullpage screenshot + overlay positioning + sidebar + JS interactions)
 - **comparison-page.md** — Phase 4A gate checklist + Phase 4B: compare.html generation, video sync script, cursor-reactive section
 
 ## Integration points
