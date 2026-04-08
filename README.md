@@ -102,7 +102,8 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 7.  Generate Component     — React + Tailwind, exact values, functional JS, verbatim SVGs
   ↓
-8.  Visual Verification    — 10-point scoring loop + Phase A/B/C + Phase D (pixel-perfect gate)
+8.  Visual Verification    — AE/SSIM comparison (zero tokens) + 10-point scoring
+                             + Phase D (pixel-perfect gate) + Phase E (VLM sanity check, 1 pair)
   ↓
 9.  Interaction Verification — test each hover/click/scroll/timer on localhost
 ```

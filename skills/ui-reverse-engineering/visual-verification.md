@@ -57,8 +57,8 @@ agent-browser wait 4000
 ### A-C1: Full-page static screenshots
 
 ```bash
-mkdir -p tmp/ref/<component>/frames/{ref,impl}
-mkdir -p tmp/ref/<component>/static/{ref,impl}
+mkdir -p tmp/ref/<component>/frames/{ref,impl,diff}
+mkdir -p tmp/ref/<component>/static/{ref,impl,diff}
 mkdir -p tmp/ref/<component>/transitions/{ref,impl}
 mkdir -p tmp/ref/<component>/responsive
 
@@ -169,7 +169,7 @@ ffmpeg -i tmp/ref/<component>/ref-transition-carousel.webm -vf fps=60 tmp/ref/<c
 
 ```
 □ static/ref/ has 5 screenshots (top, 25%, 50%, 75%, bottom)
-□ Spot-check: Read top.png — is it the actual site? (not blank, not bot-detection page)
+□ Spot-check: Read top.png ONCE — confirm it's the actual site (not blank, not bot-detection page). Do not re-read for comparison.
 □ ref-scroll.webm exists and has frames extracted to frames/ref/ at 60 fps
 □ C3 (transitions/) — deferred until Step 5b (needs interaction data from Step 5)
 □ responsive/ — deferred until Step 4 (responsive-detection.md)
@@ -271,34 +271,61 @@ ffmpeg -i tmp/ref/<component>/impl-transition-carousel.webm -vf fps=60 tmp/ref/<
 
 ## Phase C: Compare & Fix
 
+**Token budget rule:** All image comparisons use AE/SSIM (zero tokens). Only read images with the Read tool for: (1) one-time spot-checks (Phase A gate), (2) diagnosing AE/SSIM failures via diff images, (3) the final VLM sanity check (1 pair). Never read ref+impl image pairs side-by-side for comparison — use pixel diff instead.
+
 **Three comparison tables — one per capture type.** All three must pass.
 
-### C1: Static screenshot comparison
+### C1: Static screenshot comparison (AE diff)
 
-Read ref and impl screenshots side-by-side using the Read tool.
+Run pixel diff for each position — do NOT read images with the Read tool for comparison (wastes tokens).
 
-| Position | Ref                      | Impl                      | Match? | Issue |
-|----------|--------------------------|---------------------------|--------|-------|
-| Top      | static/ref/top.png       | static/impl/top.png       | ✅/❌  |       |
-| 25%      | static/ref/25pct.png     | static/impl/25pct.png     | ✅/❌  |       |
-| 50%      | static/ref/50pct.png     | static/impl/50pct.png     | ✅/❌  |       |
-| 75%      | static/ref/75pct.png     | static/impl/75pct.png     | ✅/❌  |       |
-| Bottom   | static/ref/bottom.png    | static/impl/bottom.png    | ✅/❌  |       |
+```bash
+for POS in top 25pct 50pct 75pct bottom; do
+  compare -metric AE \
+    tmp/ref/<component>/static/ref/${POS}.png \
+    tmp/ref/<component>/static/impl/${POS}.png \
+    tmp/ref/<component>/static/diff/${POS}.png 2>&1
+done
+# → 0 = pass. Non-zero = fail (diff image shows mismatched pixels)
+```
+
+Only read the diff image (`static/diff/<pos>.png`) with the Read tool when AE > 0 and you need to diagnose which region differs.
+
+| Position | AE | Status |
+|----------|----|--------|
+| Top      |    | ✅/❌  |
+| 25%      |    | ✅/❌  |
+| 50%      |    | ✅/❌  |
+| 75%      |    | ✅/❌  |
+| Bottom   |    | ✅/❌  |
 
 **Responsive comparison:** see `responsive-detection.md` C-R table (covers all detected breakpoints).
 
-### C2: Scroll video frame comparison (60 fps)
+### C2: Scroll video frame comparison (SSIM batch)
 
-Compare ref and impl scroll frames at matching frame numbers. Check at minimum every 60th frame (= 1 second intervals) plus any frame where a scroll-triggered transition is visible in the ref.
+Compare all extracted 60fps frames using ffmpeg SSIM — no LLM image reading. Only inspect frames that fail SSIM threshold.
 
+```bash
+mkdir -p tmp/ref/<component>/frames/diff
+
+# Batch SSIM comparison of all frame pairs
+FRAME_COUNT=$(ls tmp/ref/<component>/frames/ref/scroll-*.png | wc -l)
+for i in $(seq -f "%06g" 1 $FRAME_COUNT); do
+  SSIM=$(ffmpeg -i tmp/ref/<component>/frames/ref/scroll-${i}.png \
+                -i tmp/ref/<component>/frames/impl/scroll-${i}.png \
+                -lavfi "ssim" -f null - 2>&1 | grep -oP 'All:\K[0-9.]+')
+  if (( $(echo "$SSIM < 0.995" | bc -l) )); then
+    echo "FAIL frame ${i}: SSIM=${SSIM}"
+    compare -metric AE \
+      tmp/ref/<component>/frames/ref/scroll-${i}.png \
+      tmp/ref/<component>/frames/impl/scroll-${i}.png \
+      tmp/ref/<component>/frames/diff/scroll-${i}.png 2>/dev/null
+  fi
+done
+# → Only read diff images for FAIL frames when diagnosing root cause
 ```
-| Frame  | Moment                      | Ref                          | Impl                          | Match? | Issue |
-|--------|-----------------------------|------------------------------|-------------------------------|--------|-------|
-| 000001 | Top (static)                | frames/ref/scroll-000001.png | frames/impl/scroll-000001.png | ✅/❌  |       |
-| 000060 | ~1s into scroll             | frames/ref/scroll-000060.png | frames/impl/scroll-000060.png | ✅/❌  |       |
-| 000XXX | Scroll-reveal trigger point | ...                          | ...                           | ✅/❌  |       |
-| ...    | ...                         | ...                          | ...                           | ✅/❌  |       |
-```
+
+If no frames fail → C2 passes. If frames fail, read **only the diff images** of failing frames to diagnose the mismatch region.
 
 ### C3: Transition comparison
 
@@ -318,19 +345,22 @@ compare -metric AE tmp/ref/<component>/transitions/ref/<name>-active.png tmp/ref
 # → 0 = pass
 ```
 
-**For scroll-driven / mousemove / auto-timer — frame comparison (60 fps):**
+**For scroll-driven / mousemove / auto-timer — frame comparison (SSIM batch):**
 
-Compare at minimum: start frame, every 6th frame during transition (= 100ms at 60fps), end frame.
+Same SSIM batch approach as C2 — compare all extracted frames automatically, only inspect failures.
 
-```
-| Frame  | Moment                  | Ref                                | Impl                                | Match? | Issue |
-|--------|-------------------------|------------------------------------|-------------------------------------|--------|-------|
-| 000001 | Before interaction      | transitions/ref/carousel-000001    | transitions/impl/carousel-000001    | ✅/❌  |       |
-| 000006 | +100ms                  | transitions/ref/carousel-000006    | transitions/impl/carousel-000006    | ✅/❌  |       |
-| 000012 | +200ms                  | transitions/ref/carousel-000012    | transitions/impl/carousel-000012    | ✅/❌  |       |
-| ...    | (every 6 frames)        | ...                                | ...                                 | ✅/❌  |       |
-| 000030 | Transition end (~500ms) | transitions/ref/carousel-000030    | transitions/impl/carousel-000030    | ✅/❌  |       |
-| 000360 | Auto-timer fires        | transitions/ref/carousel-000360    | transitions/impl/carousel-000360    | ✅/❌  |       |
+```bash
+# Per-transition SSIM batch (example: carousel)
+FRAME_COUNT=$(ls tmp/ref/<component>/transitions/ref/carousel-*.png | wc -l)
+for i in $(seq -f "%06g" 1 $FRAME_COUNT); do
+  SSIM=$(ffmpeg -i tmp/ref/<component>/transitions/ref/carousel-${i}.png \
+                -i tmp/ref/<component>/transitions/impl/carousel-${i}.png \
+                -lavfi "ssim" -f null - 2>&1 | grep -oP 'All:\K[0-9.]+')
+  if (( $(echo "$SSIM < 0.995" | bc -l) )); then
+    echo "FAIL frame ${i}: SSIM=${SSIM}"
+  fi
+done
+# → Only read diff images for FAIL frames when diagnosing root cause
 ```
 
 ### Fix protocol
@@ -348,12 +378,12 @@ Compare at minimum: start frame, every 6th frame during transition (= 100ms at 6
 
 > **Read and execute `../pixel-perfect-diff.md` Phase 1 (Visual Gate) AND Phase 2 (Numerical Diagnosis) before declaring any section done — both always run.**
 
-C1–C3 catches layout and motion mismatches but cannot catch subtle numerical differences:
-- `font-size: 16px` vs `24px` (looks similar in full-page screenshot)
-- `font-weight: 400` vs `600` (subtle at small sizes)
-- `padding: 2rem` vs `3rem` (hard to judge without a ruler)
+C1–C3 use pixel-level diff (AE/SSIM) to catch visual mismatches. Phase D goes deeper with per-element clip screenshots and getComputedStyle to catch sub-pixel numerical differences that full-page AE/SSIM may miss:
+- `font-size: 15px` vs `16px` (passes full-page SSIM, caught by per-element clip + getComputedStyle)
+- `letter-spacing` micro-differences
+- `font-weight: 400` vs `600` at small sizes
 
-Phase D runs **in parallel with C1** (both use the static loaded page). Phase 1 and Phase 2 always both run — Phase 2 catches sub-pixel mismatches (`font-size: 15px vs 16px`, `letter-spacing` micro-differences) that pass the Visual Gate.
+Phase D runs **in parallel with C1** (both use the static loaded page). Phase 1 and Phase 2 always both run.
 
 **For each major section of the component:**
 
@@ -382,11 +412,32 @@ Fix iteration loop:
   3. Score < 9? → fix lowest category → re-run from 1
   4. Score ≥ 9 → run Phase D pixel-perfect-diff
   5. Phase D fail? → fix specific element → re-run from 1
-  6. Phase D pass → DONE
+  6. Phase D pass → run VLM sanity check
+  7. VLM flags issue? → fix → re-run from 1
+  8. VLM clean → DONE
 
 Any single ❌ = NOT DONE.
 Max 3 full iterations before escalating to user with score breakdown.
 ```
+
+### Phase E: VLM Sanity Check (final, 1 pair only)
+
+After all automated gates pass, read **one pair** of screenshots (ref top + impl top) with the Read tool to catch issues that pixel diff and getComputedStyle cannot:
+- Missing visual elements that exist outside the measured selectors
+- z-index stacking order problems
+- Overflow clipping that hides content
+- Overall "feel" mismatch (wrong visual weight, wrong hierarchy)
+
+```bash
+# Read exactly 2 images — one ref, one impl
+# Read tmp/ref/<component>/static/ref/top.png
+# Read tmp/ref/<component>/static/impl/top.png
+```
+
+If everything looks correct → DONE.
+If an issue is visible → name it, fix it, re-run from Step 1 of the fix iteration loop.
+
+> **Token budget:** This is the ONLY place in the verification pipeline where ref+impl images are read side-by-side by the LLM. All other comparisons use AE/SSIM. One pair = ~4000 tokens. Do not read additional pairs unless the first pair reveals an issue in a specific scroll region.
 
 **Before declaring done — entry point check:**
 ```bash

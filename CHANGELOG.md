@@ -5,12 +5,17 @@
 ### Added
 - **`ui-capture`**: `report-page.md` — new overlay-based report page: fullpage screenshot as base layer with interactive transition overlays pinned at exact page coordinates. Sidebar region index with trigger badges, click-to-scroll navigation. Video overlays (scroll/mousemove/timer) auto-play via IntersectionObserver. Image toggle overlays (hover/intersection) show active state on mouse hover.
 - **`ui-capture`**: `detection.md` — `bounds.x` coordinate collection: all 4 region types (hover, scroll, mousemove, timer) now capture `rect.left + window.scrollX` for precise horizontal overlay positioning.
+- **`ui-reverse-engineering`**: `visual-verification.md` — Phase E: VLM sanity check. After all automated gates pass, read exactly 1 ref+impl screenshot pair (~4000 tokens) to catch issues outside measured selectors (missing elements, z-index stacking, overflow clipping, visual weight).
 
 ### Changed
+- **`ui-reverse-engineering`**: `visual-verification.md` — all image comparisons switched from LLM Vision reading to AE/SSIM (zero tokens). C1: 5 static screenshots now compared via `compare -metric AE`. C2: 60fps scroll frames now compared via `ffmpeg SSIM` batch. C3 video frames: same SSIM batch. LLM only reads images for: fail diagnosis (diff images), one-time spot-checks (Phase A gate), and final VLM sanity check (Phase E, 1 pair).
+- **`transition-reverse-engineering`**: `verification.md` — element-scope frame comparison switched from LLM table to AE batch. Fullpage-scope frame comparison switched to SSIM batch. Post-implementation capture comparison also SSIM-based.
+- **`pixel-perfect-diff.md`** — diff image reading restricted to AE > 0 failures only. No image reading for passing elements.
 - **`ui-capture`**: `comparison-page.md` — Report Mode section extracted to standalone `report-page.md`. Section now contains a short reference pointer instead of the full HTML template.
 - **`ui-capture`**: `detection.md` — all region types now wrap coordinates in `bounds: { x, width, height }` object, matching `regions.json` schema. Previously output raw `x`, `y`, `width`, `height` at root level.
 - **`ui-capture`**: `detection.md` — `regions.json` schema examples updated with `bounds.x` field for all region types.
 - **`ui-capture`**: `SKILL.md` — reference files list includes `report-page.md`. Phase R references updated from `comparison-page.md` to `report-page.md`.
+- **`ui-reverse-engineering`**: `SKILL.md` — reference files description updated with AE/SSIM comparison and Phase E VLM sanity check.
 - `plugin.json`, `marketplace.json` — version bumped to 0.0.16; description updated with overlay report page.
 - `README.md` — ui-capture description updated with overlay-based report page and `bounds.x` coordinate collection.
 

@@ -223,7 +223,7 @@ ffmpeg -i tmp/ref/capture/clip/ref/<name>-<state>.png \
 
 > **"Looks approximately the same" is FAIL.** Phase 2 always runs regardless of result.
 
-Open diff images (`diff/<name>-<state>.png`) with the Read tool to visually confirm which regions differ.
+Only read diff images (`diff/<name>-<state>.png`) with the Read tool when AE > 0 and you need to diagnose which region differs. Do not read images for passing elements.
 
 ### Step V6: Save Visual Gate JSON
 

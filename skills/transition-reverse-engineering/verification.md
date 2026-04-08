@@ -6,35 +6,47 @@
 ref frames (saved ONCE) → implement → capture impl frames → visual compare → adjust → repeat
 ```
 
-## Frame Comparison — scope: element
+## Frame Comparison — scope: element (AE/SSIM)
 
-Cropped to element bounds:
+Cropped to element bounds. Compare using AE diff — do not read image pairs with the LLM.
 
-| Frame | Time | Ref | Impl | Match? | Issue |
-|-------|------|-----|------|--------|-------|
-| 01 | 0ms | frames/ref/frame-01.png | frames/impl/frame-01.png | ✅/❌ | |
-| 08 | 50% | frames/ref/frame-08.png | frames/impl/frame-08.png | ✅/❌ | |
-| 15 | 100% | frames/ref/frame-15.png | frames/impl/frame-15.png | ✅/❌ | |
+```bash
+FRAME_COUNT=$(ls tmp/ref/<effect-name>/frames/ref/frame-*.png | wc -l)
+for i in $(seq -f "%02g" 1 $FRAME_COUNT); do
+  AE=$(compare -metric AE \
+    tmp/ref/<effect-name>/frames/ref/frame-${i}.png \
+    tmp/ref/<effect-name>/frames/impl/frame-${i}.png \
+    tmp/ref/<effect-name>/frames/diff/frame-${i}.png 2>&1)
+  if [ "$AE" -gt 0 ]; then
+    echo "FAIL frame ${i}: AE=${AE}"
+  fi
+done
+```
 
-For each ❌: identify exact property → targeted fix → re-capture impl only → compare.
+For each FAIL frame: read the diff image to identify which region differs → targeted fix → re-capture impl only → compare.
 
-## Frame Comparison — scope: fullpage
+## Frame Comparison — scope: fullpage (SSIM batch)
 
-Full-page screenshot comparison across the entire transition window:
+Full-page screenshot comparison across the entire transition window. Use SSIM for batch comparison — do not read image pairs with the LLM.
 
-| Frame | Time | Ref | Impl | Match? | Issue |
-|-------|------|-----|------|--------|-------|
-| 01 | 0ms (before) | frames/ref/frame-01.png | frames/impl/frame-01.png | ✅/❌ | |
-| 02 | ~100ms | frames/ref/frame-02.png | frames/impl/frame-02.png | ✅/❌ | |
-| ... | every 100ms | ... | ... | | |
-| N | end (settled) | frames/ref/frame-N.png | frames/impl/frame-N.png | ✅/❌ | |
+```bash
+FRAME_COUNT=$(ls tmp/ref/<effect-name>/frames/ref/frame-*.png | wc -l)
+for i in $(seq -f "%02g" 1 $FRAME_COUNT); do
+  SSIM=$(ffmpeg -i tmp/ref/<effect-name>/frames/ref/frame-${i}.png \
+                -i tmp/ref/<effect-name>/frames/impl/frame-${i}.png \
+                -lavfi "ssim" -f null - 2>&1 | grep -oP 'All:\K[0-9.]+')
+  if (( $(echo "$SSIM < 0.995" | bc -l) )); then
+    echo "FAIL frame ${i}: SSIM=${SSIM}"
+  fi
+done
+```
 
-**Additional checks for fullpage:**
-- Any frame where ref shows content but impl shows blank/loading/white → ❌ FAIL
-- Any frame where ref shows smooth transition but impl shows layout jump → ❌ FAIL
-- Intermediate frames (not just start/end) must match — do not skip mid-transition frames
+**Automated failure detection:**
+- SSIM < 0.5 on any frame where ref has content → likely blank/loading/white impl frame
+- SSIM drop > 0.3 between consecutive impl frames where ref is smooth → likely layout jump
+- All intermediate frames are compared — mid-transition frames are not skipped
 
-For each ❌: write one sentence naming the root cause before touching code. If you cannot name it, run `agent-browser eval` to inspect computed styles at the exact failing frame. Only after root cause is confirmed → fix → re-capture impl only → compare.
+For each FAIL frame: read the diff image to diagnose root cause. Write one sentence naming the cause before touching code. If you cannot name it, run `agent-browser eval` to inspect computed styles at the exact failing frame. Only after root cause is confirmed → fix → re-capture impl only → compare.
 
 ## Bug Diagnosis Protocol
 
@@ -111,4 +123,4 @@ Gate: `pixel-perfect-diff.json` must exist with all elements `"status": "pass"` 
 - [ ] **`pixel-perfect-diff.json` exists with all elements `"status": "pass"` AND `mismatches = 0` (all captured states — idle, active/after, or before/mid/after by triggerType)**
 - [ ] Entry points verified: CSS imports loaded (`body { margin: 0 }` etc. in effect), no missing `import` in main entry file
 - [ ] **Scroll transitions: reverse direction verified** — scroll back through trigger zone, confirm animation reverses to initial state
-- [ ] **Post-implementation full-page capture** — after all transitions are implemented, do a full-page scroll capture (top → bottom → top) on both original and implementation, compare side by side
+- [ ] **Post-implementation full-page capture** — after all transitions are implemented, do a full-page scroll capture (top → bottom → top) on both original and implementation, compare using SSIM batch (not LLM image reading)

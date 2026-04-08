@@ -485,7 +485,7 @@ agent-browser close                         # Kill session
 - **interaction-detection.md** — Step 5: hover/click/intersection interactions, JS bundle analysis
 - **animation-detection.md** — Step 6: 3-phase motion detection (idle capture → scroll capture → per-element tracking). Detects splash, auto-timers, parallax, scroll-zoom, clip-reveal, sticky, word-stagger. **MANDATORY for sites with scroll-driven animations.**
 - **component-generation.md** — Step 7: generation prompt, iteration rules
-- **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures (clip screenshots for css-hover/js-class/intersection, video for scroll-driven/mousemove/auto-timer). Phase D requires `pixel-perfect-diff.md`.
+- **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures. All comparisons use AE/SSIM (zero tokens) — LLM reads images only for diagnosis of failures and the final VLM sanity check (1 pair). Phase D requires `pixel-perfect-diff.md`. Phase E: VLM sanity check (1 ref+impl pair).
 - **../pixel-perfect-diff.md** — Step 8 Phase D (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
 - **style-audit.md** — Post-generation class-level computed style comparison (ref vs impl). Catches wrong font-size, font-weight, missing SVGs, wrong images, spacing mismatches. Runs in parallel with Step 8.
 
