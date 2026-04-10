@@ -315,31 +315,52 @@ If suspicious content is found: **log it to the user**, redact affected values, 
 
 ---
 
-## Step 6: JS Bundle Analysis (if needed)
+## Step 6: JS Bundle Analysis (MANDATORY)
 
-For interactions driven by JavaScript (not CSS transitions), analyze the bundle.
+> **This step is MANDATORY for ALL sites, not just sites with obvious JS interactions.**
+> Most modern sites use JS to drive animations (GSAP, Framer Motion), smooth scroll (Lenis, Locomotive), intro sequences, and state transitions that are invisible to `getComputedStyle`. Skipping this step means you will miss the site's actual behavior and produce a static clone instead of a functional replica.
+>
+> **Common rationalizations for skipping (all wrong):**
+> - "The site looks simple" → Simple-looking sites often have complex GSAP timelines behind the scenes
+> - "I already detected Lenis via class name" → Class detection tells you the library exists, not its configuration (lerp, duration, easing, scroll trigger points)
+> - "getComputedStyle gave me all the values" → It cannot give you animation timelines, sequence ordering, or trigger conditions
+> - "The bundle is too large" → grep is fast. Download it.
+> - "Idle capture takes 10 seconds, that's inefficient" → 10 seconds now prevents hours of debugging a missing splash/intro later
+> - "It's a Nuxt/React site so everything is in the DOM" → GSAP timelines, Lenis configs, and intro sequences are in JS, not the DOM
+> - "window.scrollTo() works fine for testing" → Lenis/GSAP intercept wheel events; window.scrollTo() bypasses them entirely and gives false results
+> - "The screenshots match so it's done" → Screenshots test appearance, not behavior. A site that looks right but doesn't scroll/animate is wrong.
+> - "The user asked me to be fast" → Speed requests are about reducing overhead, not skipping extraction. The bundle download + grep takes <30 seconds.
+
+For ALL sites, download and analyze **ALL loaded JS bundles** — not just the main entry point.
+
+### Download ALL loaded chunks (MANDATORY)
+
+Modern frameworks (Nuxt, Next.js, Remix) code-split aggressively. The main bundle often contains only the framework runtime and GSAP core. **Page-specific logic — scroll triggers, intro timelines, component transitions, sticky bookmark logic — lives in lazy-loaded chunks.** If you only download the main bundle, you WILL miss critical animation code.
 
 ```bash
-# Get script URLs
+# Get ALL loaded script URLs (not just <script> tags — includes dynamically imported chunks)
 agent-browser eval "
 (() => {
-  return JSON.stringify(
-    Array.from(document.querySelectorAll('script[src]')).map(s => s.src)
-  );
+  const entries = performance.getEntriesByType('resource');
+  const scripts = entries
+    .filter(e => e.initiatorType === 'script' && e.name.endsWith('.js'))
+    .map(e => e.name)
+    .filter(n => !n.includes('cloudflare') && !n.includes('iubenda') && !n.includes('analytics') && !n.includes('gtag'));
+  return JSON.stringify(scripts);
 })()
 "
 
-# Download relevant chunk — replace <bundle-url> with actual URL (HTTPS only)
-BUNDLE_URL="<bundle-url>"
-if ! [[ "$BUNDLE_URL" =~ ^https:// ]]; then
-  echo "Error: bundle URL must use HTTPS" >&2
-  exit 1
-fi
+# Download ALL chunks — not just one
 mkdir -p tmp/ref/<component>/bundles
-# --max-filesize 10485760 = 10 MB limit. If bundle is larger, remove this flag or download manually.
-curl -s --max-time 30 --max-filesize 10485760 --fail --location \
-  -o tmp/ref/<component>/bundles/main.js \
-  -- "$BUNDLE_URL" || { echo "Failed to download bundle (may exceed 10 MB limit)" >&2; exit 1; }
+# Replace <chunk-urls> with actual URLs from the eval above
+for URL in <chunk-url-1> <chunk-url-2> ...; do
+  FILENAME=$(basename "$URL")
+  if [[ "$URL" =~ ^https:// ]]; then
+    curl -s --max-time 30 --max-filesize 10485760 --fail --location \
+      -o "tmp/ref/<component>/bundles/$FILENAME" \
+      -- "$URL" || echo "Failed: $FILENAME" >&2
+  fi
+done
 
 # Sanitization check — scan for suspicious patterns before analysis
 grep -ciE 'eval\(atob|document\.cookie|fetch\(.*/exfil|XMLHttpRequest.*cookie' \
@@ -473,6 +494,43 @@ Save → `tmp/ref/<component>/scroll-engine.json`:
 }
 ```
 
+**Step 5: Scroll method verification (MANDATORY when custom scroll detected)**
+
+When `scroll-engine.json` has `type` other than `"native"`, you MUST verify that your scroll method actually works before using it in any subsequent step. `window.scrollTo()` silently fails on custom scroll sites — it executes without error but produces no visual change.
+
+```bash
+# Test 1: Take screenshot at current position
+agent-browser --session <project> screenshot tmp/ref/<component>/scroll-verify-before.png
+
+# Test 2: Try window.scrollTo (the method you might instinctively use)
+agent-browser --session <project> eval "(() => { window.scrollTo(0, 500); return window.scrollY; })()"
+agent-browser --session <project> wait 500
+agent-browser --session <project> screenshot tmp/ref/<component>/scroll-verify-scrollTo.png
+
+# Test 3: Try mouse wheel (the correct method for custom scroll)
+agent-browser --session <project> eval "(() => window.scrollTo(0, 0))()"
+agent-browser --session <project> wait 500
+for i in $(seq 1 5); do agent-browser --session <project> mouse wheel 300; done
+agent-browser --session <project> wait 500
+agent-browser --session <project> screenshot tmp/ref/<component>/scroll-verify-wheel.png
+
+# Compare: scrollTo vs wheel
+# If scrollTo screenshot === before screenshot but wheel screenshot !== before screenshot,
+# then scrollTo is broken and ALL subsequent scroll operations must use mouse wheel.
+```
+
+**Compare the three screenshots.** If `scroll-verify-scrollTo.png` is identical to `scroll-verify-before.png` but `scroll-verify-wheel.png` shows different content → `window.scrollTo()` does NOT work on this site. Record this in `scroll-engine.json`:
+
+```json
+{
+  "scrollToWorks": false,
+  "wheelRequired": true,
+  "verifiedMethod": "mouse wheel"
+}
+```
+
+**This verification catches the #1 scroll-related bug:** observing the site through `window.scrollTo()` on a Lenis/GSAP site and concluding the site "doesn't scroll" or "the overlay never disappears" — when in reality the site scrolls perfectly via wheel events but programmatic scroll is intercepted.
+
 ### Auto-timer detection (carousel, slideshow, rotating text)
 
 Auto-timer transitions are **not triggered by user interaction** — they run on `setInterval`/`setTimeout`. They are invisible to hover/scroll/click detection and require separate handling.
@@ -573,6 +631,82 @@ agent-browser eval "
 | GSAP `ease: "expo.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: 'bezier.expo'` |
 | GSAP `ease: "back.out(1.7)"` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `ease: [0.34, 1.56, 0.64, 1]` |
 
+### Bundle values → DOM element mapping (MANDATORY after grep)
+
+Extracting animation values from the bundle (`duration: 1.2`, `ease: "power5"`) without mapping them to specific DOM elements is useless. The same bundle may contain 5 different `duration: 1.2` calls targeting different elements. Without mapping, you'll apply the wrong values to the wrong elements.
+
+**Step 1: Find selector strings near animation calls**
+
+Animation libraries always reference DOM selectors near their configuration. In minified bundles, the selector is typically within 200 characters of the animation call:
+
+```bash
+# Find GSAP calls with their target selectors
+# Pattern: selector string (quotes) followed by animation params within ~200 chars
+grep -oE '"[.#][a-zA-Z][^"]{2,40}"[^;]{0,200}(duration|ease|stagger|clipPath|yPercent|opacity|autoAlpha)' \
+  tmp/ref/<component>/bundles/*.js | head -30
+
+# Find CSS class references near animation keywords
+grep -oE '\.[a-zA-Z_-]{3,30}[^;]{0,100}(to|from|fromTo|set)\(' \
+  tmp/ref/<component>/bundles/*.js | head -20
+```
+
+**Step 2: Build element → animation parameter map**
+
+For each selector found in Step 1, record:
+
+```json
+{
+  "selector": ".introHome .gsap\\:text",
+  "animations": [
+    { "property": "yPercent", "from": 100, "to": 0, "duration": 1, "ease": "power5", "stagger": 0.02 }
+  ],
+  "phase": "intro | scroll | hover | idle"
+}
+```
+
+**Step 3: Cross-reference with idle capture frames**
+
+If Phase A idle capture was completed (it must have been — it's mandatory), cross-reference the bundle's animation sequence with the frame timeline:
+
+- Frame 1-10 shows loading state → matches `siteLoader` selectors in bundle
+- Frame 15 shows text appearing → matches `.gsap:text` with `yPercent: 100 → 0`
+- Frame 25 shows image appearing → matches `.gsap:image` with `clipPath` animation
+- Frame 40 shows overlay clipping → matches `.introHome` with `clipPath: inset()`
+
+This cross-reference produces `element-animation-map.json`:
+
+```json
+[
+  {
+    "selector": ".introHome .gsap\\:text .lines",
+    "property": "yPercent",
+    "from": 100,
+    "to": 0,
+    "duration": 1,
+    "ease": "power5",
+    "stagger": 0.02,
+    "observedAtFrame": 15,
+    "observedAtTime_ms": 1500,
+    "phase": "intro"
+  },
+  {
+    "selector": ".introHome .gsap\\:image",
+    "property": "clipPath",
+    "from": "inset(50% 50% 50% 50%)",
+    "to": "inset(0% 0% 0% 0%)",
+    "duration": 1,
+    "ease": "circ2",
+    "observedAtFrame": 25,
+    "observedAtTime_ms": 2500,
+    "phase": "intro"
+  }
+]
+```
+
+Save to `tmp/ref/<component>/element-animation-map.json`. This file is consumed by component-generation.md — each component uses only the animations mapped to its specific selectors.
+
+**If you extracted bundle values but did NOT create `element-animation-map.json`, you have raw data without actionable information.** The generation step will guess which values go where, producing wrong animation timings.
+
 ### Cross-component DOM manipulation detection
 
 Some sites have components that directly modify OTHER components' DOM (e.g., an intro overlay setting `main.style.transform`, a menu provider reading footer position). These cross-component side effects are invisible to per-component extraction.
@@ -595,3 +729,150 @@ If found, record in `interactions-detected.json` as `type: "cross-component"` wi
 - **Intro/loading animations block scroll**: Some sites (e.g., realfood.gov) have intro animations that prevent scroll until complete. Wait 5-8s after page load before scrolling.
 
 If detected, invoke `transition-reverse-engineering/js-animation-extraction.md` scroll library section to extract parameters (lerp, smooth intensity, wrapper/content structure). Save results to `tmp/ref/<component>/scroll-library.json`.
+
+---
+
+## Step 6b: Transition Spec Document (MANDATORY after bundle analysis)
+
+> **This step produces the single most important artifact for implementation.** Without it, every transition fix requires re-reading bundle code (expensive in tokens and error-prone). With it, you read one document and know exactly what to implement.
+
+After completing ALL bundle analysis (Steps 6.1–6.5), produce two documents:
+
+### 1. `bundle-map.json` — Which chunk owns which feature
+
+Map each downloaded chunk to the features it contains. This prevents re-grepping all chunks when fixing one specific transition.
+
+```json
+{
+  "chunks": [
+    {
+      "file": "main.js",
+      "size": "305KB",
+      "contains": [
+        "GSAP core + plugin loader",
+        "Lenis scroll engine config",
+        "Page transition (onBeforeLeave / onEnter)",
+        "Intro timeline (first visit: clipPath + FLIP text)",
+        "Intro timeline (returning visit: xPercent slide)"
+      ],
+      "key_selectors": [".introHome", ".siteLoader", ".siteMenu", ".siteContacts", ".hero"]
+    },
+    {
+      "file": "C8xy95f-.js",
+      "size": "42KB",
+      "contains": [
+        "HeroHome component (logo stagger entrance)",
+        "Bookmark component (static, per-card)",
+        "StickyBookmarks component (absolute, scroll-driven)",
+        "StickyBookmarks text transition (SplitText + xPercent slide)",
+        "CardDefault component (work items)"
+      ],
+      "key_selectors": [".stickyBookmarks", ".bookmark", ".gsap:spine", ".card"]
+    }
+  ]
+}
+```
+
+### 2. `transition-spec.json` — Complete transition specification
+
+One entry per distinct transition. Each entry is **self-contained** — contains everything needed to implement it without re-reading the bundle.
+
+```json
+{
+  "transitions": [
+    {
+      "id": "intro-logo-stagger",
+      "description": "SVG logo parts stagger up from below on page load",
+      "trigger": "page load (first visit, delay 0.8s)",
+      "source_chunk": "C8xy95f-.js",
+      "bundle_branch": "n=true (first visit only)",
+      "target": ".hero .gsap:logo > * (5 SVG children: g, path, path, g)",
+      "animation": {
+        "property": "y",
+        "from": "height * 2",
+        "to": 0,
+        "duration": 1,
+        "ease": "circ2 → cubic-bezier(0.08, 0.82, 0.17, 1)",
+        "stagger": 0.1,
+        "delay": 0.8
+      },
+      "reference_frames": "intro-frames/frame-0010.png to frame-0030.png"
+    },
+    {
+      "id": "intro-overlay-exit",
+      "description": "Yellow overlay slides left when user scrolls",
+      "trigger": "first wheel event after intro complete",
+      "source_chunk": "main.js",
+      "bundle_branch": "n=false (onEnter else branch)",
+      "target": ".siteLoader",
+      "animation": {
+        "property": "xPercent",
+        "from": 0,
+        "to": -100,
+        "duration": 1.2,
+        "ease": "power5 → cubic-bezier(0.05, 0.86, 0.09, 1)"
+      },
+      "simultaneous": [
+        { "target": ".siteMenu", "property": "x", "from": -180, "to": 0, "delay": 0.68 },
+        { "target": ".siteContacts", "property": "x", "from": 180, "to": 0, "delay": 0.68 }
+      ],
+      "reference_frames": "orig-scroll-frames/f-0295.png to f-0310.png"
+    },
+    {
+      "id": "sticky-bookmark-text-swap",
+      "description": "Bookmark number/title slides out left, new one slides in from right",
+      "trigger": "ScrollTrigger onEnter when stickyBookmarks reaches next card boundary",
+      "source_chunk": "C8xy95f-.js",
+      "bundle_branch": "always (no conditional)",
+      "target": ".stickyBookmarks .bookmark .gsap:spine (SplitText lines)",
+      "animation_leave": {
+        "property": "xPercent",
+        "to": "-100 * direction",
+        "duration": 0.4,
+        "ease": "circ3 → cubic-bezier(0.08, 0.82, 0.17, 1)"
+      },
+      "animation_enter": {
+        "property": "xPercent",
+        "from": "100 * direction",
+        "to": 0,
+        "duration": 0.4,
+        "ease": "circ3",
+        "stagger": 0.1
+      },
+      "mode": "out-in",
+      "reference_frames": "bookmark-frames/f-0100.png to f-0120.png"
+    }
+  ]
+}
+```
+
+### Rules for transition-spec.json
+
+1. **One entry per distinct visual transition.** Don't merge "logo entrance" and "overlay exit" into one entry — they have different triggers and targets.
+2. **Include `bundle_branch`** — explicitly state which `if/else` branch this comes from and under what condition it runs. This prevents the #1 error: implementing the wrong branch.
+3. **Include `source_chunk`** — so you know which file to re-read if the spec needs updating.
+4. **Include `reference_frames`** — paths to captured frames that show this transition in action. Cross-referencing with visual evidence catches branch misidentification.
+5. **Convert GSAP easing to CSS** — write both the GSAP name and the CSS `cubic-bezier()` equivalent. Don't leave "power5" as-is; the implementation needs the bezier values.
+6. **Include `simultaneous`** — transitions that must start at the same time or with specific delays relative to each other.
+
+### Gate
+
+```
+$ cat tmp/ref/<c>/bundle-map.json
+ □ Exists, each chunk mapped to features
+ □ key_selectors populated per chunk
+
+$ cat tmp/ref/<c>/transition-spec.json
+ □ Exists, ≥1 transition entry
+ □ Each entry has: id, trigger, source_chunk, bundle_branch, target, animation
+ □ Each entry has: reference_frames (or "none" if no frames captured yet)
+ □ GSAP easing converted to cubic-bezier
+
+If ANY fails → go back and complete bundle analysis.
+```
+
+### When to load these documents
+
+- **During implementation (Step 7)**: Read `transition-spec.json` before writing any animation code. Each transition's implementation must match its spec entry exactly.
+- **During iteration/fixes**: When the user reports a transition is wrong, read the relevant entry from `transition-spec.json` first — don't re-grep the bundle.
+- **When this skill is re-invoked** (`/ui-reverse-engineering` called again on the same project): Check if `transition-spec.json` exists in `tmp/ref/<c>/`. If it does, load it immediately — it's the accumulated knowledge from previous analysis.

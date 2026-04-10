@@ -21,8 +21,21 @@
 - [ ] `interaction-states.json` — idle + active values per interactive element (from Step 5)
 - [ ] `decorative-svgs.json` — verbatim SVG paths (from Step 3 SVG extraction)
 - [ ] `component-map.json` — component boundaries and nesting (from Step 6c-f)
+- [ ] `transition-spec.json` — per-transition spec with trigger, target, easing, bundle branch (from Step 6b)
+- [ ] `bundle-map.json` — chunk → feature mapping (from Step 6b)
+
+**HARD BLOCK: `transition-spec.json` must exist.** If it doesn't, you MUST go back to interaction-detection.md Step 6b and create it. This is not optional — without it you will re-grep bundles during implementation, waste tokens, and risk applying values from the wrong conditional branch. This was the #1 source of implementation errors in real sessions.
 
 **If you find yourself writing a value that is not in the extracted data, STOP.** You are guessing. Go back and extract it.
+
+## Using transition-spec.json during implementation
+
+When implementing any transition or animation:
+1. Find the matching entry in `transition-spec.json` by `id`
+2. Use the `animation` values directly — do NOT re-read the bundle
+3. Check `bundle_branch` — confirm it matches the current page state (first visit vs returning, desktop vs mobile)
+4. Check `reference_frames` — view 2-3 frames to confirm the spec matches visual behavior
+5. If spec seems wrong, update the spec first, then implement — never implement against a spec you suspect is incorrect
 
 ## Design bundle consistency check (MANDATORY before generation)
 
@@ -107,9 +120,121 @@ Rules:
 
 Save the generated component to your project (e.g., `src/components/<ComponentName>.tsx`). If any extracted value is missing, use a placeholder comment: `{/* TODO: missing — check extraction */}`.
 
+## Mandatory comparison after each transition implementation
+
+After implementing any transition (intro sequence, scroll exit, bookmark swap, hover effect, etc.), you MUST compare against the original BEFORE moving on or telling the user to check.
+
+**Protocol:**
+
+```bash
+# 1. Screenshot the original at the transition's trigger point
+agent-browser --session <project> open <original-url>
+# ... trigger the transition state ...
+agent-browser --session <project> screenshot tmp/ref/<c>/compare-ref.png
+
+# 2. Screenshot the implementation at the same state
+agent-browser --session <project> open http://localhost:<port>
+# ... trigger the same transition state ...
+agent-browser --session <project> screenshot tmp/ref/<c>/compare-impl.png
+
+# 3. Read BOTH screenshots and identify differences
+```
+
+**Rules:**
+- If the original site is accessible, ALWAYS compare. "I think it looks right" is not valid.
+- Compare at the SAME scroll position / animation phase — not just "after everything is done."
+- If original is inaccessible, compare against reference frames in `tmp/ref/<c>/frames/ref/`.
+- After each fix iteration, re-compare — don't accumulate multiple fixes before checking.
+- **Max 3 comparison cycles per transition.** If still mismatching after 3, report specific remaining differences to the user.
+
+## CSS-to-React translation pitfalls (check before writing ANY animation code)
+
+Extracted animation data describes CSS/GSAP behavior on a vanilla DOM. React's rendering model introduces three categories of translation errors:
+
+### 1. Exit animations are impossible with conditional rendering
+
+**Wrong:** `{showSplash && <SplashScreen />}` — React removes the DOM node instantly on state change. No CSS transition can run on a removed node.
+
+**Right:** Always keep animated elements in the DOM. Control visibility with `opacity`, `visibility`, `pointer-events`, and `clip-path`. Only unmount after the exit animation completes (use `AnimatePresence` or a `transitionend` listener).
+
+### 2. Callback chains between components break on React lifecycle timing
+
+**Wrong:** Parent passes `onComplete` callback → child calls it in `useEffect` timeout → parent sets state → enables scroll. If the callback reference changes between renders or the timing doesn't align with React's commit phase, the chain breaks silently.
+
+**Right:** Use independent timers with the same duration values. Parent and child both know the intro is 4.6 seconds — each manages its own state independently. Or use a shared ref instead of state for time-critical flags (refs don't cause re-renders).
+
+### 3. Text line splitting must match CSS, not character counts
+
+**Wrong:** `text.split()` with hardcoded character limit (e.g., `> 55 chars`). This produces different line breaks than the browser's text layout.
+
+**Right:** Either:
+- Apply `overflow: hidden` + `translateY` to the entire text block (whole-block reveal) — simpler and visually equivalent for most cases
+- Use `splitText` AFTER initial render to detect actual CSS-computed line boundaries
+- Never pre-split text into lines in JavaScript unless you're matching the exact container width + font metrics
+
 ## Post-generation verification loops (MANDATORY)
 
 These loops run BEFORE visual verification. They catch layout and behavior errors that screenshots miss.
+
+### Loop 0: Original A/B comparison at 60fps (MANDATORY for animated components)
+
+> **This is the ONLY reliable way to verify animations.** Checking that "values change" in your
+> implementation proves nothing — you must compare AGAINST THE ORIGINAL at the same resolution.
+> Without this, you will confidently ship wrong easing, wrong axis, wrong direction, wrong timing.
+>
+> **Failure mode this prevents:** You extract `clipPath: inset(0% 0% X% 0%)` from the original
+> (bottom clips upward), but implement `clipPath: inset(0% X% 0% 0%)` (right clips leftward).
+> Both "animate clipPath from 0% to 5%". Both "work". But they look completely different.
+> Self-verification says "clipPath changes — looks correct!" A/B comparison instantly shows the mismatch.
+
+**Step 1: Capture original at 60fps** (if not already done in animation-detection)
+
+Use the agent-browser 60fps rAF capture from `animation-detection.md` Tier 2, pointing to the original URL.
+Save to `tmp/ref/<component>/original-60fps.json`.
+
+**Step 2: Capture implementation at 60fps**
+
+Same agent-browser rAF capture but pointing to `localhost:<port>`.
+Save to `tmp/ref/<component>/impl-60fps.json`.
+
+**Step 3: Diff key properties at matching timestamps**
+
+For each animated element, compare the SAME property at the SAME timestamp (±50ms tolerance):
+
+```
+MANDATORY CHECKS — every animated property must pass ALL of these:
+
+□ DIRECTION: Which value in clipPath/transform is changing?
+  Original: inset(0% 0% X% 0%) → 3rd value (bottom)
+  Impl:     inset(0% X% 0% 0%) → 2nd value (right)  ← WRONG AXIS
+
+□ RANGE: What are the start and end values?
+  Original: opacity 1 → 0.02 (never fully 0)
+  Impl:     opacity 1 → 0      ← minor but check if intentional
+
+□ TIMING: When does the transition start and end?
+  Original: starts at t=2111ms, reaches 3.67% at t=2611ms
+  Impl:     starts at t=1260ms, reaches 0% at t=1693ms  ← 850ms too early
+
+□ EASING: What's the interpolation curve shape?
+  Original: values at 25%/50%/75% progress show power5 (fast start, slow end)
+  Impl:     values show linear or wrong easing
+
+□ COUPLING: Which properties animate together?
+  Original: clipPath + text reveal start at same time
+  Impl:     clipPath starts 800ms before text  ← desynced
+```
+
+**Gate:** If ANY check fails, fix the implementation before proceeding. Do NOT rationalize
+mismatches ("close enough", "similar feel", "hard to notice"). The original values are
+the spec — match them or document why you deviated.
+
+**Anti-patterns this catches:**
+- Animating the wrong clipPath axis (right vs bottom vs top)
+- Inventing animations that don't exist in the original (e.g., "logo shrinks and moves up" when logo is static)
+- Getting easing wrong because 200ms polling looked linear
+- Desynchronized animation phases (splash/text/image should be coupled but aren't)
+- Attributing GSAP's initial `transform: matrix(...)` setup as an "animation" when it's just initialization
 
 ### Loop 1: Section height verification
 
@@ -214,6 +339,43 @@ useEffect(() => {
 
 When refining after visual verification, make **targeted edits** — do not regenerate the entire component. Identify the specific mismatched property and fix only that.
 
+## MANDATORY: Automated verification loop after EVERY code change
+
+> **YOU MUST RUN THIS LOOP AFTER EVERY CHANGE. DO NOT ASK THE USER TO CHECK FIRST.**
+> **"확인해주세요" / "check in browser" WITHOUT running verification = FAILURE.**
+
+After ANY code change (layout, animation, styling), execute this loop before reporting to the user:
+
+```
+LOOP (max 3 iterations):
+  1. STATIC CHECK — getComputedStyle comparison
+     Run Phase D Numerical Diagnosis on both original + implementation.
+     Extract: rect, fontSize, fontWeight, lineHeight, color, backgroundColor,
+              padding, margin, zIndex, clipPath, transform for ALL key elements.
+     Compare: if ANY property differs by >3px or different value → MISMATCH.
+
+  2. TRANSITION CHECK — AE diff curve comparison
+     Record both sites at 60fps.
+     Run AE diff on both frame sequences.
+     Compare: transition start time (±100ms), peak AE magnitude (±20%),
+              hold duration (zero-AE frame count), total sequence length.
+     If ANY metric differs beyond tolerance → MISMATCH.
+
+  3. If mismatches found:
+     - Name the root cause in ONE sentence
+     - Fix the specific property/timing
+     - GOTO step 1 (re-run verification)
+
+  4. If NO mismatches:
+     - Report to user: "Verification passed: N static checks ✅, M transition checks ✅"
+     - THEN (and only then) ask user to visually confirm
+END LOOP
+```
+
+**Why this exists:** Without automated verification, the workflow degrades to:
+"implement → screenshot → looks ok to me → user says it's wrong → guess what's wrong → repeat".
+This loop catches font-size, z-index, timing, easing mismatches BEFORE the user sees them.
+
 ## Bundle covariance rules (MANDATORY during fix iterations)
 
 When fixing a visual mismatch, check if the property belongs to a design bundle (from `design-bundles.json`). If it does, verify ALL sibling properties in that bundle still match the reference.
@@ -266,6 +428,40 @@ When bundle analysis (Step 6) detects an animation library, use these wiring pat
 | GSAP | `el.addEventListener('mouseenter', () => gsap.to(el, { scale: 1.05 }))` |
 | CSS-only | `transition` property + `:hover` pseudo-class or `group-hover:` Tailwind |
 
+### SVG / DOM child staggered animation
+
+When bundle analysis shows `.fromTo(".selector > *", ...)` or `stagger` on children:
+
+```tsx
+// SVG children animate individually — DO NOT translate the parent
+useEffect(() => {
+  const svg = svgRef.current
+  if (!svg) return
+  const children = Array.from(svg.children) as SVGElement[]
+  const offset = svg.getBoundingClientRect().height * 2
+
+  // Initial state: all children off-screen below
+  children.forEach(child => {
+    child.style.transform = `translateY(${offset}px)`
+    child.style.willChange = 'transform'
+  })
+
+  // Animate with stagger
+  const timer = setTimeout(() => {
+    children.forEach((child, i) => {
+      child.style.transition = `transform 1s cubic-bezier(...) ${i * stagger}s`
+      child.style.transform = 'translateY(0)'
+    })
+  }, delay)
+
+  return () => clearTimeout(timer)
+}, [])
+```
+
+**When to use:** Bundle contains `> *`, `.children`, or `stagger` targeting SVG/DOM children.
+**Common for:** Logo assembly, icon reveals, grid card entrances, text character animations.
+**Never:** Translate the parent container when the bundle animates children individually.
+
 ### Key architectural insight
 
 If the site uses a **custom scroll engine** (overflow:hidden + translate3d wrapper):
@@ -296,6 +492,17 @@ When the implementation visually matches but **behaves wrong**, use this diagnos
 | Sticky element unsticks too early/late | Wrong container (wrapper) height | Measure `diff(stickyCenter, lastContentCenter)` after unstick — adjust wrapper height until diff ≈ 0 |
 | Hundreds of pixels of dead space below last card | Section height hardcoded too large | Measure `sectionBottom - lastContentBottom` — reduce section height to `lastContentBottom + 65px` |
 | Marquee/scroll animation speed or spacing wrong | Guessed `gap` and `animation-duration` instead of extracting | Extract exact `gap`, `animation`, `animationDuration` from the marquee track element |
+| Splash/intro transition doesn't play | Element rendered with `{condition && <div>}` — React unmounts it before CSS transition can run | Never use conditional rendering for animated exits. Keep element in DOM, animate with `opacity: 0` + `pointer-events: none`. Use `AnimatePresence` if unmount is required. |
+| Text line breaks differ from reference | Text split into lines using hardcoded character count (e.g., `> 55 chars`) instead of natural CSS line breaks | Let CSS handle line wrapping naturally (single `<p>` tag). If per-line reveal is needed, use `splitText` after render to detect actual line boundaries, or apply `overflow: hidden` + `translateY` to the whole text block instead of individual lines. |
+| Scroll-driven overlay doesn't disappear | `onReady` callback error prevents scroll from enabling, or scroll listener gated behind state that never becomes true | Decouple scroll listener registration from animation completion callbacks. Use a simple `setTimeout` matching the intro duration instead of callback chains. Register wheel listener immediately but gate the delta application on a ref flag. |
+| Logo/icon "assembles" in original but just slides in implementation | Bundle uses `.fromTo(".selector > *", {y: offset}, {y: 0})` — children animate individually, not the parent | Loop over `element.children`, apply per-child `translateY` with stagger delay. Never translate the parent container. |
+| Splash animation data shows "element was always static" | `agent-browser eval` and `addInitScript` both missed it — GSAP set the `from` value before capture started, so the captured "initial state" is actually mid-animation | Use video frames (Tier 1) as ground truth for splash. Cross-reference with bundle grep for exact selectors, properties, and easing. DOM polling cannot reliably capture the first frame of DOMContentLoaded-triggered animations. |
+| Implemented animation that never runs on the target page | Bundle has `if (isHome) { pathA } else { pathB }` — you implemented pathB but the target page runs pathA | Read the FULL conditional structure around animation code in the bundle. Trace the condition variable to its source. `n \|\| (code)` means code runs when `!n`. See animation-detection.md "Conditional animation branches". |
+| All transitions fire sequentially but original fires them simultaneously | Used separate `setTimeout` for each transition, but GSAP timeline has multiple `.to()` at position `0` or `"<"` | Parse GSAP position parameters: `0` = timeline start, `"<"` = same time as previous. Multiple tweens at same position = ONE setTimeout that triggers ALL transitions at once. See animation-detection.md "Parse GSAP timeline structure". |
+| CSS transition can't do multi-step (A→B hold→C) | CSS transition only supports A→B. "Bottom → center (hold) → top" requires 2 separate transitions with setTimeout timing that's fragile. | Use WAAPI `element.animate()` with multi-keyframe + `offset` values. Or use `@beyond/core` `animateSequence()` which wraps WAAPI with hold support. Never chain CSS transitions for multi-step motion. |
+| Animation code changes don't take effect | Modified a shared package (e.g., `@beyond/core`) but the consuming app uses a stale build | After modifying `packages/*`, run `pnpm --filter <package> build` to rebuild the dist, then restart the dev server. Turbopack/Next.js dev mode does NOT hot-reload package dist changes. |
+| Overlay clips away gradually (clipPath) but original disappears as a whole panel | Original uses `translateX(-100%)` to slide the overlay off-screen, not clipPath progression. ClipPath is set once (e.g., 5%) and stays fixed; scroll drives transform, not clip. | Check `getBoundingClientRect()` of the overlay after scrolling on the original. If `x < 0`, it's been translated. But first check: is the overlay `position: fixed` with separate scroll logic, OR is it part of the horizontal scroll content itself? If `scrollY` stays 0 while `x` changes, it's inside a Lenis/GSAP horizontal scroll container — make it a `flex-none w-screen` child of the scroll wrapper, not a fixed overlay. |
+| Overlay disappears too fast or too slow on scroll | Overlay is `position: fixed` with `translateX(scrollProgress * -100%)`, but `scrollProgress` covers the entire content width — so overlay exits across the full scroll range | The overlay is likely NOT a fixed overlay at all — it's the FIRST ITEM in the horizontal scroll container. Place it as a `flex-none w-screen h-screen` child before hero/work items. It scrolls away naturally at 1:1 with content, no separate scroll math needed. Verify by checking if original `window.scrollY` stays 0 while overlay's `x` decreases (= Lenis virtual scroll, overlay is inline). |
 
 **Usage:** When any visual verification step fails and the cause isn't obvious, scan this table before debugging. Most behavioral bugs fall into one of these categories.
 

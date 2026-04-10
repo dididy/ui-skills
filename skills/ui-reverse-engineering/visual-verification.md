@@ -23,16 +23,23 @@ Every component verification requires these **three distinct captures**, both fr
 
 **All three are mandatory. C1 alone (static screenshots) is NOT sufficient.** C2 catches what C1 misses (scroll-triggered motion), and C3 catches what C2 misses (hover/click/scroll interactions).
 
-## Frame Extraction: 60 fps
+## Frame Extraction: 60 fps (MANDATORY — DO NOT CHANGE)
 
-Video captures (scroll-driven, mousemove, auto-timer) are extracted at **60 fps** for frame-by-frame comparison.
+> **THIS IS A HARD REQUIREMENT. DO NOT reduce to 10fps, 30fps, or any other value.**
+> **DO NOT skip frame extraction. DO NOT use screenshots as a substitute.**
+> **Every video capture MUST be extracted at exactly 60fps.**
+
+Video captures are extracted at **60 fps** for AE diff curve analysis and frame-by-frame comparison.
 
 ```bash
-# 60 fps extraction — use for VIDEO captures only
+# 60 fps extraction — MANDATORY for ALL video captures. DO NOT change this value.
 ffmpeg -i <input>.webm -vf fps=60 <output-dir>/frame-%06d.png -y
 ```
 
-> **Why 60 fps:** At 2 fps, a 500ms transition produces 1 frame. At 60 fps, it produces 30 frames. Transition bugs (flicker, wrong easing, layout jump) are only visible at full frame rate.
+> **Why 60 fps:** AE diff at 60fps gives 16.7ms resolution — sufficient to detect easing curves,
+> holds, and transition boundaries. AE diff costs zero tokens (pure CLI).
+> Disk usage: ~300KB/frame × 60fps × duration. Clean up frames after analysis.
+>
 > **css-hover / js-class / intersection:** no frame extraction needed — these use clip screenshots directly.
 
 ## Shared scroll sequence (use identically in Phase A and B)

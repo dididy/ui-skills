@@ -69,6 +69,9 @@ Steps R–9 apply to URL input. For screenshot/video input, steps 1–6 are repl
 ```
 Input URL
   ↓
+0.  Load Existing Analysis — if re-invoked, load transition-spec.json + bundle-map.json
+                             immediately. Skip re-extraction of known transitions.
+  ↓
 R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 deferred to 5b
   ↓
 1.  Open & Snapshot        — DOM tree, full-page screenshot
@@ -87,26 +90,45 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 5b. Capture C3 (deferred)  — interaction/transition videos using selectors from Step 5
   ↓
-6.  Detect Animations      — frame extraction (fps=2) → consecutive pair comparison
-                             → DOM mapping → classify (scroll-reveal, parallax, sticky,
-                               scale, clip-path, auto-timer) → per-animation capture
+5c. JS Bundle Download     — MANDATORY. download-chunks.sh downloads ALL loaded chunks
+                             (lazy chunks via performance API, not just main.js).
+                             Produces bundle-analysis.json + skeleton bundle-map.json.
+                             ⛔ GATE: validate-gate.sh <dir> bundle
+  ↓
+5d. Transition Spec        — produce transition-spec.json (per-transition spec with trigger,
+                             target, easing, duration, bundle branch, reference frames).
+                             Single source of truth for implementation. gsap-to-css.sh
+                             converts easing values automatically.
+                             ⛔ GATE: validate-gate.sh <dir> spec
+  ↓
+6.  Detect Animations      — ALL 3 phases MANDATORY:
+                             Phase A: idle capture (10s video) — splash/intro detection
+                             Phase B: scroll capture — scroll-driven motion
+                             Phase C: per-element tracking — targeted animation capture
       ↓ (scroll-driven/canvas/WebGL found)
       → transition-reverse-engineering for JS extraction
   ↓
-6b. Assemble extracted.json — combine structure + portal-candidates + inline-svgs + styles
-                             + design-bundles + breakpoints + scroll-engine
-                             + interactions + animations
+6b. Assemble extracted.json — combine all extraction artifacts
   ↓
-6c. Pre-generation audit   — 6-stage design audit: data inventory, roles,
-                             grouping, layout, bundle verification, component boundaries
+6c. Pre-generation audit   — 6-stage design audit
   ↓
-7.  Generate Component     — React + Tailwind, exact values, functional JS, verbatim SVGs
+7.  Generate Component     — React + Tailwind, exact values from transition-spec.json.
+                             ⛔ GATE: validate-gate.sh <dir> pre-generate
   ↓
 8.  Visual Verification    — AE/SSIM comparison (zero tokens) + 10-point scoring
-                             + Phase D (pixel-perfect gate) + Phase E (VLM sanity check, 1 pair)
+                             + Phase D (pixel-perfect gate) + Phase E (VLM sanity check)
+                             ⛔ GATE: validate-gate.sh <dir> post-implement (after each transition)
   ↓
 9.  Interaction Verification — test each hover/click/scroll/timer on localhost
 ```
+
+### Automation Scripts
+
+| Script | Purpose |
+|---|---|
+| `validate-gate.sh` | Enforces extraction gates (bundle, spec, pre-generate, post-implement). Exits 1 on failure — hard blocks. |
+| `download-chunks.sh` | Downloads ALL loaded JS chunks, detects animation libraries, produces skeleton bundle-map.json. |
+| `gsap-to-css.sh` | Converts GSAP easing names to CSS cubic-bezier. Single lookup, full table, or bundle scan. |
 
 ### Input Modes
 

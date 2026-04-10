@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads visual assets and extracts inline SVGs verbatim. 5-bundle design token grouping (surface, shape, type, tone, motion) with covariance rules ensures bundled properties change together. 10-point design fidelity scoring loop for fix iteration guidance with rollback on regression. 6-stage pre-generation design audit: data inventory, role identification, grouping, layout direction, bundle verification, component boundaries. Auto-detects responsive breakpoints, scroll behavior, custom scroll containers, portal-escaped elements, mouse-follow interactions, and stroke-based SVG hover animations. Animation detection: 3-phase motion detection (idle → scroll → per-element tracking). Verifies output with AE/SSIM pixel diff (zero LLM tokens) + scoring loop (diagnostic) + DOM clip screenshot pixel diff (completion gate) + VLM sanity check (1 screenshot pair). Post-generation style audit compares class-level computed styles. Includes sub-skills for animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture, trigger-type-aware recording, and overlay-based analysis report with interactive transition previews pinned at exact page coordinates.",
-      "version": "0.0.16",
+      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads ALL loaded JS chunks (lazy chunks via performance API, not just main bundle) and produces transition-spec.json + bundle-map.json as single source of truth for implementation. Prior analysis is loaded automatically on re-invocation. Step execution rules organized by phase (Before → Extraction → Implementation → Verification). Verifies output with AE/SSIM pixel diff + scoring loop + DOM clip screenshot pixel diff + VLM sanity check. Includes sub-skills for animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture, and overlay-based analysis report.",
+      "version": "0.0.17",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -99,7 +99,13 @@
         "intersection-observer-autoplay",
         "zero-token-comparison",
         "ae-ssim-batch",
-        "vlm-sanity-check"
+        "vlm-sanity-check",
+        "mandatory-checkpoint",
+        "bundle-gate",
+        "skip-prevention",
+        "scroll-method-verification",
+        "element-animation-map",
+        "idle-capture-protocol"
       ]
     }
   ]

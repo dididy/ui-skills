@@ -58,6 +58,28 @@ agent-browser --version           # verify
 Input (URL / screenshot / video)
   ↓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PHASE 0: LOAD EXISTING ANALYSIS (if re-invoked)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓
+  ↓  Check if prior analysis exists for this project:
+  ↓    $ ls tmp/ref/<c>/transition-spec.json 2>/dev/null
+  ↓    $ ls tmp/ref/<c>/bundle-map.json 2>/dev/null
+  ↓    $ ls tmp/ref/<c>/element-animation-map.json 2>/dev/null
+  ↓
+  ↓  If ANY exist → Read them IMMEDIATELY before any work.
+  ↓  These documents are accumulated knowledge from prior
+  ↓  analysis — they contain exact transition specs, bundle
+  ↓  chunk mappings, and animation parameters that would
+  ↓  otherwise cost thousands of tokens to re-extract.
+  ↓
+  ↓  If transition-spec.json exists:
+  ↓    → Skip to the relevant transition entry
+  ↓    → Implement or fix using spec values directly
+  ↓    → Do NOT re-grep bundles unless the spec is wrong
+  ↓
+  ↓  If none exist → proceed to Phase 1.
+  ↓
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   PHASE 1: REFERENCE CAPTURE (before ANY code)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
@@ -108,38 +130,54 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓                          not already captured by /ui-capture Phase 2, re-run
   ↓                          /ui-capture Phase 2B–2E targeting those specific regions
   ↓
-6. Detect Animations      — Analyze the full scroll video from /ui-capture Phase 1:
+5c. JS Bundle Download    — Read interaction-detection.md Step 6 (MANDATORY)
+  ↓                          Set PLUGIN_ROOT first (see Mandatory Checkpoint Protocol).
+  ↓                          Use scripts to automate:
   ↓
-  ↓   a. Extract frames at 0.5s intervals from the scroll video:
-  ↓      ffmpeg -i full-scroll.webm -vf fps=2 frames/frame-%04d.png
+  ↓                          1. Get URLs:
+  ↓                             agent-browser eval "(()=>JSON.stringify(
+  ↓                               performance.getEntriesByType('resource')
+  ↓                               .filter(e=>e.initiatorType==='script'&&e.name.endsWith('.js'))
+  ↓                               .map(e=>e.name)))()"
   ↓
-  ↓   b. Compare consecutive frame pairs — regions with visual change
-  ↓      between frames indicate scroll-driven animations. Record:
-  ↓      - frame range (which scroll positions show change)
-  ↓      - approximate viewport Y position
+  ↓                          2. Download + analyze ALL chunks:
+  ↓                             echo '<url-json>' | bash "$PLUGIN_ROOT/scripts/download-chunks.sh" tmp/ref/<c> -
+  ↓                             → produces bundles/*.js + bundle-analysis.json + skeleton bundle-map.json
   ↓
-  ↓   c. For each detected animation region, identify the DOM element:
-  ↓      scroll to that Y position, eval getComputedStyle to find
-  ↓      elements with transform/opacity/clip-path that differ from
-  ↓      their static state. Save selector + observed properties.
+  ↓                          3. Convert GSAP easings found in analysis:
+  ↓                             bash "$PLUGIN_ROOT/scripts/gsap-to-css.sh" scan tmp/ref/<c>/bundles/<chunk>.js
   ↓
-  ↓   d. Classify each animation:
-  ↓      - scroll-reveal (opacity 0→1, translateY)
-  ↓      - parallax (translateY at different rate than scroll)
-  ↓      - sticky/pinned (position changes during scroll range)
-  ↓      - scale/zoom (transform: scale changes on scroll)
-  ↓      - clip-path reveal (clip-path animates on scroll)
-  ↓      - auto-timer (changes without scroll — carousel, slideshow)
+  ↓                          4. Run gate:
+  ↓                             bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> bundle
   ↓
-  ↓   e. Capture each animation region:
-  ↓      - Scroll-driven: 3 screenshots (before trigger / mid / after)
-  ↓      - Auto-timer: short video (2-3 cycles)
-  ↓      Save → tmp/ref/<component>/animations-detected.json
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: bash validate-gate.sh <dir> bundle    │
+  ↓  │ Exit code 1 = BLOCKED. Fix before Step 6.   │
+  ↓  └─────────────────────────────────────────────┘
   ↓
-  ↓   f. If ANY scroll-driven, canvas, or WebGL animations found:
-  ↓      → invoke /transition-reverse-engineering for JS extraction
-  ↓      This is NOT optional — these cannot be reproduced from CSS alone.
-  ↓      Resume at Step 6b after transition skill completes.
+5d. Transition Spec       — Read interaction-detection.md Step 6b (MANDATORY)
+  ↓                          Produce bundle-map.json + transition-spec.json
+  ↓                          These are the SINGLE SOURCE OF TRUTH for implementation.
+  ↓                          Every transition's trigger, target, easing, duration,
+  ↓                          bundle branch, and reference frames — in one document.
+  ↓                          During implementation, read transition-spec.json FIRST.
+  ↓                          During fixes, read the relevant entry — don't re-grep.
+  ↓
+  ↓  ┌─────────────────────────────────────────────┐
+  ↓  │ GATE: bash validate-gate.sh <dir> spec      │
+  ↓  │ Exit code 1 = BLOCKED. Fix before Step 6.   │
+  ↓  └─────────────────────────────────────────────┘
+  ↓
+6. Detect Animations      — Read animation-detection.md, execute ALL 3 phases:
+  ↓                         Phase A: Idle capture (10s video) — MANDATORY, detects splash/intro
+  ↓                         Phase B: Scroll capture — MANDATORY, detects scroll-driven motion
+  ↓                         Phase C: Per-element tracking — targeted capture per animation
+  ↓                         Save → tmp/ref/<component>/animations-detected.json
+  ↓
+  ↓                         If ANY scroll-driven, canvas, or WebGL animations found:
+  ↓                         → invoke /transition-reverse-engineering for JS extraction
+  ↓                         This is NOT optional — these cannot be reproduced from CSS alone.
+  ↓                         Resume at Step 6b after transition skill completes.
   ↓
 6b. Assemble extracted.json — Combine data from Steps 2-6 into the summary file:
   ↓                            structure.json + portal-candidates.json
@@ -363,14 +401,89 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓  └─────────────────────────────────────────────┘
 ```
 
-## Step Execution Rules
+## Step Execution Rules (in execution order)
 
-1. **Read before executing.** At each step, use the Read tool to load the referenced `.md` file. The sub-documents contain exact `agent-browser` commands, JS snippets, and output formats. Do not improvise.
-2. **Save artifacts.** Each extraction step produces a JSON file. Save it. The generation step (7) consumes these files.
-3. **No skipping.** If a step seems unnecessary (e.g., "this site has no interactions"), still run the detection commands from `interaction-detection.md` to confirm. Document the null result.
-4. **Reference capture is step ZERO.** Before any extraction or coding, capture the original site's screenshots and video (Phase A of `visual-verification.md`). These are your ground truth for the entire process.
-5. **Test interactions, not just screenshots.** Static visual match is necessary but NOT sufficient. Every hover, click, scroll-trigger, and auto-timer must be tested with browser automation on the implementation. A component that looks right but behaves wrong is not done.
-6. **Visual Gate, not eyeball match.** Screenshots cannot catch `font-size: 16px vs 24px` or `font-weight: 400 vs 600`. Phase D (`pixel-perfect-diff.md`) Phase 1 Visual Gate (AE/SSIM clip diff) is the authoritative gate. If it fails, Phase 2 Numerical Diagnosis identifies the CSS property. "Looks the same" is not a valid completion criterion.
+> **THESE RULES ARE NOT SUGGESTIONS. THEY ARE MANDATORY REQUIREMENTS.**
+
+### A. Before any work
+
+1. **Load existing analysis first.** If `transition-spec.json` or `bundle-map.json` exist in `tmp/ref/<c>/`, read them before doing anything. Don't re-extract what's already documented.
+2. **Read the sub-document before executing its step.** Each `.md` file contains exact commands and formats. Do not improvise from memory.
+3. **Capture reference frames BEFORE implementing.** Record the original behavior on video, extract frames, study them. Only then write code. Bundle code alone is not sufficient — it has conditional branches you may misidentify.
+
+### B. During extraction
+
+4. **No skipping.** If a step seems unnecessary, run the detection commands anyway. Document the null result.
+5. **Download ALL loaded JS chunks.** Use `performance.getEntriesByType('resource')` — not just `<script>` tags. Page-specific logic lives in lazy chunks. If `grep` finds nothing in main.js, download more — don't conclude the feature isn't in JS.
+6. **Bundle code is the spec; frames verify it.** Derive animation parameters (easing, duration, delay) from the bundle. Frames confirm you read the right branch. If they disagree, re-read the bundle — you probably picked the wrong conditional branch.
+7. **Identify which conditional branch runs.** Bundles have `if (isFirstVisit) { A } else { B }`. Cross-reference with captured frames to confirm which branch is active on the target page.
+8. **Idle capture (10s at page load) is mandatory.** This is the only way to detect splash/intro animations that play once and disappear.
+9. **Remove fixed overlays before capture.** Cookie banners, modals, chat widgets — anything not part of core UI must be removed before recording.
+10. **Save artifacts.** Each step produces a JSON file. Save it immediately — the generation step consumes these files.
+11. **Write transition-spec.json after bundle analysis.** This is the single source of truth for implementation. Every transition gets one entry with trigger, target, easing, duration, bundle branch, and reference frames.
+
+### C. During implementation
+
+12. **Read transition-spec.json first, not the bundle.** During fixes, read the relevant spec entry — don't re-grep. Re-grepping wastes tokens and risks re-reading the wrong branch.
+
+### D. During verification
+
+13. **60fps frame extraction for all video captures.** Do not reduce to 10fps/30fps. AE diff at 60fps costs zero tokens.
+14. **Visual Gate, not eyeball match.** Phase D (AE/SSIM + getComputedStyle) is the authoritative gate. "Looks the same" is not valid.
+15. **Test interactions, not just screenshots.** Every hover, click, scroll-trigger, and auto-timer must be tested with browser automation. A component that looks right but behaves wrong is not done.
+16. **Verify after every code change.** Run the verification loop BEFORE telling the user to check. Max 3 iterations. Only declare done when mismatches = 0 AND AE curves align.
+
+## Mandatory Checkpoint Protocol
+
+**After EACH step, run the validation script. If it fails (exit code 1), you MUST go back. Do NOT proceed.**
+
+The validation scripts are in `scripts/` (relative to the plugin root). `CLAUDE_PLUGIN_ROOT` is set automatically by Claude Code hooks. If not available, find the plugin root manually:
+
+```bash
+# Set PLUGIN_ROOT (auto or manual)
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find ~/.claude/skills -name 'validate-gate.sh' -exec dirname {} \; 2>/dev/null | head -1 | xargs dirname)}"
+
+# After Step 5c (bundle download):
+bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<component> bundle
+
+# After Step 5d (transition spec):
+bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<component> spec
+
+# Before Step 7 (code generation):
+bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<component> pre-generate
+
+# After each transition implementation:
+bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<component> post-implement
+
+# Run ALL gates at once (bundle + spec + pre-generate):
+bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<component> all
+```
+
+**If the script exits with code 1, you are BLOCKED.** The output tells you exactly which files are missing or malformed. Fix them before proceeding. Do not rationalize skipping — the script is the authority, not your judgment.
+
+**Step-specific checkpoints:**
+
+| After Step | Required Files | Minimum Content |
+|-----------|---------------|-----------------|
+| Step 2 | `structure.json`, `portal-candidates.json`, `sticky-elements.json` | structure.json > 100 bytes |
+| Step 2.5 | `head.json`, `assets.json`, `inline-svgs.json`, `visible-images.json` | head.json has title |
+| Step 3 | `styles.json` (or `styles-*.json`), `advanced-styles.json`, `body-state.json`, `css-variables.json`, `decorative-svgs.json`, `design-bundles.json` | styles has ≥3 selectors |
+| Step 4 | `responsive/detected-breakpoints.json`, ≥3 `responsive/ref-*.png` | breakpoints JSON valid |
+| Step 5 | `interactions-detected.json`, `scroll-engine.json`, `scroll-transitions.json` | interactions has "interactions" key |
+| **Step 5→6** | **`bundles/*.js` (ALL loaded chunks via `performance.getEntriesByType`), `element-animation-map.json`** | **ALL loaded JS chunks downloaded (not just main.js). Each > 1KB. Map has ≥1 entry with selector + property + values. If grep finds nothing in main.js, download more chunks — the logic is in lazy chunks.** |
+| Step 5→6 | `scroll-engine.json` must have `scrollToWorks` field | Scroll method verification completed (3-screenshot comparison) |
+| Step 6 | `idle-capture.webm`, `idle-frames/` (≥50 frames), `animations-detected.json`, `element-tracking.json` | idle-capture.webm > 50KB. If it doesn't exist, you skipped Phase A. Go back. |
+| Step 6b | `extracted.json` | assembled from all above |
+| Step 6c | `data-inventory.json`, `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json` | each > 50 bytes |
+
+**The Step 5→6 bundle checkpoint is the most critical.** This is where skipping happens most often. The rationalization is always "this site looks simple" or "I already know how it works from DOM inspection." But DOM inspection CANNOT reveal:
+- GSAP ScrollTrigger timeline configuration (pin start/end, scrub, snap)
+- Lenis smooth scroll parameters (lerp, duration, easing)
+- Intro/splash animation sequences (elements that are removed after playing)
+- Framer Motion spring configs (stiffness, damping, mass)
+- State machine transitions (menu open → body class toggle → scroll lock)
+
+**If you find yourself thinking "I don't need the bundle for this site" — you are wrong. Download it.**
 
 ## Multi-section pages
 
@@ -482,8 +595,8 @@ agent-browser close                         # Kill session
 - **dom-extraction.md** — Steps 1–2.5: open, snapshot, DOM hierarchy, head metadata + asset download
 - **style-extraction.md** — Step 3: computed styles, design tokens
 - **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
-- **interaction-detection.md** — Step 5: hover/click/intersection interactions, JS bundle analysis
-- **animation-detection.md** — Step 6: 3-phase motion detection (idle capture → scroll capture → per-element tracking). Detects splash, auto-timers, parallax, scroll-zoom, clip-reveal, sticky, word-stagger. **MANDATORY for sites with scroll-driven animations.**
+- **interaction-detection.md** — Step 5: hover/click/intersection interactions. Step 5c/6: **JS bundle download + analysis (MANDATORY for ALL sites)** — GSAP, Lenis, Framer Motion, scroll triggers, intro sequences, animation parameters. The bundle is the single most important source of truth for JS-driven behavior.
+- **animation-detection.md** — Step 6: 3-phase motion detection. **ALL 3 phases are MANDATORY:** Phase A (idle capture — splash/intro), Phase B (scroll capture — parallax/reveal), Phase C (per-element tracking). Detects splash, auto-timers, parallax, scroll-zoom, clip-reveal, sticky, word-stagger.
 - **component-generation.md** — Step 7: generation prompt, iteration rules
 - **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures. All comparisons use AE/SSIM (zero tokens) — LLM reads images only for diagnosis of failures and the final VLM sanity check (1 pair). Phase D requires `pixel-perfect-diff.md`. Phase E: VLM sanity check (1 ref+impl pair).
 - **../pixel-perfect-diff.md** — Step 8 Phase D (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.

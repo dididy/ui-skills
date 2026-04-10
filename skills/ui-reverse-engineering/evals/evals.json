@@ -430,6 +430,79 @@
         "Lenis cleanup (destroy) called in useEffect return",
         "No hardcoded Lenis defaults used — all values from scroll-library.json"
       ]
+    },
+    {
+      "id": 31,
+      "prompt": "Clone https://example.com — the site uses GSAP with multiple conditional branches: if(isFirstVisit) runs a clipPath intro, else runs a translateX page slide. The target page is a first visit. Extract and implement the correct branch only.",
+      "expected_output": "Bundle analysis identifies both branches, transition-spec.json records which branch applies, implementation uses only the first-visit branch values. No values from the else branch leak into implementation.",
+      "files": [],
+      "expectations": [
+        "Bundle downloaded and both conditional branches identified in grep output",
+        "transition-spec.json exists with bundle_branch field explicitly stating which branch applies",
+        "bundle_branch cross-referenced with captured reference frames to confirm correctness",
+        "Implementation uses ONLY first-visit branch values (clipPath, not translateX)",
+        "No values from the else branch (e.g., x: -260, xPercent: -100) appear in implementation code",
+        "transition-spec.json entry includes reference_frames pointing to frames that visually confirm the branch"
+      ]
+    },
+    {
+      "id": 32,
+      "prompt": "Clone https://example.com — the main JS bundle has no animation logic for the bookmark/spine text swap. The logic is in a lazy-loaded chunk that only loads on the homepage. Find it and extract the transition parameters.",
+      "expected_output": "ALL loaded chunks downloaded via performance API. Lazy chunk containing bookmark logic found by grepping all chunks. Transition parameters extracted and documented in transition-spec.json.",
+      "files": [],
+      "expectations": [
+        "performance.getEntriesByType('resource') used to find ALL loaded JS files",
+        "More than 1 JS chunk downloaded to bundles/ directory",
+        "Main bundle grep found no bookmark/spine logic — did NOT conclude 'feature not in JS'",
+        "Lazy chunk containing bookmark logic identified by grepping ALL chunks",
+        "bundle-map.json maps the lazy chunk to the bookmark feature",
+        "transition-spec.json contains entry for bookmark text swap with source_chunk pointing to the lazy chunk",
+        "Transition parameters (xPercent, duration, ease, stagger, mode) extracted from the lazy chunk"
+      ]
+    },
+    {
+      "id": 33,
+      "prompt": "Clone https://example.com — produce transition-spec.json and bundle-map.json after bundle analysis. Then re-invoke the skill to fix a transition. On re-invocation, the existing spec should be loaded immediately without re-grepping bundles.",
+      "expected_output": "First invocation produces transition-spec.json + bundle-map.json. Second invocation loads them in Phase 0 and uses spec values directly for the fix.",
+      "files": [],
+      "expectations": [
+        "First invocation: bundle-map.json created with chunk → feature mapping",
+        "First invocation: transition-spec.json created with ≥1 transition entry including id, trigger, target, animation, source_chunk, bundle_branch",
+        "Second invocation: Phase 0 check finds existing transition-spec.json",
+        "Second invocation: transition-spec.json loaded and read BEFORE any bundle grep",
+        "Second invocation: fix implemented using spec values directly — no re-grepping bundles",
+        "Second invocation: if spec was wrong, spec updated FIRST, then implementation changed"
+      ]
+    },
+    {
+      "id": 34,
+      "prompt": "Clone https://example.com — implement the intro overlay exit transition. Before writing any code, capture reference frames showing the original transition, study them, then implement. Do not implement from bundle code alone.",
+      "expected_output": "Reference frames captured and studied BEFORE implementation. Implementation matches frame-observed behavior, not just bundle code interpretation.",
+      "files": [],
+      "expectations": [
+        "Video recorded of the original transition before any implementation code written",
+        "Frames extracted from video at 60fps",
+        "At least 3 key frames read/analyzed to understand the visual behavior",
+        "transition-spec.json entry cross-referenced with frames — bundle_branch confirmed by visual evidence",
+        "Implementation written AFTER frame analysis, not before",
+        "After implementation, comparison screenshot taken against original at the same transition state",
+        "If comparison showed mismatch, diagnosed and fixed within 3 iterations"
+      ]
+    },
+    {
+      "id": 35,
+      "prompt": "Clone https://example.com — after implementing each transition (intro, scroll exit, bookmark swap), compare against the original site before moving to the next transition. Do not implement all transitions first and compare at the end.",
+      "expected_output": "Each transition verified individually against original immediately after implementation. Not batched.",
+      "files": [],
+      "expectations": [
+        "After implementing transition 1: screenshot compared against original at same state",
+        "Transition 1 verified BEFORE starting transition 2 implementation",
+        "After implementing transition 2: screenshot compared against original at same state",
+        "Transition 2 verified BEFORE starting transition 3 implementation",
+        "Each comparison used agent-browser screenshots of both original and implementation",
+        "Mismatches fixed before proceeding — not accumulated for later",
+        "Never told user to check without running comparison first"
+      ]
     }
   ]
 }
