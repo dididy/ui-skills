@@ -52,6 +52,17 @@ agent-browser --version           # verify
 
 ## Process
 
+> **FIRST ACTION — before reading ANY sub-document or writing ANY code:**
+>
+> ```bash
+> PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find ~/.claude/skills -name 'validate-gate.sh' -exec dirname {} \; 2>/dev/null | head -1 | xargs dirname)}"
+> bash "$PLUGIN_ROOT/scripts/run-pipeline.sh" <url> <component-name> <session> status
+> ```
+>
+> This tells you EXACTLY which phase you're in and what to do next. **Follow its output.** Do not skip ahead. Do not guess which phase you're in. The script checks which artifacts exist and determines the correct next step.
+>
+> **Run `status` again after completing each phase** to confirm you can proceed.
+
 > **MANDATORY: At each numbered step, you MUST use the Read tool to load the referenced `.md` file BEFORE executing that step. Do not proceed from memory or assumptions — the sub-documents contain the exact commands and procedures to follow.**
 
 ```
@@ -308,7 +319,8 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   PHASE 3: GENERATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
-7. Generate Component     — Read component-generation.md, execute
+7. Generate Component     — Read site-detection.md FIRST (choose CSS-First vs Extract-Values)
+  ↓                         Then read component-generation.md + transition-implementation.md
   ↓                         Use ONLY extracted values. No guessing.
   ↓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -320,7 +332,7 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓   Phase A: Reference capture (static screenshots + scroll video)
   ↓   Phase B: Impl capture (identical sequences on localhost)
   ↓   Phase C: Frame-by-frame comparison tables (C1 static, C2 scroll, C3 transitions)
-  ↓   Phase D: Pixel-perfect gate — Read pixel-perfect-diff.md
+  ↓   Phase D: Pixel-perfect gate (included in visual-verification.md)
   ↓             Phase 1 Visual Gate (clip screenshot AE/SSIM) — always run
   ↓             Phase 2 Numerical Diagnosis (getComputedStyle) — always run
   ↓             Both must pass. Phase 2 catches sub-pixel mismatches Phase 1 misses.
@@ -466,7 +478,7 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<component> all
 | After Step | Required Files | Minimum Content |
 |-----------|---------------|-----------------|
 | Step 2 | `structure.json`, `portal-candidates.json`, `sticky-elements.json` | structure.json > 100 bytes |
-| Step 2.5 | `head.json`, `assets.json`, `inline-svgs.json`, `visible-images.json` | head.json has title |
+| Step 2.5 | `head.json`, `assets.json`, `inline-svgs.json`, `visible-images.json`, `fonts.json` | head.json has title, font files downloaded |
 | Step 3 | `styles.json` (or `styles-*.json`), `advanced-styles.json`, `body-state.json`, `css-variables.json`, `decorative-svgs.json`, `design-bundles.json` | styles has ≥3 selectors |
 | Step 4 | `responsive/detected-breakpoints.json`, ≥3 `responsive/ref-*.png` | breakpoints JSON valid |
 | Step 5 | `interactions-detected.json`, `scroll-engine.json`, `scroll-transitions.json` | interactions has "interactions" key |
@@ -597,9 +609,10 @@ agent-browser close                         # Kill session
 - **responsive-detection.md** — Step 4: auto-detect breakpoints via viewport sweep, per-breakpoint style extraction & verification
 - **interaction-detection.md** — Step 5: hover/click/intersection interactions. Step 5c/6: **JS bundle download + analysis (MANDATORY for ALL sites)** — GSAP, Lenis, Framer Motion, scroll triggers, intro sequences, animation parameters. The bundle is the single most important source of truth for JS-driven behavior.
 - **animation-detection.md** — Step 6: 3-phase motion detection. **ALL 3 phases are MANDATORY:** Phase A (idle capture — splash/intro), Phase B (scroll capture — parallax/reveal), Phase C (per-element tracking). Detects splash, auto-timers, parallax, scroll-zoom, clip-reveal, sticky, word-stagger.
-- **component-generation.md** — Step 7: generation prompt, iteration rules
-- **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures. All comparisons use AE/SSIM (zero tokens) — LLM reads images only for diagnosis of failures and the final VLM sanity check (1 pair). Phase D requires `pixel-perfect-diff.md`. Phase E: VLM sanity check (1 ref+impl pair).
-- **../pixel-perfect-diff.md** — Step 8 Phase D (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
+- **site-detection.md** — Step 1: Auto-detect site tech stack (Shopify/WordPress/Next.js/Tailwind), choose CSS-First vs Extract-Values strategy
+- **component-generation.md** — Step 7: CSS-first generation, original class names, transition integration
+- **transition-implementation.md** — Bundle → code translation for scroll/page-load/interaction transitions
+- **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures. All comparisons use AE/SSIM (zero tokens) — LLM reads images only for diagnosis of failures and the final VLM sanity check (1 pair). Phase D: Pixel-perfect diff (Visual Gate + Numerical Diagnosis) is now included in this file. Phase E: VLM sanity check (1 ref+impl pair).
 - **style-audit.md** — Post-generation class-level computed style comparison (ref vs impl). Catches wrong font-size, font-weight, missing SVGs, wrong images, spacing mismatches. Runs in parallel with Step 8.
 
 ## Sub-skills

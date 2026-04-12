@@ -166,9 +166,79 @@ agent-browser eval "
 
 ---
 
-## Step 2.5: Extract Head Metadata & Download Assets
+## Step 2.5: Extract Head Metadata, Download Assets & CSS
 
-After DOM structure extraction, extract `<head>` metadata and download visible image assets.
+After DOM structure extraction, extract `<head>` metadata, download visible image assets, and **download ALL site-specific CSS files**.
+
+### Download original CSS files (MANDATORY)
+
+**This is the single most important extraction step.** The original CSS files contain the exact styles that make the site look the way it does. Using these directly (instead of re-implementing from extracted computed values) eliminates the entire category of "looks slightly different" bugs.
+
+```bash
+# Get all site-specific CSS URLs (exclude third-party: shopify infra, klaviyo, analytics)
+agent-browser eval "(() => JSON.stringify(
+  performance.getEntriesByType('resource')
+    .filter(e => e.name.match(/\.css(\?|$)/i))
+    .filter(e => {
+      const url = e.name;
+      // Keep site-specific CSS, exclude infrastructure
+      const isInfra = url.includes('shopifycloud') || url.includes('klaviyo') ||
+                       url.includes('checkout-web') || url.includes('extensions/');
+      return !isInfra;
+    })
+    .map(e => e.name)
+))()"
+
+# Download each CSS file
+mkdir -p tmp/ref/<component>/css
+# curl -sL "<url>" > tmp/ref/<component>/css/<descriptive-name>.css
+```
+
+**Naming convention:** Use the filename from the URL path, not a generic name:
+- `hero-index-video.css`, `products-showcase.css`, `index-faq.css`, etc.
+- `app.css` for the main stylesheet
+
+**What to do with downloaded CSS:**
+1. Read each file to understand the class names and their exact styles
+2. During generation (Step 7), include these CSS files in the project
+3. Use the original class names in JSX so the original CSS applies directly
+4. This replaces the "extract computed values → re-implement with inline styles" approach
+
+**Gate:**
+```
+□ tmp/ref/<component>/css/ directory exists
+□ At least the main app.css + section-specific CSS files downloaded
+□ Each file > 500 bytes (not error pages)
+```
+
+### Extract and preserve CSS variables (MANDATORY)
+
+Before cleaning `:root` blocks from downloaded CSS, extract ALL CSS variables to a separate file:
+
+```bash
+# Extract all :root variables from all downloaded CSS files
+cat tmp/ref/<component>/css/*.css | grep -oE '\-\-[a-zA-Z0-9_-]+:\s*[^;}]+' | sed 's/}.*//' | sort -u > tmp/ref/<component>/css/variables.txt
+
+# These MUST be added to the project's globals.css :root block
+# Missing variables cause silent failures — elements get wrong colors, sizes, or positions
+```
+
+**Common variables that get lost:**
+- `--hero-video-container-width/height/borderadius` — splash animation initial size
+- `--content-inner-container` — panel widths
+- `--grey-3-50`, `--grey-9-60` — border/overlay colors
+- Custom timing variables (`--duration-*`, `--ease-*`)
+
+**Gate: After importing original CSS, verify no CSS variable is undefined:**
+```bash
+agent-browser eval "(() => {
+  const missing = [];
+  document.querySelectorAll('*').forEach(el => {
+    const s = getComputedStyle(el);
+    // Check for empty/default values that indicate missing variables
+  });
+})()"
+```
 
 ### Head metadata extraction
 
@@ -284,6 +354,160 @@ mkdir -p tmp/ref/<component>/assets
   { "type": "image", "src": "https://...", "local": "assets/hero.webp", "element": "img.hero" },
   { "type": "image", "src": "https://...", "local": null, "error": "404", "element": "img.banner" }
 ]
+```
+
+**Generation rules for downloaded assets:**
+1. **Favicon:** Copy to the project's public/static directory and reference it in the HTML head (`<link rel="icon" href="/favicon.ico" />`). Without this, the browser tab shows a generic icon.
+2. **Images:** Copy to the public directory (e.g., `public/images/`). Reference them with absolute paths (`/images/hero.webp`).
+
+### Download fonts
+
+Custom fonts that fail to load cause cascading layout differences — wrong glyph widths change text wrapping, line heights, and element positions throughout the page. Download all fonts used by the site.
+
+```bash
+agent-browser eval "
+(() => {
+  const fonts = [];
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) {
+        if (rule.type === CSSRule.FONT_FACE_RULE) {
+          const src = rule.style.src || '';
+          const urlMatch = src.match(/url\([\"']?(https?:\/\/[^\"')]+)[\"']?\)/);
+          if (urlMatch) {
+            fonts.push({
+              family: rule.style.fontFamily?.replace(/[\"']/g, ''),
+              weight: rule.style.fontWeight || 'normal',
+              style: rule.style.fontStyle || 'normal',
+              url: urlMatch[1],
+            });
+          }
+        }
+      }
+    } catch(e) {}
+  }
+  return JSON.stringify(fonts, null, 2);
+})()
+"
+```
+
+Download each font file:
+
+```bash
+mkdir -p tmp/ref/<component>/fonts
+# For each font entry:
+# curl -s --max-time 30 --fail --location -o tmp/ref/<component>/fonts/<filename>.woff2 -- <url>
+```
+
+**Save output to** `tmp/ref/<component>/fonts.json`
+
+**Generation rule:** Copy font files to `public/fonts/` and register each with `@font-face` in CSS, matching the exact `font-family`, `font-weight`, and `font-style` from the extracted data. Without this, the browser falls back to system fonts with different metrics, causing every text element's width, height, and position to differ from the reference.
+
+### Download video backgrounds
+
+Sites with full-screen video backgrounds (hero videos, product videos) require the actual video file for accurate reproduction. Without it, implementations use a static image placeholder that will always fail SSIM comparison against the original.
+
+```bash
+# Extract video source URLs
+agent-browser eval "(() => {
+  const videos = document.querySelectorAll('video');
+  return JSON.stringify([...videos].map((v, i) => ({
+    index: i,
+    currentSrc: v.currentSrc || v.src,
+    sources: [...v.querySelectorAll('source')].map(s => ({ src: s.src, type: s.type })),
+    section: (() => {
+      let p = v.parentElement;
+      while (p && p !== document.body) {
+        const c = typeof p.className === 'string' ? p.className : '';
+        if (c.includes('hero')) return 'hero';
+        if (c.includes('showcase')) return 'showcase';
+        if (p.tagName === 'SECTION') return 'section-' + i;
+        p = p.parentElement;
+      }
+      return 'unknown';
+    })()
+  })));
+})()"
+```
+
+Download each video (prefer mp4 for compatibility):
+
+```bash
+mkdir -p public/videos
+# curl -sL --max-time 60 -o public/videos/<section>-bg.mp4 -- <mp4-url>
+```
+
+Also extract a static frame as fallback for SSG/loading state:
+
+```bash
+ffmpeg -y -i public/videos/<section>-bg.mp4 -vframes 1 -ss 2 public/images/<section>-video-frame.jpg
+```
+
+**Generation rule:** Use `<video autoPlay muted loop playsInline>` for video backgrounds, with the static frame as `poster`. This eliminates the #1 source of SSIM mismatch between original and implementation.
+
+### Download fonts from Typekit / Adobe Fonts
+
+Many sites use Adobe Fonts (Typekit) which loads via a CSS file like `https://use.typekit.net/<id>.css`. The standard font extraction (above) may not capture these because cross-origin stylesheets block `cssRules` access.
+
+```bash
+# 1. Find Typekit CSS URL
+agent-browser eval "(() => {
+  const links = [...document.querySelectorAll('link[href*=typekit]')];
+  return JSON.stringify(links.map(l => l.href));
+})()"
+
+# 2. Download the CSS and extract @font-face URLs
+curl -sL "https://use.typekit.net/<id>.css" > tmp/ref/<component>/typekit.css
+
+# 3. Extract woff2 URLs for each font-family
+grep -oE 'url\("[^"]+\.woff2[^"]*"\)' tmp/ref/<component>/typekit.css
+
+# 4. Download each woff2 file
+# curl -sL -o public/fonts/<family>-<weight>.woff2 -- <url>
+```
+
+**Or use the automated script:**
+
+```bash
+bash "$PLUGIN_ROOT/scripts/extract-assets.sh" <session> tmp/ref/<component> <public-dir>
+```
+
+This handles videos, Typekit fonts, and CDN fonts in one pass.
+
+---
+
+## Step 2.6: Per-Section HTML Structure + Computed CSS (MANDATORY)
+
+> **This step is the #1 differentiator between accurate and inaccurate clones.** Without it, code generation guesses the HTML structure from screenshots. Screenshots show the RESULT but not the STRUCTURE — a flexbox row and a CSS grid can look identical in a screenshot but require completely different code.
+
+Run the automated extraction script:
+
+```bash
+bash "$PLUGIN_ROOT/scripts/extract-section-html.sh" <session> tmp/ref/<component>
+```
+
+This produces per-section files in `tmp/ref/<component>/html/`:
+- `<section-name>.json` — complete element tree (2 levels deep) with computed styles for every element
+- `_summary.json` — section index with rect positions, child/media counts
+
+**What it captures per section:**
+1. **Element hierarchy**: tag, id, class, text content, nesting depth
+2. **Computed CSS for EVERY element**: display, position, width, height, fontSize, fontWeight, fontFamily, color, backgroundColor, padding, margin, borderRadius, backdropFilter, flexDirection, justifyContent, alignItems, gap, gridTemplateColumns, transform, backgroundImage
+3. **Media elements**: `<video>` (src, autoplay, muted, loop, playsInline, poster), `<source>` (src, type), `<img>` (src, alt, width, height)
+
+**Why each matters:**
+- **Element hierarchy** → tells you exactly what HTML to write (not guessing from screenshots)
+- **Computed CSS** → tells you exactly what Tailwind classes or inline styles to use
+- **Media elements** → tells you to use `<video autoPlay muted loop>` not `<img>`, what poster to set, what video sources to provide
+
+**HARD RULE: Before writing ANY component code, Read the corresponding `html/<section>.json` file.** It contains the exact structure you need to reproduce. Do not guess layout from screenshots alone.
+
+**Gate:**
+```
+□ tmp/ref/<component>/html/ directory exists
+□ At least 3 section JSON files present
+□ Each file has children[] and media[] arrays
+□ Video elements detected in hero section (if original has video background)
 ```
 
 ### Expected fields in extracted.json (assembled at Step 6b)

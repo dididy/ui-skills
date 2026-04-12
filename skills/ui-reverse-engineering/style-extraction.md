@@ -123,6 +123,38 @@ agent-browser eval "
 2. Reproduce all CSS rules targeting `body.<class>` — including nav color inversion (`filter: brightness(0) invert(1)`), background-color transitions, and text color overrides
 3. Use CSS for the cascade (e.g., `body.dark-active .nav-logo { filter: invert(1) }`) rather than React state for each affected element
 
+### Scan for global overlays (grain, noise, texture)
+
+Many design/architecture sites apply a full-page overlay for visual texture — film grain, noise patterns, paper texture. These are easy to miss because they are `pointer-events: none` and visually subtle, but omitting them makes the implementation look "too clean" compared to the reference.
+
+```bash
+agent-browser eval "
+(() => {
+  const overlays = [];
+  document.querySelectorAll('*').forEach(el => {
+    const s = getComputedStyle(el);
+    if (s.position === 'fixed' && s.pointerEvents === 'none' && parseInt(s.zIndex) > 100) {
+      const r = el.getBoundingClientRect();
+      if (r.width > window.innerWidth * 0.8 && r.height > window.innerHeight * 0.8) {
+        overlays.push({
+          class: (el.className || '').slice(0, 60),
+          bgImage: s.backgroundImage?.slice(0, 200),
+          bgSize: s.backgroundSize,
+          bgRepeat: s.backgroundRepeat,
+          mixBlendMode: s.mixBlendMode,
+          opacity: s.opacity,
+          zIndex: s.zIndex,
+        });
+      }
+    }
+  });
+  return JSON.stringify(overlays, null, 2);
+})()
+"
+```
+
+If any overlays are found, download the background image and add a matching `<div>` to the implementation with identical `background-size`, `background-repeat`, `mix-blend-mode`, and `z-index`.
+
 ### Extract CSS custom properties (design tokens)
 
 ```bash

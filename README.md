@@ -1,10 +1,12 @@
 # ui-skills — Clone any website into React + Tailwind
 
-A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component — from the actual source, not a screenshot.
+A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component — using the original CSS directly, not re-implementing from extracted values.
 
-Give it a live URL and it extracts computed CSS, DOM structure, JS interactions, responsive breakpoints, animations, visual assets (favicon, title, images), and inline SVGs verbatim — actual values from `getComputedStyle`, not pixel guesses. Detects custom scroll engines, portal-escaped fixed elements, mouse-follow interactions, and stroke-based SVG hover animations. Screenshots and screen recordings are also accepted as fallback inputs (analyzed via Claude Vision), but only URL input gives exact values.
+**v0.1.0: CSS-First generation.** Downloads the original site's CSS files and uses original class names in JSX, so typography, spacing, borders, and colors match automatically. Falls back to `getComputedStyle` extraction for sites with obfuscated CSS (Tailwind, CSS-in-JS). Auto-detects site type (Shopify/WordPress/Next.js/Tailwind) and chooses the right strategy.
 
-> **vs. screenshot-to-code tools:** Those tools copy what's visible. For URL input, `ui-skills` reads `getComputedStyle`, greps JS bundles, and scrubs WAAPI animations frame-by-frame — so hover states, easing curves, and stagger timing are extracted, not approximated.
+Also extracts: DOM structure, JS bundle transitions (GSAP ScrollTrigger, Lenis, Framer Motion), responsive breakpoints, video backgrounds, fonts (including Typekit/Adobe Fonts), inline SVGs verbatim, and scroll-driven animation parameters with exact values from bundle source code.
+
+> **vs. screenshot-to-code tools:** Those tools copy what's visible. `ui-skills` downloads the actual CSS, greps JS bundles for animation parameters, and uses the original class names — so the output has the same styles, transitions, and responsive behavior as the original.
 
 Three skills included, plus one shared verification document:
 
@@ -78,7 +80,8 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 2.  Extract Structure      — HTML hierarchy, component boundaries
   ↓
-2.5 Extract Head + Assets  — title, favicon, visible images downloaded to assets/
+2.5 Extract Head + Assets  — title, favicon, images, original CSS files, fonts (incl. Typekit),
+                             video backgrounds, CSS variables extracted to variables.txt
   ↓
 3.  Extract Styles         — computed CSS, colors, typography, spacing, design tokens
   ↓
@@ -112,7 +115,8 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
   ↓
 6c. Pre-generation audit   — 6-stage design audit
   ↓
-7.  Generate Component     — React + Tailwind, exact values from transition-spec.json.
+7.  Generate Component     — CSS-First: download original CSS, use original class names.
+                             Transitions implemented simultaneously (not separately).
                              ⛔ GATE: validate-gate.sh <dir> pre-generate
   ↓
 8.  Visual Verification    — AE/SSIM comparison (zero tokens) + 10-point scoring
@@ -126,7 +130,11 @@ R.  Capture Reference     — static screenshots + scroll video (60 fps). C3 def
 
 | Script | Purpose |
 |---|---|
-| `validate-gate.sh` | Enforces extraction gates (bundle, spec, pre-generate, post-implement). Exits 1 on failure — hard blocks. |
+| `run-pipeline.sh` | **State machine orchestrator.** Detects current phase, prints next action. Prevents skipping steps. |
+| `validate-gate.sh` | Enforces extraction gates (bundle, spec, pre-generate, post-implement). Exits 1 on failure. |
+| `extract-assets.sh` | Downloads video backgrounds, Typekit fonts, CDN fonts. Extracts video poster frames. |
+| `extract-section-html.sh` | Per-section HTML structure + computed CSS + media element extraction. |
+| `compare-sections.sh` | Section-by-section SSIM + element RMSE + getComputedStyle diff (3-layer comparison). |
 | `download-chunks.sh` | Downloads ALL loaded JS chunks, detects animation libraries, produces skeleton bundle-map.json. |
 | `gsap-to-css.sh` | Converts GSAP easing names to CSS cubic-bezier. Single lookup, full table, or bundle scan. |
 

@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. Reads actual computed CSS, DOM structure, JS interactions, and animations — not just a screenshot. Downloads ALL loaded JS chunks (lazy chunks via performance API, not just main bundle) and produces transition-spec.json + bundle-map.json as single source of truth for implementation. Prior analysis is loaded automatically on re-invocation. Step execution rules organized by phase (Before → Extraction → Implementation → Verification). Verifies output with AE/SSIM pixel diff + scoring loop + DOM clip screenshot pixel diff + VLM sanity check. Includes sub-skills for animation extraction (WAAPI, canvas/WebGL, scroll-driven JS), visual baseline capture, and overlay-based analysis report.",
-      "version": "0.0.17",
+      "description": "Reverse-engineer any live website into production-ready React + Tailwind code. CSS-First: downloads original CSS files and uses original class names for pixel-perfect reproduction. Auto-detects site type (Shopify/WordPress/Next.js/Tailwind) and chooses CSS-First or Extract-Values strategy. Pipeline orchestrator (run-pipeline.sh) enforces correct step ordering. Downloads video backgrounds, Typekit/Adobe Fonts, and all JS bundles. Produces transition-spec.json as single source of truth — transitions are implemented simultaneously with components, not separately. Verifies with getComputedStyle numerical diff, not visual judgment.",
+      "version": "0.1.0",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -105,7 +105,19 @@
         "skip-prevention",
         "scroll-method-verification",
         "element-animation-map",
-        "idle-capture-protocol"
+        "idle-capture-protocol",
+        "global-overlay-detection",
+        "font-extraction",
+        "css-first",
+        "original-class-names",
+        "site-detection",
+        "pipeline-orchestrator",
+        "video-background",
+        "typekit-fonts",
+        "css-variable-preservation",
+        "sticky-overflow-detection",
+        "transition-implementation",
+        "splash-animation"
       ]
     }
   ]

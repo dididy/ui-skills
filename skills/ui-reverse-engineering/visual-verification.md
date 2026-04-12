@@ -59,6 +59,69 @@ agent-browser eval "
 agent-browser wait 4000
 ```
 
+## Content-Anchored Screenshot Alignment (MANDATORY)
+
+**Never compare screenshots by raw y-coordinate.** Original and implementation have different total page heights (pinned/sticky sections, different padding, etc.). A screenshot at y=5000 in the original shows completely different content than y=5000 in the implementation.
+
+**Instead, use text anchors:**
+
+1. Identify a unique heading or text string visible in the section (e.g., "Clothing to claim every shred")
+2. In BOTH original and implementation, find that text element and scroll it to the same viewport position
+3. Screenshot at that aligned position
+
+```bash
+# Content-anchored scroll helper
+ANCHOR="Clothing to claim"
+agent-browser eval "(() => {
+  for (const h of document.querySelectorAll('h1,h2,h3')) {
+    if (h.textContent.includes('${ANCHOR}')) {
+      window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - 350);
+      return 'found';
+    }
+  }
+  return 'not found';
+})()"
+```
+
+**For pinned/scroll-triggered sections** (e.g., GSAP ScrollTrigger pin):
+
+The same section may appear at different scroll positions because the pin extends the scroll range. Compare at **scroll progress**, not scroll position:
+
+```bash
+# Read ScrollTrigger progress in original
+agent-browser eval "(() => {
+  if (typeof ScrollTrigger !== 'undefined') {
+    const triggers = ScrollTrigger.getAll();
+    return JSON.stringify(triggers.map(t => ({
+      trigger: t.trigger?.className?.substring(0,40),
+      progress: t.progress,
+      start: t.start, end: t.end
+    })));
+  }
+  return 'no ScrollTrigger';
+})()"
+
+# In implementation, scroll to equivalent progress
+# progress = (scrollY - sectionTop) / (sectionHeight - viewportHeight)
+```
+
+## Anti-pattern: "looks close enough" (HARD RULE)
+
+**Never declare a section "done" or "almost matching" based on your own visual judgment.** Your judgment is unreliable — you consistently overestimate similarity. Instead:
+
+1. Run `getComputedStyle` comparison on key elements (font-size, padding, margin, color)
+2. If ANY value differs by more than 1px or any color differs → it's NOT done
+3. Only numerical match + user confirmation = done
+
+**Phrases that indicate this anti-pattern:**
+- "almost matches" / "very close"
+- "nearly identical to the original"
+- "structure is almost the same"
+
+**Replace with:** Specific numerical comparison results.
+
+---
+
 ## Phase A: Record Reference (ONCE)
 
 ### A-C1: Full-page static screenshots
@@ -454,6 +517,40 @@ grep -r "import.*\.css\|import.*global" src/main.tsx src/index.tsx src/pages/_ap
   || echo "WARNING: no CSS entry point import found — check your framework's entry file"
 ```
 Missing this is a silent failure: styles exist but have no effect.
+
+---
+
+## Phase D: Pixel-Perfect Diff
+
+> **This step separates "looks similar" from "pixel-perfect".** Both phases always run.
+
+### Phase D1: Visual Gate
+
+1. **Select elements**: layout containers, typography carriers, visually distinct elements from each section
+2. **Define states per triggerType**: static → idle; css-hover/js-class → idle + active; intersection → before + after; scroll-driven → before + mid + after
+3. **Measure rect** via `getBoundingClientRect()` on both ref and impl, activating each state first (hover, classList.add, scrollTo)
+4. **Clip screenshot** each element per state: `agent-browser screenshot --clip <x>,<y>,<w>,<h> <path>`
+5. **Diff**: `compare -metric AE ref.png impl.png diff.png` (ImageMagick) or `ffmpeg -lavfi "ssim"` — AE = 0 or SSIM >= 0.995 = PASS
+
+### Phase D2: Numerical Diagnosis
+
+> Always runs regardless of Phase D1 result — catches sub-pixel mismatches AE/SSIM misses.
+
+Measure `getComputedStyle` on both ref and impl for all Phase D1 elements:
+
+**Properties**: `fontSize`, `fontWeight`, `lineHeight`, `letterSpacing`, `fontFamily`, `color`, `backgroundColor`, `padding*`, `margin*`, `gap`, `width`, `height`, `display`, `flexDirection`, `alignItems`, `justifyContent`, `gridTemplateColumns`, `borderRadius`, `boxShadow`, `opacity`, `transform`
+
+Build diff table: any property mismatch > 2px = FAIL. Fix and re-run both phases.
+
+### Gate
+
+```
+Phase D1 Visual Gate: all elements all states = PASS
+Phase D2 Numerical: mismatches = 0
+Both must pass. "Approximately identical" = FAIL.
+```
+
+---
 
 **Post-completion cleanup:**
 ```bash

@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.1.0] - 2026-04-12
+
+### Breaking Changes
+- **CSS-First generation is now the default strategy.** Instead of extracting computed values and re-implementing with Tailwind/inline styles, the skill now downloads original CSS files and uses original class names in JSX. This produces pixel-perfect results but requires readable CSS class names (Shopify, WordPress, static sites). For obfuscated CSS (Tailwind, CSS-in-JS), falls back to the extract-values strategy.
+
+### Added
+- **`site-detection.md`** — Auto-detects site tech stack (Shopify/WordPress/Next.js/Tailwind/CSS-in-JS) at Step 1 and selects CSS-First or Extract-Values strategy. Prevents applying the wrong extraction approach.
+- **`transition-implementation.md`** — Complete bundle → code translation guide. ScrollTrigger progress formulas, easing conversion table (power1-5 → cubic-bezier), splash/intro animation timing pattern (handles cached vs uncached video), sticky + overflow conflict pre-check, performance patterns (refs vs useState, will-change, passive listeners).
+- **`run-pipeline.sh`** — State machine orchestrator. Detects current phase by checking which artifacts exist in `tmp/ref/`, prints exactly what to do next. Prevents skipping steps or guessing which phase you're in. Phases: 0-init → 1-capture → 2-extract → 2.5-css → 2.6-vars → 3-pregen → 4-generate → 5-verify.
+- **`extract-assets.sh`** — Downloads video backgrounds, Typekit/Adobe Fonts, and CDN font files. Extracts static video frame as poster fallback. Solves "implementation uses static image but original has video background" mismatch.
+- **`extract-section-html.sh`** — Per-section HTML structure + computed CSS + media element extraction. Produces the ground truth for code generation: element hierarchy, computed styles, video/img attributes.
+- **`dom-extraction.md`** — Step 2.5: Download original CSS files (MANDATORY). Step 2.6: Extract and preserve CSS variables to `variables.txt` before `:root` cleanup. Download video backgrounds with `<video>` attribute detection. Download Typekit/Adobe Fonts via CSS URL extraction.
+- **`component-generation.md`** — CSS-First Generation section: download CSS → import in project → use original class names in JSX. Original CSS + React structure conflict resolution (height override, transform conflicts, z-index stacking). Auto-detect missing assets (grep `url()` in CSS, verify local existence). CSS variable consistency rule (match computed values, not just defined values).
+- **`visual-verification.md`** — Content-anchored screenshot alignment (use text anchors, not y-coordinates). ScrollTrigger progress-based comparison for pinned sections. Anti-pattern rule: "looks close enough" phrases banned, `getComputedStyle` numerical comparison required.
+- **`validate-gate.sh`** — `pre-generate` gate: verifies original CSS files exist, CSS variables extracted to `variables.txt`, background image assets downloaded. `post-implement` gate: transition coverage checklist from `transition-spec.json`. Section-clip SSIM comparison with Layer 3 `getComputedStyle` diff.
+- **`compare-sections.sh`** — Layer 3: `getComputedStyle` numerical comparison. Reads `clips/ref/styles.json` and `clips/impl/styles.json`, outputs per-property mismatches with exact selector + property + ref/impl values. Tells you exactly what CSS property to fix instead of showing a vague diff image.
+- **`section-clips.sh`** — Per-section + per-element screenshot capture for targeted comparison.
+
+### Changed
+- **`SKILL.md`** — Process flow: `run-pipeline.sh status` is now the FIRST action before any work. Step 7 reads `site-detection.md` first, then `component-generation.md` + `transition-implementation.md`. Reference Files section updated with new documents.
+- **`component-generation.md`** — "Transitions are NOT separate from generation" (HARD RULE). Transition coverage gate moved here from post-verification. Section HTML + ref screenshot must be Read before writing each component.
+- **`dom-extraction.md`** — Step 2.6 added (per-section HTML structure extraction via `extract-section-html.sh`).
+
+### Fixed
+- CSS `:root` variables lost when cleaning downloaded CSS — now extracted to `variables.txt` before cleanup
+- `overflow: hidden` silently breaking `position: sticky` — now detected as pre-implementation check
+- Agent declaring "almost matches" without numerical verification — banned phrases + mandatory `getComputedStyle` comparison
+- Background images not downloaded for showcase/product sections — auto-detected via `url()` grep in original CSS
+- Splash animation expanding too fast when video is cached — reliable timing pattern with minimum 1s visibility
+
+## [0.0.18] - 2026-04-11
+
+### Added
+- **`ui-reverse-engineering`**: `style-extraction.md` — **Global overlay scan** section. Detects full-page texture overlays (`position: fixed; pointer-events: none; z-index > 100`) such as film grain, noise patterns, and paper textures. Extracts `background-image`, `background-size`, `mix-blend-mode`, and `opacity`. These overlays are easy to miss during extraction but produce a noticeably "too clean" implementation when omitted.
+- **`ui-reverse-engineering`**: `component-generation.md` — **"Do not invent interactions"** reminder. Explicitly prohibits adding hover transforms, opacity transitions, or other effects that were not observed in the reference extraction. Extends the existing "no guessing values" rule to cover interaction behavior.
+- **`ui-reverse-engineering`**: `dom-extraction.md` — **Font download** section in Step 2.5. Extracts all `@font-face` rules from stylesheets, downloads woff2 files, and saves `fonts.json`. Missing fonts cause fallback to system fonts with different glyph metrics, producing cascading layout differences (wrong text width → wrong wrapping → wrong element positions) that are impossible to fix with CSS alone.
+- **`ui-reverse-engineering`**: `SKILL.md` — Step 2.5 checkpoint updated to require `fonts.json` and downloaded font files.
+- **`ui-reverse-engineering`**: `dom-extraction.md` — **Generation rules for downloaded assets.** Explicit instructions for applying favicon (add `<link rel="icon">` in HTML head) and images (copy to public directory). Previously, assets were downloaded but no rule specified how to wire them into the implementation.
+
+### Changed
+- **`pixel-perfect-diff.md`** merged into `ui-reverse-engineering/visual-verification.md` Phase D. The standalone file now redirects to the merged location. Other skills (`transition-reverse-engineering`, `ui-capture`) that reference `../pixel-perfect-diff.md` will see the redirect notice.
+
 ## [0.0.17] - 2026-04-11
 
 ### Added
