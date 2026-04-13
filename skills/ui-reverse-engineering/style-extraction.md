@@ -333,3 +333,62 @@ Elements sharing the same bundle ID should receive identical values in the imple
 ---
 
 > **Next:** Step 4 (Responsive Detection) is in `responsive-detection.md`.
+
+## Section Height and Inter-Section Spacing (MANDATORY)
+
+Font sizes and element spacing are the #1 source of "looks different" feedback. Extract these EXPLICITLY:
+
+### Extract exact section heights and gaps
+
+After extracting per-element styles, extract the **page-level layout**:
+
+```bash
+agent-browser eval "(() => {
+  const main = document.querySelector('main, .page-main, [role=main]') || document.body;
+  const sections = [...main.children].filter(c => c.offsetHeight > 0 && c.tagName !== 'SCRIPT');
+  return JSON.stringify(sections.map(s => {
+    const cs = getComputedStyle(s);
+    return {
+      tag: s.tagName,
+      class: (typeof s.className === 'string' ? s.className : '').slice(0, 80),
+      top: Math.round(s.getBoundingClientRect().top + scrollY),
+      height: Math.round(s.offsetHeight),
+      padding: cs.padding,
+      margin: cs.margin,
+      gap: cs.gap,
+      display: cs.display,
+      flexDirection: cs.flexDirection,
+    };
+  }), null, 2);
+})()"
+```
+
+Save this as `section-layout.json`. This captures:
+- Exact section heights (use these as `h-[Xpx]` or `min-h-[Xpx]`)
+- Gaps between sections (often 100-300px, invisible in screenshots)
+- Flex/grid container properties that affect spacing
+
+### Extract container wrapping properties
+
+If sections are wrapped in a parent (e.g., `dark-section_wrap`), extract the wrapper's gap/padding:
+
+```bash
+agent-browser eval "(() => {
+  // Find flex/grid containers with gap
+  const containers = [...document.querySelectorAll('*')].filter(el => {
+    const s = getComputedStyle(el);
+    return (s.display === 'flex' || s.display === 'grid') && s.gap !== 'normal' && s.gap !== '0px' && el.children.length > 2;
+  });
+  return JSON.stringify(containers.slice(0, 10).map(el => {
+    const s = getComputedStyle(el);
+    return {
+      class: (typeof el.className === 'string' ? el.className : '').slice(0, 80),
+      display: s.display, gap: s.gap, padding: s.padding,
+      childCount: el.children.length,
+      totalHeight: Math.round(el.offsetHeight),
+    };
+  }), null, 2);
+})()"
+```
+
+**WHY THIS MATTERS:** In a real session, a dark-section wrapper had `gap: 234px` between 4 child sections. Without extracting this, the implementation was 957px shorter than the original, causing every section below to be at a wrong scroll position. This was caught only after 3 rounds of user feedback.

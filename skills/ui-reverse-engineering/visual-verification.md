@@ -558,3 +558,72 @@ Both must pass. "Approximately identical" = FAIL.
 rm -rf tmp/ref/<component>
 ```
 > Screenshots, DOM snapshots, and video frames may contain auth tokens, PII, or session data visible on the target page. Always clean up after verification is complete.
+
+## Section-Aligned Comparison (MANDATORY)
+
+**After content-anchored comparison, verify scroll position alignment:**
+
+Extract section top offsets from BOTH original and implementation:
+
+```bash
+# Original
+agent-browser --session <ref-session> eval "(() => {
+  const main = document.querySelector('main, .page-main, [role=main]') || document.body;
+  return JSON.stringify([...main.children].filter(c => c.offsetHeight > 0 && c.tagName !== 'SCRIPT').map(s => ({
+    class: (typeof s.className === 'string' ? s.className : '').slice(0, 60),
+    top: Math.round(s.getBoundingClientRect().top + scrollY),
+    height: Math.round(s.offsetHeight),
+  })));
+})()"
+
+# Implementation
+agent-browser --session <impl-session> eval "(() => {
+  const main = document.querySelector('main, .page-main, [role=main]') || document.body;
+  return JSON.stringify([...main.children].filter(c => c.offsetHeight > 0 && c.tagName !== 'SCRIPT').map(s => ({
+    class: (typeof s.className === 'string' ? s.className : '').slice(0, 60),
+    top: Math.round(s.getBoundingClientRect().top + scrollY),
+    height: Math.round(s.offsetHeight),
+  })));
+})()"
+```
+
+Compare the results. If any section's top offset differs by more than 50px, there's a spacing bug. Common causes:
+- Missing gap/padding on a flex container
+- Section heights not matching (fixed vs auto)
+- Missing spacer elements
+
+## Original SVG/Asset Extraction (MANDATORY)
+
+**Never create placeholder SVGs when the original has custom artwork.** If a logo, monogram, icon, or decorative element uses a custom SVG:
+
+1. Extract the exact SVG from the DOM:
+```bash
+agent-browser eval "(() => {
+  const svg = document.querySelector('<selector>');
+  return svg ? svg.outerHTML : 'not found';
+})()"
+```
+
+2. Save the SVG as a component or public asset
+3. Use `fill="currentColor"` for theming
+
+**WHY:** In a real session, a footer logo (sparkles + bird + OR monogram = one SVG with viewBox 0 0 460 171) was replaced with a placeholder ellipse+text. It took 3 iterations to discover and extract the actual SVG. Always extract originals first.
+
+## Tailwind Arbitrary Value Compatibility Check
+
+Before using arbitrary values like `px-[19px]`, verify they work in the target Tailwind version:
+
+```bash
+# Quick test after first component renders
+agent-browser eval "(() => {
+  const el = document.querySelector('[class*=\"px-[\"]');
+  return el ? getComputedStyle(el).paddingLeft : 'no match or not rendered';
+})()"
+```
+
+If the value is `0px`, Tailwind is not processing the arbitrary value. Use inline `style` props instead:
+```tsx
+style={{ paddingLeft: 19, paddingRight: 19 }}
+```
+
+**WHY:** Tailwind v4 with certain configs silently ignores arbitrary px values. This caused all padding to be 0px across an entire site, requiring a global find-and-replace to inline styles.

@@ -2,6 +2,8 @@
 
 A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component — using the original CSS directly, not re-implementing from extracted values.
 
+**v0.1.1: 실제 세션 피드백 기반 정확도 개선.** 섹션 간격/높이 추출 필수화, 원본 SVG 직접 추출 규칙, 프리로더 JS 번들 분석 필수화, 폰트 사이즈 정확도 강화. Tailwind v4 arbitrary value 호환성 체크 추가.
+
 **v0.1.0: CSS-First generation.** Downloads the original site's CSS files and uses original class names in JSX, so typography, spacing, borders, and colors match automatically. Falls back to `getComputedStyle` extraction for sites with obfuscated CSS (Tailwind, CSS-in-JS). Auto-detects site type (Shopify/WordPress/Next.js/Tailwind) and chooses the right strategy.
 
 Also extracts: DOM structure, JS bundle transitions (GSAP ScrollTrigger, Lenis, Framer Motion), responsive breakpoints, video backgrounds, fonts (including Typekit/Adobe Fonts), inline SVGs verbatim, and scroll-driven animation parameters with exact values from bundle source code.

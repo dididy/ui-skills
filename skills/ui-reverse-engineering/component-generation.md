@@ -46,6 +46,34 @@
 
 After generating all components, verify EVERY entry in `transition-spec.json` has a corresponding implementation. If ANY is missing → incomplete, do not proceed to verification.
 
+## Font Size Accuracy (CRITICAL — #1 source of user corrections)
+
+**Never approximate font sizes.** The most common feedback is "fonts are too small/wrong." Extract EXACT computed values for every text element:
+
+```bash
+agent-browser eval "(() => {
+  const textEls = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,a,span,button,li,th,td,label')]
+    .filter(el => el.offsetHeight > 0 && el.textContent?.trim().length > 0);
+  return JSON.stringify(textEls.slice(0, 50).map(el => {
+    const s = getComputedStyle(el);
+    return {
+      text: el.textContent?.trim().slice(0, 30),
+      fontSize: s.fontSize,
+      fontWeight: s.fontWeight,
+      fontFamily: s.fontFamily?.split(',')[0],
+      lineHeight: s.lineHeight,
+      letterSpacing: s.letterSpacing,
+      color: s.color,
+      textTransform: s.textTransform,
+    };
+  }), null, 2);
+})()"
+```
+
+**Use the EXACT extracted values.** Do not round `40px` to `2.5rem` or `14px` to `text-sm`. Use the computed pixel value directly: `text-[40px]`, `text-[14px]`, or `style={{ fontSize: 40 }}`.
+
+**Verify after implementation:** Compare font sizes between original and implementation for at least 5 key text elements. If any differ by more than 1px, fix immediately.
+
 ## CSS variable consistency (HARD RULE)
 
 Original CSS files may reference CSS variables (`var(--grey-8)`, `var(--content-inner-container)`, etc.) that must be defined in the project's `:root`. When importing original CSS:

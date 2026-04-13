@@ -876,3 +876,45 @@ If ANY fails → go back and complete bundle analysis.
 - **During implementation (Step 7)**: Read `transition-spec.json` before writing any animation code. Each transition's implementation must match its spec entry exactly.
 - **During iteration/fixes**: When the user reports a transition is wrong, read the relevant entry from `transition-spec.json` first — don't re-grep the bundle.
 - **When this skill is re-invoked** (`/ui-reverse-engineering` called again on the same project): Check if `transition-spec.json` exists in `tmp/ref/<c>/`. If it does, load it immediately — it's the accumulated knowledge from previous analysis.
+
+## Preloader/Splash Animation Extraction (MANDATORY)
+
+If the site has a preloader (`display:none` overlay, body class `show-preloader`, etc.):
+
+1. **Find the animation JS immediately** — don't guess from DOM structure:
+```bash
+# Find all non-infrastructure JS files
+agent-browser eval "(() => {
+  const all = performance.getEntriesByType('resource');
+  const jsFiles = all.filter(e => e.name.endsWith('.js') && !e.name.includes('shopify') && !e.name.includes('analytics') && !e.name.includes('gtag') && !e.name.includes('klaviyo'));
+  return JSON.stringify(jsFiles.map(e => e.name));
+})()"
+```
+
+2. **Download and grep for preloader code:**
+```bash
+curl -sL "<custom-js-url>" > tmp/ref/<c>/bundles/custom.js
+grep -n "preloader\|Preloader\|pre_loader" tmp/ref/<c>/bundles/custom.js
+```
+
+3. **Extract exact timeline** — GSAP timelines have sequential steps with `"<"` (simultaneous) and `"<15%"` (offset) position markers. Document each step's target, property, from/to values, duration, and position.
+
+4. **Extract custom easings:**
+```bash
+grep -n "CustomEase\|ease-[0-9]\|registerEase" tmp/ref/<c>/bundles/custom.js
+```
+
+5. **Extract preloader assets** (dedicated images, not hero images):
+```bash
+agent-browser eval "(() => {
+  const imgs = document.querySelectorAll('.preloader-img, [class*=preloader] img');
+  return JSON.stringify([...imgs].map(img => img.src));
+})()"
+```
+
+6. **Check session gating:**
+```bash
+grep -n "sessionStorage\|localStorage\|visited\|cookie" tmp/ref/<c>/bundles/custom.js | head -10
+```
+
+**WHY:** In a real session, a preloader was initially implemented as a full-screen hero image blur based on DOM inspection alone. The actual animation was: a small centered box (209×261px) with blue (#050fff) background clip-path reveal + 8 dedicated preloader images + GSAP timeline with custom easing. This required downloading the custom JS bundle to discover. DOM structure alone gives you the end state, not the animation sequence.

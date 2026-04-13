@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.1] - 2026-04-13
+
+### Added
+- **`style-extraction.md`** — **섹션 높이/간격 추출 필수 규칙.** 페이지 레벨 레이아웃(섹션별 높이, flex/grid gap, padding)을 반드시 추출하도록 명시. 실제 세션에서 flex container의 `gap: 234px`를 누락해 구현 전체 높이가 957px 짧아진 사례를 기반으로 추가.
+- **`visual-verification.md`** — **섹션 정렬 비교 필수 규칙.** 원본과 구현의 섹션별 top offset을 비교해 50px 이상 차이 시 spacing 버그로 판단. 같은 스크롤 위치에서 다른 콘텐츠가 보이는 문제를 방지.
+- **`visual-verification.md`** — **원본 SVG/에셋 추출 필수 규칙.** placeholder SVG 생성을 금지하고, DOM에서 원본 SVG outerHTML을 직접 추출하도록 명시. footer 로고(460×171 viewBox)를 placeholder 타원으로 대체했다가 3회 수정한 사례 기반.
+- **`visual-verification.md`** — **Tailwind arbitrary value 호환성 체크.** `px-[19px]` 등 arbitrary value가 렌더링 후 `0px`이면 inline style로 대체하도록 안내. Tailwind v4에서 무시되어 전체 padding이 0이 된 사례 기반.
+- **`interaction-detection.md`** — **프리로더/스플래시 JS 번들 분석 필수 규칙.** DOM 구조만으로 프리로더를 구현하지 않고, 커스텀 JS 파일을 다운로드하여 GSAP 타임라인, CustomEase, 전용 이미지, sessionStorage 게이팅을 추출하도록 명시. DOM의 `display:none` 상태만 보고 전체 화면 이미지 blur로 구현했다가, 실제로는 209×261px 중앙 박스 + 파란색(#050fff) clip-path + 8개 전용 이미지였던 사례 기반.
+- **`component-generation.md`** — **폰트 사이즈 정확도 규칙 (#1 사용자 피드백).** 추출된 computed value를 그대로 사용하고, 반올림/근사치를 금지. 40px를 18px로 구현하여 반복 수정한 사례 기반.
+
+### Fixed
+- 섹션 간 간격을 추출하지 않아 스크롤 위치가 맞지 않는 문제
+- placeholder SVG로 에셋을 대체하여 원본과 다른 문제
+- Tailwind v4에서 arbitrary px value가 무시되는 문제 진단 누락
+- 프리로더 애니메이션을 DOM만 보고 추측하여 원본과 다른 문제
+- 폰트 사이즈를 근사치로 설정하여 반복 수정이 필요한 문제
+
 ## [0.1.0] - 2026-04-12
 
 ### Breaking Changes
