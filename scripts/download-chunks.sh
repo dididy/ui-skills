@@ -12,6 +12,8 @@
 
 set -euo pipefail
 
+START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+
 DIR="${1:?Usage: download-chunks.sh <component-dir> <url-list-file>}"
 INPUT="${2:--}"
 
@@ -149,5 +151,20 @@ CHUNKS=$(echo "$ANALYSIS" | jq '[.[] | select((.libraries | type == "array" and 
 jq -n --argjson chunks "$CHUNKS" '{chunks: $chunks}' > "$DIR/bundle-map.json"
 echo -e "${GREEN}✅ Saved bundle-map.json (skeleton — review and enrich manually)${NC}"
 
-echo ""
-echo "Next: Review bundle-map.json and create transition-spec.json"
+echo "" >&2
+echo "Next: Review bundle-map.json and create transition-spec.json" >&2
+
+# ── JSON output ──
+END_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+DOWNLOADED=$(find "$DIR/bundles" -name "*.js" 2>/dev/null | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))" 2>/dev/null || echo "[]")
+LIBS=$(python3 -c "import json; d=json.load(open('$DIR/bundle-analysis.json')); libs=set(); [libs.update(e.get('libraries',[])) for e in d]; print(json.dumps(list(libs)))" 2>/dev/null || echo "[]")
+cat <<ENDJSON
+{
+  "status": "pass",
+  "phase": "bundle",
+  "data": { "files": $DOWNLOADED, "libraries": $LIBS },
+  "defects": [],
+  "errors": [],
+  "duration_ms": $(( END_TIME - START_TIME ))
+}
+ENDJSON

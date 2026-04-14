@@ -16,6 +16,8 @@ Detect all interactive regions on the page and classify by trigger type before c
 | `scroll-driven` | CSS `animation-timeline: scroll()` or JS rAF tracking scrollY | Scroll through the element's scroll range |
 | `mousemove` | `mousemove` event listener, class patterns (parallax/tilt/magnetic) | Dispatch mousemove events across element bounds |
 | `auto-timer` | setInterval, CSS animation without user trigger | Wait for cycles (record passively) |
+| `click-toggle` | `[aria-expanded]`, `role="tab"`, `data-state`, `<details>` | `agent-browser click <selector>` |
+| `click-cycle` | Multiple sibling tabs/pills sharing a parent, each with `role="tab"` or `data-state` | Click each sibling sequentially |
 
 ---
 
@@ -118,6 +120,42 @@ agent-browser eval "(() => {
   return JSON.stringify(results, null, 2);
 })()"
 ```
+
+---
+
+## Step 2A-1b: Scan for click-toggle candidates
+
+Elements that change state on click: tabs, accordions, dropdowns, modal triggers, toggles.
+
+```bash
+agent-browser eval "(() => {
+  const candidates = document.querySelectorAll(
+    'button, [role=\"tab\"], [role=\"button\"], details > summary, ' +
+    '[data-toggle], [data-accordion], [aria-expanded], ' +
+    '[data-state], a[href^=\"#\"]:not([href=\"#\"])'
+  );
+  return JSON.stringify(Array.from(candidates).map(el => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return null;
+    const cn = typeof el.className === 'string' ? el.className : '';
+    return {
+      selector: el.id ? '#'+el.id : el.tagName.toLowerCase() + (cn.trim().split(/\\s+/)[0] ? '.'+cn.trim().split(/\\s+/)[0].replace(/[^a-zA-Z0-9_-]/g,'') : ''),
+      tag: el.tagName,
+      role: el.getAttribute('role'),
+      ariaExpanded: el.getAttribute('aria-expanded'),
+      dataState: el.getAttribute('data-state'),
+      text: (el.textContent || '').trim().slice(0, 50),
+      bounds: { x: Math.round(rect.x + window.scrollX), y: Math.round(rect.y + window.scrollY), w: Math.round(rect.width), h: Math.round(rect.height) }
+    };
+  }).filter(Boolean));
+})()"
+```
+
+Save to `tmp/ref/capture/click-candidates.json`.
+
+**Deduplication:** If a click candidate overlaps with an existing hover candidate (same selector or bounds within 20px), skip it — it's already captured as `css-hover` or `js-class`.
+
+**Tab group detection:** If multiple candidates share the same parent and have `role="tab"` or `[data-state]`, group them as a single `click-cycle` region with `stateCount = N`.
 
 ---
 

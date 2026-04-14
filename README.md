@@ -2,7 +2,7 @@
 
 A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component — using the original CSS directly, not re-implementing from extracted values.
 
-**v0.1.1: 실제 세션 피드백 기반 정확도 개선.** 섹션 간격/높이 추출 필수화, 원본 SVG 직접 추출 규칙, 프리로더 JS 번들 분석 필수화, 폰트 사이즈 정확도 강화. Tailwind v4 arbitrary value 호환성 체크 추가.
+**v0.2.0: visual-debug + Raw HTML Injection + parallel builders.** New `visual-debug` skill automates visual comparison with AE/SSIM diff — **zero vision tokens** instead of reading screenshots with LLM. New Raw HTML Injection approach for complex sites (CSS Modules, GSAP, Lottie, Canvas): extracts raw outerHTML + serves original CSS files. `extract-dynamic-styles.sh` classifies GSAP inline styles as layout-keep vs animation-remove. Parallel worktree builders for 2-3x faster generation. Self-healing error loop auto-classifies and fixes defects.
 
 **v0.1.0: CSS-First generation.** Downloads the original site's CSS files and uses original class names in JSX, so typography, spacing, borders, and colors match automatically. Falls back to `getComputedStyle` extraction for sites with obfuscated CSS (Tailwind, CSS-in-JS). Auto-detects site type (Shopify/WordPress/Next.js/Tailwind) and chooses the right strategy.
 
@@ -10,12 +10,13 @@ Also extracts: DOM structure, JS bundle transitions (GSAP ScrollTrigger, Lenis, 
 
 > **vs. screenshot-to-code tools:** Those tools copy what's visible. `ui-skills` downloads the actual CSS, greps JS bundles for animation parameters, and uses the original class names — so the output has the same styles, transitions, and responsive behavior as the original.
 
-Three skills included, plus one shared verification document:
+Four skills included, plus one shared verification document:
 
 1. **`ui-reverse-engineering`** — full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component
 2. **`transition-reverse-engineering`** — precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, **scroll-driven JS animations**)
-3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Standalone analysis generates an overlay-based report: fullpage screenshot as base layer with interactive transition overlays (videos/images) pinned at exact page coordinates (`bounds.x/y`), sidebar region index, and IntersectionObserver-driven auto-play. Auto-detects custom scroll containers (Lenis, Locomotive, `overflow: hidden`) and uses real mouse-wheel events for accurate scroll recording. Captures section-by-section viewport-resized screenshots. Classifies each effect by trigger type before capturing: `css-hover`/`js-class` → eval + clip screenshot (idle + active); `intersection` → eval + clip screenshot (before + after); `scroll-driven` → exploration video then clip screenshots at before/mid/after; `mousemove`/`auto-timer` → video.
-4. **`pixel-perfect-diff`** *(shared verification document)* — mandatory visual verification gate invoked by all three skills. Phase 1 captures DOM clip screenshots per element per state (idle / active / before / mid / after by triggerType) and diffs with AE/SSIM — this is the pass/fail criterion. Phase 2 runs `getComputedStyle` always (regardless of Phase 1 result) to catch sub-pixel mismatches like `font-size: 15px vs 16px` that AE/SSIM passes. Both must pass. "Looks the same" is not a valid completion criterion.
+3. **`ui-capture`** — baseline screenshot + transition capture from reference URLs, with web-based comparison page for verifying UI clone fidelity. Auto-detects custom scroll containers (Lenis, Locomotive, `overflow: hidden`) and uses real mouse-wheel events for accurate scroll recording. Classifies each effect by trigger type before capturing.
+4. **`visual-debug`** — **all visual comparison and verification in one skill**. Absorbs `visual-verification.md` and `pixel-perfect-diff.md`. Two modes: (a) **Quick comparison** — `batch-scroll.sh` + `batch-compare.sh` for instant AE/SSIM diff with zero vision tokens. (b) **Full verification** — `verification.md` with Phase A/B capture, Phase C comparison, Phase D pixel-perfect gate, Phase H self-healing loop, Phase E VLM sanity check. Single source of truth for "is it done?".
+5. **`pixel-perfect-diff.md`** *(redirect)* — now points to `visual-debug/verification.md` Phase D.
 
 ## Requirements
 

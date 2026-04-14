@@ -1,7 +1,7 @@
 {
   "name": "ui-skills",
-  "version": "0.1.1",
-  "description": "Reverse-engineer any live website into production-ready React + Tailwind code. CSS-First: downloads original CSS files and uses original class names for pixel-perfect reproduction. Auto-detects site type (Shopify/WordPress/Next.js/Tailwind) and chooses CSS-First or Extract-Values strategy. Pipeline orchestrator (run-pipeline.sh) enforces correct step ordering. Downloads video backgrounds, Typekit/Adobe Fonts, and all JS bundles. Produces transition-spec.json as single source of truth — transitions are implemented simultaneously with components, not separately. Verifies with getComputedStyle numerical diff, not visual judgment. v0.1.1: mandatory section-height/gap extraction, original SVG extraction, preloader JS bundle analysis, font-size accuracy enforcement, Tailwind v4 arbitrary value compatibility check.",
+  "version": "0.2.0",
+  "description": "Reverse-engineer any live website into production-ready React + Tailwind code. CSS-First: downloads original CSS files and uses original class names for pixel-perfect reproduction. Auto-detects site type and chooses CSS-First, Extract-Values, or Raw HTML Injection strategy. v0.2.0: visual-debug skill (AE/SSIM automated comparison, zero vision tokens), Raw HTML Injection approach for CSS Modules/GSAP/Lottie sites, parallel worktree builders, self-healing verification loop, extract-dynamic-styles.sh, validate-gate dynamic-heights check.",
   "license": "Apache-2.0",
   "author": {
     "name": "YONGJAE LEE"
@@ -9,6 +9,7 @@
   "skills": [
     "./skills/ui-reverse-engineering",
     "./skills/transition-reverse-engineering",
-    "./skills/ui-capture"
+    "./skills/ui-capture",
+    "./skills/visual-debug"
   ]
 }

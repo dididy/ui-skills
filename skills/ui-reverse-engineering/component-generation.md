@@ -104,6 +104,69 @@ When implementing any transition or animation:
 4. Check `reference_frames` — view 2-3 frames to confirm the spec matches visual behavior
 5. If spec seems wrong, update the spec first, then implement — never implement against a spec you suspect is incorrect
 
+## Parallel Section Generation (Phase 3A → 3B → 3C)
+
+When the page has 4+ sections, generate components in parallel using Claude Code Agent tool with worktree isolation. This reduces generation time by 2-3x.
+
+### Phase 3A: Foundation (sequential — MUST complete before 3B)
+
+Generate these shared files first. All section builders depend on them:
+
+1. `globals.css` — design tokens, CSS variables from `variables.txt`, font imports
+2. `types.ts` — shared TypeScript types (if any cross-section types exist)
+3. `icons.tsx` — all extracted SVG components from `inline-svgs.json` + `decorative-svgs.json`
+4. `layout.tsx` — app shell with scroll provider, font loading, global styles import
+5. `page.tsx` skeleton — section imports (empty components) to define the assembly structure
+
+**Gate:** All 5 files exist and `pnpm tsc --noEmit` passes before proceeding to 3B.
+
+### Phase 3B: Section Builders (parallel)
+
+For each section identified in `component-map.json`:
+
+1. **Build the prompt.** Include INLINE (not as file references):
+   - Section spec from the design audit (the relevant portion of `extracted.json`)
+   - Relevant entries from `transition-spec.json` (filter by section selector)
+   - Reference screenshot for this section (path to clip)
+   - Foundation files content (`globals.css`, `types.ts`, `icons.tsx`) for import consistency
+   - The `component-generation.md` rules (font accuracy, CSS variable consistency, transition integration)
+   - The relevant portion of `transition-implementation.md` for this section's transition types
+
+2. **Dispatch** via Agent tool with `isolation: "worktree"`:
+   ```
+   Agent(
+     prompt: "<full section spec + rules inline>",
+     isolation: "worktree",
+     description: "Build <SectionName> component"
+   )
+   ```
+
+3. **Each builder** produces:
+   - `src/components/<SectionName>/<SectionName>.tsx`
+   - Any section-local sub-components
+   - Section passes `validate-gate.sh post-implement` independently
+
+4. **Dispatch all sections simultaneously** — do not wait for one to finish before starting the next.
+
+### Phase 3B Fallback: Sequential Generation
+
+If the Agent tool is not available (detected by attempting a no-op Agent call), fall back to generating each section sequentially in the main session. The section spec + rules are the same — only the execution model changes.
+
+### Phase 3C: Assembly (sequential — after ALL 3B builders complete)
+
+1. Collect all section components from worktree branches
+2. Wire actual imports in `page.tsx` (replace empty components)
+3. Add cross-section wiring:
+   - Scroll context providers (if multiple sections share scroll state)
+   - Shared animation orchestration (e.g., Lenis smooth scroll wrapper)
+   - Section ordering must match `component-map.json` order
+4. Run `validate-gate.sh post-implement` on the assembled result
+5. Run `pnpm tsc --noEmit` to catch import/type errors
+
+**Gate:** All sections render, no TypeScript errors, `validate-gate.sh post-implement` passes.
+
+---
+
 ## Design bundle consistency check (MANDATORY before generation)
 
 Before generating code, verify `design-bundles.json` (from Step 3 post-processing). Elements sharing the same bundle ID must receive identical values in the implementation.

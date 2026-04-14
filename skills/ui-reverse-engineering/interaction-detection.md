@@ -32,6 +32,8 @@ agent-browser eval "
 | `hasAnimation: true` | Extract keyframes — see below |
 | `canvases > 0` | **Invoke `transition-reverse-engineering` skill now** |
 | Scroll-triggered transitions | Detect & extract — see below |
+| `click-toggle` detected | Implement with React state + CSS transition |
+| `click-cycle` detected  | Implement with React state array + activeIndex |
 | Complex JS interactions | Step 6: Bundle analysis |
 
 ### Detect scroll-triggered transitions

@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.2.0] - 2026-04-14
+
+### Added
+- **`visual-debug` skill** — Automated visual comparison between original site and implementation using AE/SSIM diff. **Zero vision tokens** — never reads images with LLM for comparison. Only reads diff images when AE reports a FAIL. Includes 4 scripts:
+  - `batch-scroll.sh` — captures both original and implementation at identical scroll positions (0%-100%)
+  - `ae-compare.sh` — compares two images, outputs AE score + identifies worst region (top/middle/bottom)
+  - `batch-compare.sh` — compares all captured pairs, outputs markdown table of scores
+  - `computed-diff.sh` — compares `getComputedStyle` values between original and implementation for specified selectors
+- **Raw HTML Injection approach** (`site-detection.md`) — New implementation strategy for complex sites with CSS Modules, GSAP, Lottie, Canvas, or 200KB+ HTML. Extracts raw `outerHTML` per section, serves original CSS files from `/public/css/`, renders via `dangerouslySetInnerHTML`. Documents the critical "wrapper div problem" (extra `<div>` between parent and child breaks CSS Module selectors) and the "GSAP inline style cleanup" problem (layout values like `height: 500svh` must be preserved while animation values like `transform: rotateY(-180deg)` must be removed).
+- **`extract-dynamic-styles.sh`** — Classifies inline styles as layout (height/width in svh/vh — KEEP) vs animation (transform/opacity/visibility — REMOVE). Prevents the #1 debugging issue: cleaning all GSAP inline styles removes layout heights, causing sections to collapse to 0px.
+- **`validate-gate.sh` `dynamic-heights` gate** — Detects when scroll sentinels or sections have lost their `svh`/`vh` height values after GSAP cleanup. Warns about layout values that must be re-set by ClientShell JS.
+- **`visual-debug` trigger evals** — 15 test cases (10 positive, 5 negative) for skill activation.
+- **Parallel worktree builders** — Phase 3 generation splits into 3A (foundation, sequential) → 3B (section builders, parallel via Agent tool with worktree isolation) → 3C (assembly, sequential). 2-3x faster on pages with 4+ sections. Falls back to sequential if Agent tool unavailable.
+- **Self-healing error loop (Phase H)** — When Phase D verification fails, defects are automatically classified by category (LAYOUT/COLOR/TYPOGRAPHY/ANIMATION/CONTENT) and severity (CRITICAL/MAJOR/MINOR), then fixed in priority order with minimal targeted edits. Re-verifies after each iteration. Max 3 cycles before escalating with structured defect report.
+- **Click sweep** — `ui-capture` Phase 2 now detects and captures click-toggle (accordions, dropdowns, toggles) and click-cycle (tabs, pills) interactions. Detects via `aria-expanded`, `role="tab"`, `data-state`, `<details>`. Captures idle/active per toggle, per-state screenshots for tab cycles. Deduplicates against existing hover candidates.
+- **`interaction-detection.md`** — `click-toggle` and `click-cycle` trigger types added to signal table.
+- **`transition-implementation.md`** — React implementation patterns for click-toggle (useState + CSS transition) and click-cycle (activeIndex + tabpanel) with exact extracted values.
+- **`visual-verification.md`** — Phase D comparison now includes click-toggle (idle/active) and click-cycle (state-0..N) states.
+
+### Changed
+- **`visual-debug` absorbs `visual-verification.md` + `pixel-perfect-diff.md`** — All visual verification is now in one place. `visual-debug/verification.md` contains the full Phase A/B/C/D/H/E procedure (formerly `ui-reverse-engineering/visual-verification.md`). `pixel-perfect-diff.md` and `visual-verification.md` are now redirect stubs. All cross-skill references updated.
+- **`site-detection.md`** — Implementation Approach Gate added (MANDATORY before writing code). Detection script checks CSS Module ratio, JS animation library count, inline style count, and total HTML size. Decision matrix routes to Raw HTML Injection or React Component approach.
+- **`plugin.json`** — `visual-debug` added to skills list.
+- **Scripts JSON output** — `compare-sections.sh`, `validate-gate.sh`, `download-chunks.sh`, `section-clips.sh`, `extract-section-html.sh`, `extract-assets.sh` now output structured JSON: `{status, phase, data, defects, errors, duration_ms}`. Human-readable output moved to stderr. Exit codes unchanged — fully backward-compatible with existing SKILL.md flows.
+- **`compare-sections.sh`** — Layer 3 style mismatches now include `category` (LAYOUT/COLOR/TYPOGRAPHY/ANIMATION/CONTENT) and `severity` (CRITICAL/MAJOR/MINOR) classification. Defect list written to `comparison-output.json` for self-healing loop consumption.
+- **`validate-gate.sh`** — JSON output includes gate name, failed check count, and missing file list. New `dynamic-heights` gate added.
+
+### Fixed
+- `extract-dynamic-styles.sh` missing from `skills/ui-reverse-engineering/scripts/` (only existed in root `scripts/`)
+- `validate-gate.sh` out of sync between root `scripts/` and `skills/ui-reverse-engineering/scripts/`
+- `visual-debug` SKILL.md script paths used bare `scripts/` without `PLUGIN_ROOT` resolution
+- `site-detection.md` referenced `extract-dynamic-styles.sh` without `PLUGIN_ROOT` path
+- Visual verification scattered across 3 locations (visual-verification.md, pixel-perfect-diff.md, visual-debug) — now consolidated into `visual-debug`
+
 ## [0.1.1] - 2026-04-13
 
 ### Added

@@ -118,5 +118,20 @@
   {
     "query": "write a Node.js script that scrapes product prices from multiple e-commerce sites and saves them to a CSV",
     "should_trigger": false
+  },
+  {
+    "query": "it still looks different from the original — what's wrong?",
+    "should_trigger": false,
+    "note": "This is visual-debug, not ui-reverse-engineering — user is comparing existing impl, not starting a new clone"
+  },
+  {
+    "query": "원본이랑 아직 다르다 확인해줘",
+    "should_trigger": false,
+    "note": "This is visual-debug — user wants comparison, not new extraction"
+  },
+  {
+    "query": "run AE diff between original and my implementation",
+    "should_trigger": false,
+    "note": "This is visual-debug — explicit AE diff request"
   }
 ]

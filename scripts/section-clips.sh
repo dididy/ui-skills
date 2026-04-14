@@ -22,6 +22,8 @@
 
 set -euo pipefail
 
+START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+
 SESSION="${1:?Usage: section-clips.sh <session> <output-dir> <side>}"
 DIR="${2:?Usage: section-clips.sh <session> <output-dir> <side>}"
 SIDE="${3:?Usage: section-clips.sh <session> <output-dir> <side>}"
@@ -252,8 +254,22 @@ for i, elem in enumerate(elements):
             print(f'  ❌ {i:02d}-{name}.png FAILED')
 " 2>/dev/null
 
-echo ""
-echo "═══ Done: $SECTION_COUNT sections, $ELEM_COUNT elements ═══"
-echo "Sections: $SECTION_DIR/"
-echo "Elements: $ELEMENT_DIR/"
-echo "Metadata: $CLIP_DIR/sections.json, $CLIP_DIR/elements.json"
+echo "" >&2
+echo "═══ Done: $SECTION_COUNT sections, $ELEM_COUNT elements ═══" >&2
+echo "Sections: $SECTION_DIR/" >&2
+echo "Elements: $ELEMENT_DIR/" >&2
+echo "Metadata: $CLIP_DIR/sections.json, $CLIP_DIR/elements.json" >&2
+
+# ── JSON output ──
+END_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+CLIPS=$(find "$SECTION_DIR" -name "*.png" 2>/dev/null | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))" 2>/dev/null || echo "[]")
+cat <<ENDJSON
+{
+  "status": "pass",
+  "phase": "capture",
+  "data": { "clips": $CLIPS, "sections": ${SECTION_COUNT:-0}, "elements": ${ELEM_COUNT:-0} },
+  "defects": [],
+  "errors": [],
+  "duration_ms": $(( END_TIME - START_TIME ))
+}
+ENDJSON

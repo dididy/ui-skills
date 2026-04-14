@@ -8,7 +8,7 @@
       "name": "ui-skills",
       "source": "./",
       "description": "Reverse-engineer any live website into production-ready React + Tailwind code. CSS-First: downloads original CSS files and uses original class names for pixel-perfect reproduction. Auto-detects site type (Shopify/WordPress/Next.js/Tailwind) and chooses CSS-First or Extract-Values strategy. Pipeline orchestrator (run-pipeline.sh) enforces correct step ordering. Downloads video backgrounds, Typekit/Adobe Fonts, and all JS bundles. Produces transition-spec.json as single source of truth — transitions are implemented simultaneously with components, not separately. Verifies with getComputedStyle numerical diff, not visual judgment.",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -117,7 +117,17 @@
         "css-variable-preservation",
         "sticky-overflow-detection",
         "transition-implementation",
-        "splash-animation"
+        "splash-animation",
+        "parallel-build",
+        "worktree",
+        "self-healing",
+        "defect-classification",
+        "click-toggle",
+        "click-cycle",
+        "tab-detection",
+        "accordion-detection",
+        "json-output",
+        "cli-ready"
       ]
     }
   ]

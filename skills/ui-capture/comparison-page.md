@@ -4,11 +4,11 @@ Generate `tmp/ref/capture/compare.html` for side-by-side human review of origina
 
 ## Phase 4A: Pixel-Perfect Visual Gate (MANDATORY — run BEFORE generating compare.html)
 
-> **Read and execute `../pixel-perfect-diff.md` Phase 1 (Visual Gate) for each major section of the page.**
+> **Read and execute `visual-debug/verification.md (Phase D)` Phase 1 (Visual Gate) for each major section of the page.**
 > Visual Gate (clip screenshot diff) is the objective pass/fail criterion. If it fails, run Phase 2 (Numerical Diagnosis) to find and fix the CSS mismatch, then re-run Phase 1.
 
 For each section in `regions.json` plus any static-only sections (header, footer, hero):
-1. Follow `../pixel-perfect-diff.md` Phase 1 to capture clip screenshots and run pixel diff
+1. Follow `visual-debug/verification.md (Phase D)` Phase 1 to capture clip screenshots and run pixel diff
 2. Produce `tmp/ref/capture/pixel-perfect-diff.json` with `"result": "pass"`
 
 The diff JSON must be embedded in the compare.html output (see HTML structure below).

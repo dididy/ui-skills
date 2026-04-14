@@ -131,3 +131,56 @@ useEffect(() => {
 - Use **`will-change: transform`** on animated elements
 - Scroll listeners must use **`{ passive: true }`**
 - Batch reads (getBoundingClientRect) before writes (style mutations)
+
+## Click-toggle / Click-cycle transitions
+
+### click-toggle (accordion, dropdown, single toggle)
+
+```tsx
+const [isOpen, setIsOpen] = useState(false);
+
+<button
+  aria-expanded={isOpen}
+  onClick={() => setIsOpen(!isOpen)}
+>
+  {label}
+</button>
+<div
+  style={{
+    height: isOpen ? measuredHeight : 0,
+    overflow: 'hidden',
+    transition: `height ${duration}ms ${easing}`,
+  }}
+>
+  {content}
+</div>
+```
+
+**Get exact values from extraction:**
+- `duration`: from `getComputedStyle(panel).transitionDuration`
+- `easing`: from `getComputedStyle(panel).transitionTimingFunction`
+- `measuredHeight`: from `getBoundingClientRect().height` in active state
+
+### click-cycle (tabs)
+
+```tsx
+const [activeIndex, setActiveIndex] = useState(0);
+
+<div role="tablist">
+  {tabs.map((tab, i) => (
+    <button
+      key={i}
+      role="tab"
+      aria-selected={i === activeIndex}
+      onClick={() => setActiveIndex(i)}
+    >
+      {tab.label}
+    </button>
+  ))}
+</div>
+<div role="tabpanel">
+  {tabs[activeIndex].content}
+</div>
+```
+
+**Extract per-tab content** from click-cycle capture states — each `state-N.png` corresponds to `tabs[N].content`.

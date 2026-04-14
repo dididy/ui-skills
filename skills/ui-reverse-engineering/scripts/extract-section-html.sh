@@ -20,6 +20,8 @@
 
 set -euo pipefail
 
+START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+
 SESSION="${1:?Usage: extract-section-html.sh <session> <output-dir>}"
 DIR="${2:?Usage: extract-section-html.sh <session> <output-dir>}"
 
@@ -198,7 +200,22 @@ with open(os.path.join(outdir, '_summary.json'), 'w') as f:
 print(f'  Summary: {outdir}/_summary.json')
 " 2>/dev/null
 
-echo ""
-echo "═══ Done ═══"
-echo "Per-section files: $DIR/html/<section-name>.json"
-echo "Each file contains: HTML structure, computed CSS, media elements"
+echo "" >&2
+echo "═══ Done ═══" >&2
+echo "Per-section files: $DIR/html/<section-name>.json" >&2
+echo "Each file contains: HTML structure, computed CSS, media elements" >&2
+
+# ── JSON output ──
+END_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+SECTION_FILES=$(find "$DIR/html" -name "*.json" 2>/dev/null | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))" 2>/dev/null || echo "[]")
+SECTION_N=$(find "$DIR/html" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+cat <<ENDJSON
+{
+  "status": "pass",
+  "phase": "extract",
+  "data": { "sections": $SECTION_N, "paths": $SECTION_FILES },
+  "defects": [],
+  "errors": [],
+  "duration_ms": $(( END_TIME - START_TIME ))
+}
+ENDJSON

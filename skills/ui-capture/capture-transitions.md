@@ -304,6 +304,111 @@ agent-browser --session <project> screenshot \
 
 ---
 
+## Step 2C-click: Click-Toggle / Click-Cycle Capture
+
+For each region with `triggerType: "click-toggle"` or `"click-cycle"`.
+
+### click-toggle (binary state: accordion, dropdown, single toggle)
+
+```bash
+# 1. Scroll element into view
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
+})()"
+agent-browser --session <project> wait 500
+
+# 2. Capture idle state — clip the CONTENT area, not just the button
+# The content area is the sibling/child that changes (panel, dropdown, accordion body)
+agent-browser --session <project> screenshot --clip <content_x>,<content_y>,<content_w>,<content_h> \
+  tmp/ref/capture/transitions/ref/<name>-idle.png
+
+# 3. Click to activate
+agent-browser --session <project> click <selector>
+agent-browser --session <project> wait 500
+
+# 4. Verify state changed
+agent-browser --session <project> eval "(() => {
+  const el = document.querySelector('<selector>');
+  return JSON.stringify({
+    ariaExpanded: el.getAttribute('aria-expanded'),
+    dataState: el.getAttribute('data-state'),
+  });
+})()"
+
+# 5. Capture active state
+agent-browser --session <project> screenshot --clip <content_x>,<content_y>,<content_w>,<content_h> \
+  tmp/ref/capture/transitions/ref/<name>-active.png
+
+# 6. Restore: click again to toggle back (or reload if one-way)
+agent-browser --session <project> click <selector>
+agent-browser --session <project> wait 300
+```
+
+### click-cycle (N states, e.g., tabs)
+
+```bash
+# For each tab/pill in the group:
+# Click tab 0 (should already be active, but ensure consistent state)
+agent-browser --session <project> click <tab-selector-0>
+agent-browser --session <project> wait 500
+agent-browser --session <project> screenshot --clip <content_x>,<content_y>,<content_w>,<content_h> \
+  tmp/ref/capture/transitions/ref/<name>-state-0.png
+
+# Click tab 1
+agent-browser --session <project> click <tab-selector-1>
+agent-browser --session <project> wait 500
+agent-browser --session <project> screenshot --clip <content_x>,<content_y>,<content_w>,<content_h> \
+  tmp/ref/capture/transitions/ref/<name>-state-1.png
+
+# ... repeat for all tabs
+
+# Restore to first state
+agent-browser --session <project> click <tab-selector-0>
+agent-browser --session <project> wait 300
+```
+
+### Validation
+
+- Each screenshot must be > 10KB
+- idle vs active must differ (if identical, the click had no effect — remove from `regions.json`)
+- For click-cycle: at least 2 states must differ from each other
+
+### regions.json schema
+
+**click-toggle:**
+```json
+{
+  "triggerType": "click-toggle",
+  "selector": "button[data-tab='pricing']",
+  "bounds": { "x": 100, "y": 500, "w": 200, "h": 40 },
+  "stateCount": 1,
+  "captures": {
+    "idle": "regions/click-toggle-pricing/idle.png",
+    "active": "regions/click-toggle-pricing/active.png"
+  }
+}
+```
+
+**click-cycle:**
+```json
+{
+  "triggerType": "click-cycle",
+  "selector": ".tab-group",
+  "bounds": { "x": 100, "y": 500, "w": 800, "h": 400 },
+  "stateCount": 3,
+  "captures": {
+    "state-0": "regions/click-cycle-tabs/state-0.png",
+    "state-1": "regions/click-cycle-tabs/state-1.png",
+    "state-2": "regions/click-cycle-tabs/state-2.png"
+  }
+}
+```
+
+---
+
 ## Step 2D: Mousemove / cursor-reactive
 
 **One video only** — no matrix screenshots. Record a continuous path that covers the whole element:

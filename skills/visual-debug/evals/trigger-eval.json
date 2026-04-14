@@ -1,0 +1,64 @@
+[
+  {
+    "query": "it looks different from the original — can you check what's wrong?",
+    "should_trigger": true
+  },
+  {
+    "query": "the implementation doesn't match the reference site",
+    "should_trigger": true
+  },
+  {
+    "query": "compare my localhost:3000 with the original https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "run a visual diff between the original and my clone",
+    "should_trigger": true
+  },
+  {
+    "query": "아직 원본이랑 다르다",
+    "should_trigger": true
+  },
+  {
+    "query": "what's still wrong visually? check with AE diff",
+    "should_trigger": true
+  },
+  {
+    "query": "the footer looks off — can you compare it with the original pixel by pixel?",
+    "should_trigger": true
+  },
+  {
+    "query": "I need a batch comparison of all scroll positions",
+    "should_trigger": true
+  },
+  {
+    "query": "check the computed styles between original and my implementation for the header",
+    "should_trigger": true
+  },
+  {
+    "query": "여전히 원본이랑 좀 달라",
+    "should_trigger": true
+  },
+  {
+    "query": "clone https://stripe.com into a React component",
+    "should_trigger": false,
+    "note": "This is ui-reverse-engineering — user wants to build, not compare"
+  },
+  {
+    "query": "capture the reference screenshots from this site",
+    "should_trigger": false,
+    "note": "This is ui-capture — user wants to capture, not compare existing impl"
+  },
+  {
+    "query": "fix the TypeScript error in my component",
+    "should_trigger": false
+  },
+  {
+    "query": "add a dark mode toggle to my site",
+    "should_trigger": false
+  },
+  {
+    "query": "write unit tests for my Button component",
+    "should_trigger": false
+  }
+]

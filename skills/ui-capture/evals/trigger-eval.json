@@ -81,5 +81,15 @@
     "query": "set up a new ralph project for cloning this website",
     "should_trigger": false,
     "note": "This is ralph-kage-bunshin-start — it will invoke ui-capture internally"
+  },
+  {
+    "query": "the implementation doesn't match — run a visual diff",
+    "should_trigger": false,
+    "note": "This is visual-debug — user wants automated diff of existing impl, not new capture"
+  },
+  {
+    "query": "batch compare all scroll positions between original and localhost",
+    "should_trigger": false,
+    "note": "This is visual-debug — batch-compare.sh, not ui-capture"
   }
 ]

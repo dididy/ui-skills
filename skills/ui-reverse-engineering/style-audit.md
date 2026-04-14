@@ -199,7 +199,7 @@ All must pass before declaring done.
 
 ## 10-Point Design Fidelity Score
 
-Diagnostic scoring system for fix iteration guidance. This does NOT replace pixel-perfect-diff — it tells you **what to fix first**. pixel-perfect-diff tells you **when you're done**.
+Diagnostic scoring system for fix iteration guidance. This does NOT replace visual-debug verification Phase D — it tells you **what to fix first**. visual-debug verification Phase D tells you **when you're done**.
 
 ### Checklist (1 point each)
 
@@ -246,7 +246,7 @@ agent-browser --session <impl-session> eval "(() => {
 
 ### Scoring loop protocol
 
-1. **Run scoring at the START of each Step 8 fix iteration** (before pixel-perfect-diff)
+1. **Run scoring at the START of each Step 8 fix iteration** (before visual-debug verification Phase D)
 2. **Save score** to `tmp/ref/<component>/score-history.json` (append):
    ```json
    [
@@ -265,9 +265,9 @@ agent-browser --session <impl-session> eval "(() => {
    - Current score + breakdown
    - Score history (trend)
    - Top 3 remaining failures with specific values (e.g., "font-size: 24px should be 32px on .hero h1")
-6. **Completion:** Score ≥ 9 is a prerequisite for running the final pixel-perfect-diff gate. Do not run pixel-perfect-diff until scoring passes 9+.
+6. **Completion:** Score ≥ 9 is a prerequisite for running the final visual-debug verification Phase D gate. Do not run visual-debug verification Phase D until scoring passes 9+.
 
-### Relationship to pixel-perfect-diff
+### Relationship to visual-debug verification Phase D
 
 ```
   Fix iteration loop:
@@ -277,7 +277,7 @@ agent-browser --session <impl-session> eval "(() => {
   │  3. Score ≥ 9?                              │
   │     NO → fix lowest category                │──→ back to 1
   │     YES ↓                                   │
-  │  4. Run pixel-perfect-diff                  │ ← "are we done?"
+  │  4. Run visual-debug verification Phase D                  │ ← "are we done?"
   │     FAIL → fix specific element             │──→ back to 1
   │     PASS → DONE                             │
   └─────────────────────────────────────────────┘

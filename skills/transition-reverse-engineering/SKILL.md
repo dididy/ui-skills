@@ -87,7 +87,7 @@ Step 2c: Extract Canvas/WebGL       — Read canvas-webgl-extraction.md (for can
 Step 3: Implement                   — Read patterns.md for reference patterns
   ↓
 Step 4: Verify                      — Read verification.md, execute frame comparison tables
-  ↓                                   AND pixel-perfect-diff.md Phase 1 Visual Gate for resting states (idle + active)
+  ↓                                   AND visual-debug Phase D Visual Gate for resting states (idle + active)
   ↓
   ↓  GATE: All frames ✅ in comparison table
   ↓  GATE: Phase 1 Visual Gate all pass AND Phase 2 mismatches = 0
@@ -279,7 +279,7 @@ Save to `tmp/ref/<effect-name>/extracted.json`:
 - **patterns.md** — Implementation patterns, character stagger recipes, troubleshooting
 - **waapi-scrubbing.md** — WAAPI scrubber injection for page-load animations
 - **verification.md** — Visual verification, bug diagnosis protocol, completion checklist
-- **../pixel-perfect-diff.md** — Step 4 (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
+- **visual-debug/verification.md (Phase D)** — Step 4 (MANDATORY): Phase 1 Visual Gate (clip screenshot AE/SSIM) + Phase 2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: Visual Gate all pass AND mismatches = 0.
 
 ## When called from a ralph worker
 

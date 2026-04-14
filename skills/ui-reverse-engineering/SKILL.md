@@ -323,11 +323,16 @@ R. Capture Reference        — Invoke /ui-capture <reference-url>
   ↓                         Then read component-generation.md + transition-implementation.md
   ↓                         Use ONLY extracted values. No guessing.
   ↓
+  ↓  **Parallel generation:** If the page has 4+ sections, Phase 3 uses
+  ↓  parallel worktree builders (see `component-generation.md` Phase 3A/3B/3C).
+  ↓  Each section is built by an independent Agent in its own worktree,
+  ↓  then assembled. Falls back to sequential if Agent tool unavailable.
+  ↓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   PHASE 4: VERIFICATION (gates completion)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ↓
-8. Visual Verification    — Read visual-verification.md, execute Phases A, B, C, D
+8. Visual Verification    — Read visual-debug/verification.md (via visual-verification.md redirect), execute Phases A, B, C, D
   ↓
   ↓   Phase A: Reference capture (static screenshots + scroll video)
   ↓   Phase B: Impl capture (identical sequences on localhost)
@@ -612,13 +617,14 @@ agent-browser close                         # Kill session
 - **site-detection.md** — Step 1: Auto-detect site tech stack (Shopify/WordPress/Next.js/Tailwind), choose CSS-First vs Extract-Values strategy
 - **component-generation.md** — Step 7: CSS-first generation, original class names, transition integration
 - **transition-implementation.md** — Bundle → code translation for scroll/page-load/interaction transitions
-- **visual-verification.md** — Step 8 Phase A/B/C: static screenshots + scroll/transition captures. All comparisons use AE/SSIM (zero tokens) — LLM reads images only for diagnosis of failures and the final VLM sanity check (1 pair). Phase D: Pixel-perfect diff (Visual Gate + Numerical Diagnosis) is now included in this file. Phase E: VLM sanity check (1 ref+impl pair).
+- **visual-verification.md** → **Redirects to `visual-debug/verification.md`**. Step 8 full verification procedure: Phase A/B capture, Phase C comparison (AE/SSIM, zero tokens), Phase D pixel-perfect gate, Phase H self-healing loop, Phase E VLM sanity check. Use `visual-debug` scripts (`batch-scroll.sh`, `batch-compare.sh`) for Phase C.
 - **style-audit.md** — Post-generation class-level computed style comparison (ref vs impl). Catches wrong font-size, font-weight, missing SVGs, wrong images, spacing mismatches. Runs in parallel with Step 8.
 
 ## Sub-skills
 
 - **`ui-capture`** — visual capture, transition detection, raster-path sweep, comparison web page generation
 - **`transition-reverse-engineering`** — precise animation/transition extraction (WAAPI scrubbing, canvas/WebGL, character stagger, frame-by-frame comparison)
+- **`visual-debug`** — automated AE/SSIM visual comparison between original and implementation. **Use during Phase C (Compare & Fix)** instead of manually reading screenshots. Zero vision tokens. `batch-scroll.sh` captures both sites, `batch-compare.sh` outputs pass/fail table, `computed-diff.sh` catches sub-pixel style mismatches.
 
 ## When called from a ralph worker
 

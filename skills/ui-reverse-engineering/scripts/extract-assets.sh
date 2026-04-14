@@ -15,6 +15,8 @@
 
 set -euo pipefail
 
+START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+
 SESSION="${1:?Usage: extract-assets.sh <session> <output-dir> <public-dir>}"
 DIR="${2:?Usage: extract-assets.sh <session> <output-dir> <public-dir>}"
 PUBLIC="${3:?Usage: extract-assets.sh <session> <output-dir> <public-dir>}"
@@ -217,8 +219,30 @@ else
   echo "  ⏭️  No hero video downloaded"
 fi
 
-echo ""
-echo "═══ Done ═══"
-echo "Videos: $PUBLIC/videos/"
-echo "Fonts:  $PUBLIC/fonts/"
-echo "CSS:    $DIR/assets/font-faces.css"
+echo "" >&2
+echo "═══ Done ═══" >&2
+echo "Videos: $PUBLIC/videos/" >&2
+echo "Fonts:  $PUBLIC/fonts/" >&2
+echo "CSS:    $DIR/assets/font-faces.css" >&2
+
+# ── JSON output ──
+END_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+ASSETS=$(python3 -c "
+import json, os, sys
+assets = []
+for d, t in [('$PUBLIC/videos', 'video'), ('$PUBLIC/fonts', 'font')]:
+    if os.path.isdir(d):
+        for f in os.listdir(d):
+            assets.append({'type': t, 'path': os.path.join(d, f)})
+print(json.dumps(assets))
+" 2>/dev/null || echo "[]")
+cat <<ENDJSON
+{
+  "status": "pass",
+  "phase": "assets",
+  "data": { "assets": $ASSETS },
+  "defects": [],
+  "errors": [],
+  "duration_ms": $(( END_TIME - START_TIME ))
+}
+ENDJSON

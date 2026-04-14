@@ -55,11 +55,17 @@ FAIL=0
 PASS=0
 WARN=0
 
+# ── JSON output ──
+START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+DEFECTS="[]"
+style_match_count=0
+style_mismatch_count=0
+
 results_json='{"sections":[],"elements":[]}'
 
-echo ""
-echo "═══ Section-by-Section Comparison ═══"
-echo ""
+echo "" >&2
+echo "═══ Section-by-Section Comparison ═══" >&2
+echo "" >&2
 
 # ── Section comparison ──
 if [ -d "$REF_SECTIONS" ] && [ -d "$IMPL_SECTIONS" ]; then
@@ -86,11 +92,11 @@ if [ -d "$REF_SECTIONS" ] && [ -d "$IMPL_SECTIONS" ]; then
     section_name="${bname%.png}"
 
     if [ "$ssim_ok" = "1" ]; then
-      echo -e "  ${GREEN}✅ $section_name${NC}  SSIM=$ssim_val  RMSE=$rmse_val"
+      echo -e "  ${GREEN}✅ $section_name${NC}  SSIM=$ssim_val  RMSE=$rmse_val" >&2
       PASS=$((PASS + 1))
     else
-      echo -e "  ${RED}❌ $section_name${NC}  SSIM=$ssim_val (>$SECTION_SSIM_THRESHOLD)  RMSE=$rmse_val"
-      echo -e "     Diff: $DIFF_SECTIONS/$bname"
+      echo -e "  ${RED}❌ $section_name${NC}  SSIM=$ssim_val (>$SECTION_SSIM_THRESHOLD)  RMSE=$rmse_val" >&2
+      echo -e "     Diff: $DIFF_SECTIONS/$bname" >&2
       FAIL=$((FAIL + 1))
     fi
 
@@ -103,15 +109,15 @@ json.dump(d, sys.stdout)
 " 2>/dev/null || echo "$results_json")
   done
 else
-  echo -e "${RED}Missing section clips. Run section-clips.sh for both ref and impl first.${NC}"
+  echo -e "${RED}Missing section clips. Run section-clips.sh for both ref and impl first.${NC}" >&2
   exit 1
 fi
 
 # ── Element comparison ──
-echo ""
+echo "" >&2
 if [ -d "$REF_ELEMENTS" ] && [ -d "$IMPL_ELEMENTS" ]; then
-  echo "═══ Element-by-Element Comparison ═══"
-  echo ""
+  echo "═══ Element-by-Element Comparison ═══" >&2
+  echo "" >&2
 
   elem_pass=0
   elem_fail=0
@@ -134,10 +140,10 @@ if [ -d "$REF_ELEMENTS" ] && [ -d "$IMPL_ELEMENTS" ]; then
     elem_name="${bname%.png}"
 
     if [ "$rmse_ok" = "1" ]; then
-      echo -e "  ${GREEN}✅ $elem_name${NC}  RMSE=$rmse_val"
+      echo -e "  ${GREEN}✅ $elem_name${NC}  RMSE=$rmse_val" >&2
       elem_pass=$((elem_pass + 1))
     else
-      echo -e "  ${RED}❌ $elem_name${NC}  RMSE=$rmse_val (>$ELEMENT_RMSE_THRESHOLD)"
+      echo -e "  ${RED}❌ $elem_name${NC}  RMSE=$rmse_val (>$ELEMENT_RMSE_THRESHOLD)" >&2
       elem_fail=$((elem_fail + 1))
       FAIL=$((FAIL + 1))
     fi
@@ -150,21 +156,21 @@ json.dump(d, sys.stdout)
 " 2>/dev/null || echo "$results_json")
   done
 
-  echo ""
-  echo "  Elements: $elem_pass pass, $elem_fail fail"
+  echo "" >&2
+  echo "  Elements: $elem_pass pass, $elem_fail fail" >&2
 else
-  echo -e "${YELLOW}⚠️  No element clips — element comparison skipped${NC}"
-  echo "  Run section-clips.sh with element detection for tighter validation"
+  echo -e "${YELLOW}⚠️  No element clips — element comparison skipped${NC}" >&2
+  echo "  Run section-clips.sh with element detection for tighter validation" >&2
 fi
 
 # ── Transition frame comparison ──
-echo ""
+echo "" >&2
 TRANS_REF="$DIR/clips/ref/transitions"
 TRANS_IMPL="$DIR/clips/impl/transitions"
 
 if [ -d "$TRANS_REF" ] && [ -d "$TRANS_IMPL" ]; then
-  echo "═══ Transition Frame Comparison ═══"
-  echo ""
+  echo "═══ Transition Frame Comparison ═══" >&2
+  echo "" >&2
 
   for trans_dir in "$TRANS_REF"/*/; do
     [ -d "$trans_dir" ] || continue
@@ -172,22 +178,19 @@ if [ -d "$TRANS_REF" ] && [ -d "$TRANS_IMPL" ]; then
     impl_trans="$TRANS_IMPL/$trans_name"
     [ ! -d "$impl_trans" ] && continue
 
-    # Compare key frames (first, middle, last)
     ref_frames=($(ls "$trans_dir"*.png 2>/dev/null | sort))
     impl_frames=($(ls "$impl_trans"/*.png 2>/dev/null | sort))
 
     if [ ${#ref_frames[@]} -eq 0 ] || [ ${#impl_frames[@]} -eq 0 ]; then
-      echo -e "  ${YELLOW}⚠️  $trans_name: no frames to compare${NC}"
+      echo -e "  ${YELLOW}⚠️  $trans_name: no frames to compare${NC}" >&2
       continue
     fi
 
-    # Compare first, middle, last frames
     total_match=0
     total_compared=0
 
     for idx in 0 $(( ${#ref_frames[@]} / 2 )) $(( ${#ref_frames[@]} - 1 )); do
       rf="${ref_frames[$idx]}"
-      # Find corresponding impl frame (by index ratio)
       impl_idx=$(( idx * ${#impl_frames[@]} / ${#ref_frames[@]} ))
       [ $impl_idx -ge ${#impl_frames[@]} ] && impl_idx=$(( ${#impl_frames[@]} - 1 ))
       imf="${impl_frames[$impl_idx]}"
@@ -204,26 +207,26 @@ if [ -d "$TRANS_REF" ] && [ -d "$TRANS_IMPL" ]; then
 
     if [ $total_compared -gt 0 ]; then
       if [ $total_match -eq $total_compared ]; then
-        echo -e "  ${GREEN}✅ $trans_name: $total_match/$total_compared frames match${NC}"
+        echo -e "  ${GREEN}✅ $trans_name: $total_match/$total_compared frames match${NC}" >&2
       else
-        echo -e "  ${RED}❌ $trans_name: $total_match/$total_compared frames match${NC}"
+        echo -e "  ${RED}❌ $trans_name: $total_match/$total_compared frames match${NC}" >&2
         FAIL=$((FAIL + 1))
       fi
     fi
   done
 else
-  echo -e "${YELLOW}⚠️  No transition frame directories — transition comparison skipped${NC}"
-  echo "  Extract video frames with: ffmpeg -i video.webm -vf fps=60 frames/frame-%06d.png"
+  echo -e "${YELLOW}⚠️  No transition frame directories — transition comparison skipped${NC}" >&2
+  echo "  Extract video frames with: ffmpeg -i video.webm -vf fps=60 frames/frame-%06d.png" >&2
 fi
 
-# ── Layer 3: getComputedStyle numerical comparison ──
-echo ""
+# ── Layer 3: getComputedStyle numerical comparison + defect classification ──
+echo "" >&2
 REF_STYLES="$DIR/clips/ref/styles.json"
 IMPL_STYLES="$DIR/clips/impl/styles.json"
 
 if [ -f "$REF_STYLES" ] && [ -f "$IMPL_STYLES" ]; then
-  echo "═══ Layer 3: getComputedStyle Comparison ═══"
-  echo ""
+  echo "═══ Layer 3: getComputedStyle Comparison ═══" >&2
+  echo "" >&2
 
   style_mismatches=$(python3 -c "
 import json, sys
@@ -233,9 +236,49 @@ impl = json.load(open('$IMPL_STYLES'))
 mismatches = []
 matches = 0
 
+CATEGORY_MAP = {
+    'fontSize': 'TYPOGRAPHY', 'fontWeight': 'TYPOGRAPHY', 'fontFamily': 'TYPOGRAPHY',
+    'lineHeight': 'TYPOGRAPHY', 'letterSpacing': 'TYPOGRAPHY', 'textTransform': 'TYPOGRAPHY',
+    'color': 'COLOR', 'backgroundColor': 'COLOR', 'borderColor': 'COLOR',
+    'opacity': 'COLOR', 'backgroundImage': 'COLOR', 'boxShadow': 'COLOR',
+    'width': 'LAYOUT', 'height': 'LAYOUT',
+    'paddingTop': 'LAYOUT', 'paddingRight': 'LAYOUT', 'paddingBottom': 'LAYOUT', 'paddingLeft': 'LAYOUT',
+    'marginTop': 'LAYOUT', 'marginRight': 'LAYOUT', 'marginBottom': 'LAYOUT', 'marginLeft': 'LAYOUT',
+    'gap': 'LAYOUT', 'display': 'LAYOUT', 'flexDirection': 'LAYOUT',
+    'alignItems': 'LAYOUT', 'justifyContent': 'LAYOUT', 'gridTemplateColumns': 'LAYOUT',
+    'position': 'LAYOUT', 'top': 'LAYOUT', 'left': 'LAYOUT', 'right': 'LAYOUT', 'bottom': 'LAYOUT',
+    'borderRadius': 'LAYOUT',
+    'transform': 'ANIMATION', 'transition': 'ANIMATION',
+    'animationName': 'ANIMATION', 'animationDuration': 'ANIMATION',
+}
+
+def classify(prop):
+    if prop in CATEGORY_MAP: return CATEGORY_MAP[prop]
+    if 'padding' in prop or 'margin' in prop: return 'LAYOUT'
+    if 'color' in prop or 'background' in prop: return 'COLOR'
+    if 'font' in prop or 'text' in prop or 'letter' in prop or 'line' in prop: return 'TYPOGRAPHY'
+    if 'animation' in prop or 'transition' in prop or 'transform' in prop: return 'ANIMATION'
+    return 'LAYOUT'
+
+def severity(prop, ref_val, impl_val):
+    if impl_val == 'MISSING': return 'CRITICAL'
+    if prop == 'display' and ref_val != impl_val: return 'CRITICAL'
+    try:
+        rv = float(ref_val.replace('px','').replace('em','').replace('rem','').replace('%',''))
+        iv = float(impl_val.replace('px','').replace('em','').replace('rem','').replace('%',''))
+        diff = abs(rv - iv)
+        if diff > 50: return 'CRITICAL'
+        if diff > 3: return 'MAJOR'
+        return 'MINOR'
+    except (ValueError, AttributeError):
+        pass
+    return 'MAJOR'
+
 for selector in ref:
     if selector not in impl:
-        mismatches.append({'selector': selector, 'issue': 'missing in impl'})
+        mismatches.append({'selector': selector, 'issue': 'missing in impl',
+                           'category': 'CONTENT', 'severity': 'CRITICAL',
+                           'property': '', 'expected': '', 'actual': 'MISSING'})
         continue
     for prop in ref[selector]:
         ref_val = str(ref[selector][prop]).strip()
@@ -243,7 +286,9 @@ for selector in ref:
         if ref_val != impl_val:
             mismatches.append({
                 'selector': selector, 'property': prop,
-                'ref': ref_val, 'impl': impl_val
+                'expected': ref_val, 'actual': impl_val,
+                'category': classify(prop),
+                'severity': severity(prop, ref_val, impl_val)
             })
         else:
             matches += 1
@@ -255,62 +300,82 @@ print(json.dumps({'matches': matches, 'mismatches': mismatches}))
   style_match_count=$(echo "$style_mismatches" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['matches'])" 2>/dev/null || echo "0")
 
   if [ "$style_mismatch_count" -gt 0 ]; then
-    echo -e "  ${RED}❌ $style_mismatch_count style mismatches (${style_match_count} matches)${NC}"
-    # Show first 10 mismatches
+    echo -e "  ${RED}❌ $style_mismatch_count style mismatches (${style_match_count} matches)${NC}" >&2
     echo "$style_mismatches" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 for m in d['mismatches'][:10]:
     sel = m.get('selector','?')
     prop = m.get('property','?')
-    ref = m.get('ref','?')
-    impl = m.get('impl','?')
+    cat = m.get('category','?')
+    sev = m.get('severity','?')
+    exp = m.get('expected','?')
+    act = m.get('actual','?')
     issue = m.get('issue','')
     if issue:
-        print(f'    {sel}: {issue}')
+        print(f'    [{sev}] {sel}: {issue}', file=sys.stderr)
     else:
-        print(f'    {sel} → {prop}: ref={ref} impl={impl}')
+        print(f'    [{sev}/{cat}] {sel} → {prop}: expected={exp} actual={act}', file=sys.stderr)
 if len(d['mismatches']) > 10:
-    print(f'    ... and {len(d[\"mismatches\"]) - 10} more')
+    print(f'    ... and {len(d[\"mismatches\"]) - 10} more', file=sys.stderr)
 " 2>/dev/null
     FAIL=$((FAIL + style_mismatch_count))
 
-    # Save mismatches for targeted fixing
     echo "$style_mismatches" | python3 -m json.tool > "$DIR/clips/style-mismatches.json" 2>/dev/null
-    echo ""
-    echo "  Full mismatch list: $DIR/clips/style-mismatches.json"
-    echo "  Each mismatch tells you EXACTLY which selector + property to fix."
+    echo "" >&2
+    echo "  Full mismatch list: $DIR/clips/style-mismatches.json" >&2
   else
-    echo -e "  ${GREEN}✅ All $style_match_count style properties match${NC}"
+    echo -e "  ${GREEN}✅ All $style_match_count style properties match${NC}" >&2
   fi
+
+  # Build defects array for JSON output
+  DEFECTS=$(echo "$style_mismatches" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(json.dumps(d.get('mismatches', [])))
+" 2>/dev/null || echo "[]")
 else
-  echo -e "${YELLOW}⚠️  No styles.json files — getComputedStyle comparison skipped${NC}"
-  echo "  For precise verification, extract styles with agent-browser eval on both ref and impl:"
-  echo '  agent-browser eval "(() => { /* getComputedStyle for key elements */ })()"'
-  echo "  Save to: $DIR/clips/ref/styles.json and $DIR/clips/impl/styles.json"
+  echo -e "${YELLOW}⚠️  No styles.json files — getComputedStyle comparison skipped${NC}" >&2
+  echo '  Extract styles with agent-browser eval on both ref and impl' >&2
 fi
 
 # ── Save results ──
 echo "$results_json" | python3 -m json.tool > "$DIR/clips/comparison.json" 2>/dev/null
 
-# ── Summary ──
-echo ""
-echo "══════════════════════════════════════"
+# ── JSON output (stdout) ──
+END_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
+DURATION_MS=$(( END_TIME - START_TIME ))
+
+cat <<ENDJSON > "$DIR/clips/comparison-output.json"
+{
+  "status": "$( [ "$FAIL" -gt 0 ] && echo "fail" || echo "pass" )",
+  "phase": "post-implement",
+  "data": {
+    "sections": $( echo "$results_json" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin).get('sections',[])))" 2>/dev/null || echo "[]" ),
+    "elements": $( echo "$results_json" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin).get('elements',[])))" 2>/dev/null || echo "[]" ),
+    "style_matches": ${style_match_count},
+    "style_mismatches_count": ${style_mismatch_count}
+  },
+  "defects": $DEFECTS,
+  "errors": [],
+  "duration_ms": $DURATION_MS
+}
+ENDJSON
+
+# ── Human-readable summary (stderr) ──
+echo "" >&2
+echo "══════════════════════════════════════" >&2
 if [ $FAIL -gt 0 ]; then
-  echo -e "${RED}⛔ $FAIL failures, $PASS passes${NC}"
-  echo ""
-  echo "Fix workflow (in this order):"
-  echo "  1. Fix style mismatches FIRST (style-mismatches.json has exact selector + property + expected value)"
-  echo "  2. Then fix visual diff (diff images show layout differences)"
-  echo "  3. Re-capture impl screenshots at CONTENT-ANCHORED positions (not y-coords)"
-  echo "  4. Re-run: compare-sections.sh $DIR"
-  echo ""
-  echo "IMPORTANT: Use content anchors for screenshot alignment."
-  echo "  Find a heading text → scroll it to viewport center → screenshot."
-  echo "  Do NOT use raw y-coordinates — ref and impl have different page heights."
+  echo -e "${RED}⛔ $FAIL failures, $PASS passes${NC}" >&2
+  echo "" >&2
+  echo "Fix workflow (in this order):" >&2
+  echo "  1. Fix CRITICAL defects first (see $DIR/clips/comparison-output.json)" >&2
+  echo "  2. Then MAJOR, then MINOR" >&2
+  echo "  3. Re-capture impl screenshots at CONTENT-ANCHORED positions" >&2
+  echo "  4. Re-run: compare-sections.sh $DIR" >&2
   exit 1
 else
-  echo -e "${GREEN}✅ ALL SECTIONS PASS ($PASS sections)${NC}"
-  echo "Results: $DIR/clips/comparison.json"
+  echo -e "${GREEN}✅ ALL SECTIONS PASS ($PASS sections)${NC}" >&2
+  echo "Results: $DIR/clips/comparison-output.json" >&2
   exit 0
 fi

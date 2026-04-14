@@ -72,7 +72,7 @@ When a visual bug is reported (white flash, wrong timing, layout jump, etc.):
 
 ## Pixel-Perfect Static State Diff (MANDATORY)
 
-> **Read and execute `../pixel-perfect-diff.md` Phase 1 (Visual Gate) AND Phase 2 (Numerical Diagnosis) for the element's resting states — both always run.**
+> **Read and execute `visual-debug/verification.md (Phase D)` Phase 1 (Visual Gate) AND Phase 2 (Numerical Diagnosis) for the element's resting states — both always run.**
 
 Frame comparison verifies timing and motion but CANNOT verify:
 - Whether resting-state `font-size` / `font-weight` / `color` are numerically correct
@@ -97,7 +97,7 @@ agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref
 agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/impl/idle.png
 
 # trigger active state, re-measure rect, then capture
-# (see pixel-perfect-diff.md Phase 1 Step V2 for state activation patterns by triggerType)
+# (see Phase D1 in visual-debug/verification.md for state activation patterns by triggerType)
 agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/active.png
 agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/impl/active.png
 
