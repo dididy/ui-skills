@@ -72,43 +72,21 @@ When a visual bug is reported (white flash, wrong timing, layout jump, etc.):
 
 ## Pixel-Perfect Static State Diff (MANDATORY)
 
-> **Read and execute `visual-debug/verification.md (Phase D)` Phase 1 (Visual Gate) AND Phase 2 (Numerical Diagnosis) for the element's resting states — both always run.**
+Frame comparison verifies timing and motion but CANNOT verify numerical correctness of resting states (font-size, weight, color, spacing, border-radius).
 
-Frame comparison verifies timing and motion but CANNOT verify:
-- Whether resting-state `font-size` / `font-weight` / `color` are numerically correct
-- Whether spacing, padding, and border-radius are exact matches
+> **Read `visual-debug/verification.md` Phase D** and execute it for this element's resting states. Phase D1 (Visual Gate, clip AE/SSIM) and Phase D2 (Numerical Diagnosis, getComputedStyle) both always run. Output path: `tmp/ref/<effect-name>/pixel-perfect-diff.json`.
 
-Run the Visual Gate for all relevant states (triggerType determines which):
-1. **idle** — element before any interaction (all elements)
-2. **active / after** — element in settled end state (css-hover, js-class, intersection)
-3. **before / mid / after** — scroll-driven transitions at trigger_y-50, mid_y, settled_y+50
+States to cover, determined by `triggerType`:
 
-```bash
-# Measure rect in each state, then clip screenshot — example for hover/js-class:
-agent-browser eval "(() => {
-  const el = document.querySelector('<selector>');
-  el.scrollIntoView({ block: 'center' });
-  const r = el.getBoundingClientRect();
-  return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height });
-})()"
+| triggerType | States |
+|---|---|
+| css-hover / js-class | `idle`, `active` |
+| intersection | `before`, `after` |
+| scroll-driven | `before` (trigger_y − 50), `mid` (mid_y), `after` (settled_y + 50) |
 
-# idle state
-agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/idle.png
-agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/impl/idle.png
+Save clips under `tmp/ref/<effect-name>/frames/{ref,impl}/<state>.png`.
 
-# trigger active state, re-measure rect, then capture
-# (see Phase D1 in visual-debug/verification.md for state activation patterns by triggerType)
-agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/ref/active.png
-agent-browser screenshot --clip <x>,<y>,<w>,<h> tmp/ref/<effect-name>/frames/impl/active.png
-
-# diff
-compare -metric AE tmp/ref/<effect-name>/frames/ref/idle.png tmp/ref/<effect-name>/frames/impl/idle.png /dev/null 2>&1
-compare -metric AE tmp/ref/<effect-name>/frames/ref/active.png tmp/ref/<effect-name>/frames/impl/active.png /dev/null 2>&1
-```
-
-Phase D1 and Phase D2 always both run — Phase D2 catches sub-pixel mismatches that pass the Visual Gate. If either fails → fix CSS → re-run both.
-
-Gate: `pixel-perfect-diff.json` must exist with all elements `"status": "pass"` AND `mismatches = 0` for all captured states.
+Gate: `pixel-perfect-diff.json` exists with all elements `"status": "pass"` AND `mismatches = 0` for every captured state.
 
 ## "Is This Done?" Checklist
 
