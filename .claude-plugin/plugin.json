@@ -1,7 +1,7 @@
 {
   "name": "ui-skills",
-  "version": "0.2.0",
-  "description": "Reverse-engineer any live website into production-ready React + Tailwind code. CSS-First: downloads original CSS files and uses original class names for pixel-perfect reproduction. Auto-detects site type and chooses CSS-First, Extract-Values, or Raw HTML Injection strategy. v0.2.0: visual-debug skill (AE/SSIM automated comparison, zero vision tokens), Raw HTML Injection approach for CSS Modules/GSAP/Lottie sites, parallel worktree builders, self-healing verification loop, extract-dynamic-styles.sh, validate-gate dynamic-heights check.",
+  "version": "0.2.1",
+  "description": "Clone a live website into React + Tailwind. Three core benefits: (1) CSS-First — downloads original stylesheets and reuses class names for pixel-perfect reproduction instead of guessing from computed values. (2) Zero-vision-token verification — AE/SSIM image diff replaces LLM screenshot reading across all comparisons. (3) Real JS bundle extraction — parses GSAP timelines, Framer Motion springs, Lenis scroll params from live bundles, not heuristics. Four skills (ui-reverse-engineering, transition-reverse-engineering, ui-capture, visual-debug) with progressive-disclosure sub-docs loaded only when needed.",
   "license": "Apache-2.0",
   "author": {
     "name": "YONGJAE LEE"

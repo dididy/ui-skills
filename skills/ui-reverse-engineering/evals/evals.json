@@ -363,7 +363,7 @@
       "expected_output": "Phase D executed: ref-styles.json and impl-styles.json saved, diff table produced, all mismatches fixed, pixel-perfect-diff.json with result: pass and mismatches: 0.",
       "files": [],
       "expectations": [
-        "pixel-perfect-diff.md Steps P1–P6 were executed",
+        "visual-debug/verification.md Phase D (D1 Visual Gate + D2 Numerical Diagnosis) was executed",
         "ref-styles.json exists with getComputedStyle measurements for all key elements",
         "impl-styles.json exists with matching element measurements from localhost",
         "Diff table produced covering typography, spacing, sizing, layout, visual, and position properties",

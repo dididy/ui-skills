@@ -276,11 +276,11 @@
     {
       "id": 20,
       "prompt": "Extract the hover card animation from https://example.com — after implementing, run the pixel-perfect diff for both the resting state (before hover) and the settled state (after hover completes). The frame comparison passes but verify numerically too.",
-      "expected_output": "pixel-perfect-diff.md P1–P6 run for both before-hover and after-hover resting states. pixel-perfect-diff.json with result: pass and mismatches: 0 for each state.",
+      "expected_output": "visual-debug/verification.md Phase D (D1+D2) run for both before-hover and after-hover resting states. pixel-perfect-diff.json with result: pass and mismatches: 0 for each state.",
       "files": [],
       "expectations": [
-        "pixel-perfect-diff.md Steps P1–P6 executed for the before-hover resting state",
-        "pixel-perfect-diff.md Steps P1–P6 executed for the after-hover settled state",
+        "visual-debug/verification.md Phase D executed for the before-hover resting state",
+        "visual-debug/verification.md Phase D executed for the after-hover settled state",
         "ref-styles.json and impl-styles.json saved for both states",
         "Diff table produced for both states — all mismatch rows fixed before declaring pass",
         "pixel-perfect-diff.json exists for both states with result: pass and mismatches: 0",

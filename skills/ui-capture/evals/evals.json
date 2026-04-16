@@ -72,7 +72,7 @@
       "files": [],
       "expectations": [
         "Captures impl with identical parameters as ref",
-        "Phase 4A: pixel-perfect-diff.md P1–P6 executed for each major section before generating compare.html",
+        "Phase 4A: visual-debug/verification.md Phase D (D1+D2) executed for each major section before generating compare.html",
         "pixel-perfect-diff.json exists with result: pass and mismatches: 0",
         "compare.html includes pixel-perfect diff table embedded at top (before video sections)",
         "Diff table shows element, property, ref value, impl value, status columns",

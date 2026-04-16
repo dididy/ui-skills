@@ -62,4 +62,4 @@ done
 
 echo ""
 echo "▸ Captured ${#POSITIONS[@]} positions × 2 sites = $((${#POSITIONS[@]} * 2)) screenshots"
-echo "  Run: bash scripts/batch-compare.sh $DIR"
+echo "  Run: bash \"\$(dirname \"\$0\")/batch-compare.sh\" $DIR"

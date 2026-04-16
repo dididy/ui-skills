@@ -106,7 +106,7 @@ compare -metric AE tmp/ref/<effect-name>/frames/ref/idle.png tmp/ref/<effect-nam
 compare -metric AE tmp/ref/<effect-name>/frames/ref/active.png tmp/ref/<effect-name>/frames/impl/active.png /dev/null 2>&1
 ```
 
-Phase 1 and Phase 2 always both run — Phase 2 catches sub-pixel mismatches that pass the Visual Gate. If either fails → fix CSS → re-run both.
+Phase D1 and Phase D2 always both run — Phase D2 catches sub-pixel mismatches that pass the Visual Gate. If either fails → fix CSS → re-run both.
 
 Gate: `pixel-perfect-diff.json` must exist with all elements `"status": "pass"` AND `mismatches = 0` for all captured states.
 

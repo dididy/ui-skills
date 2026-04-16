@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.2.1] - 2026-04-16
+
+Docs restructuring and metadata cleanup. No runtime behavior changes — all pipelines, gates, and generation paths work identically.
+
+### Changed
+
+- **SKILL.md slimming (all 4 skills).** Converted verbose ASCII pipeline diagrams to compact tables. Consolidated duplicated Reference Files / Pipeline descriptions into a single location. Moved repeated `$PLUGIN_ROOT` setup blocks to a single "First action" section. Merged redundant `agent-browser` examples into a cheatsheet.
+- **Progressive-disclosure sub-docs.** Split large sub-docs so SKILL.md + the common path stay lean and specialized procedures load on demand:
+  - `component-generation.md` split into `css-first-generation.md` (Steps 1–4 + fallback prompt), `generation-pitfalls.md` (CSS-to-React translation errors + 20-row failure-diagnosis table), `post-gen-verification.md` (Loop 0/1/2/3 + library wiring patterns)
+  - `animation-detection.md` split — splash-specific logic (throttled capture, video↔bundle cross-reference, GSAP timeline parsing, conditional branches, overlay cleanup, end-state verification) moved to `splash-extraction.md`, read only when Tier 1 AE diff detects early motion
+  - `transition-reverse-engineering/SKILL.md` Step 0 single-element capture procedure (100+ lines of eval patterns) moved to `capture-reference.md`
+  - `ui-capture/SKILL.md` scroll-type/section detection eval moved to `detection.md` Step 2.0
+- **Phase naming unified to `D1`/`D2`.** All references to "Phase 1 Visual Gate" / "Phase 2 Numerical Diagnosis" now use the Phase D1/D2 naming consistent with `visual-debug/verification.md`. References to the removed `pixel-perfect-diff.md P1–P6` procedure updated to `visual-debug/verification.md Phase D`. Applied across SKILL.md files and eval JSON.
+- **`visual-debug` script path variable renamed `PLUGIN_ROOT` → `SCRIPTS_DIR`.** Prevents collision with `ui-reverse-engineering`'s `PLUGIN_ROOT` (which means the repo root). Fallback logic also handles the case where `CLAUDE_PLUGIN_ROOT` is set by the plugin host.
+- **`plugin.json` / `marketplace.json` description rewritten.** Version-specific feature dumps replaced with three core benefits (CSS-First, zero-vision-token verification, real JS bundle extraction) and a mention of the progressive-disclosure sub-doc structure.
+- **Marketplace keywords trimmed from 106 to 18.** Removed highly-specific terms that duplicated others. Added `zero-vision-tokens`, `progressive-disclosure`, `css-first`.
+- **README.md.** Added "Design principles" section (real values / zero vision tokens / progressive disclosure / single source of truth / automation over introspection). Removed version-history prose (was duplicating CHANGELOG). Fixed the "same license as anthropics/skills" claim — that repo has no license; this project's Apache-2.0 stands alone. Added an Optional pre-generate hook installation note.
+
+### Fixed
+
+- **Broken references to removed stub files.** `skills/pixel-perfect-diff.md` and `skills/ui-reverse-engineering/visual-verification.md` were redirect stubs pointing at `visual-debug/verification.md`; removed both and updated every reference (SKILL.md files, eval JSON) to point directly at the target.
+- **`scripts/` directory duplicated.** Eleven scripts existed byte-identically in both `/scripts/` and `/skills/ui-reverse-engineering/scripts/`. Kept only `/scripts/` (matches every SKILL.md's `$PLUGIN_ROOT/scripts/...` reference) and removed the skill-local copy. Eliminates non-deterministic `PLUGIN_ROOT` resolution.
+- **`skills/visual-debug/scripts/batch-scroll.sh` hint message.** Final line printed `bash scripts/batch-compare.sh $DIR` (relative path that breaks depending on where the user runs from). Now prints `bash "$(dirname "$0")/batch-compare.sh" $DIR`.
+- **CHANGELOG language consistency.** The [0.1.1] section was written in Korean while the rest of the file was English; translated for consistency.
+
+### Removed
+
+- `skills/pixel-perfect-diff.md` (redirect stub, content already absorbed into `visual-debug/verification.md`)
+- `skills/ui-reverse-engineering/visual-verification.md` (redirect stub, same)
+- `skills/ui-reverse-engineering/scripts/` (duplicate of root `/scripts/`)
+- `ui-skills-workspace/` local workspace artifacts (listed in `.gitignore`; were never intended to be in the repo)
+
 ## [0.2.0] - 2026-04-14
 
 ### Added
@@ -37,19 +69,19 @@
 ## [0.1.1] - 2026-04-13
 
 ### Added
-- **`style-extraction.md`** — **섹션 높이/간격 추출 필수 규칙.** 페이지 레벨 레이아웃(섹션별 높이, flex/grid gap, padding)을 반드시 추출하도록 명시. 실제 세션에서 flex container의 `gap: 234px`를 누락해 구현 전체 높이가 957px 짧아진 사례를 기반으로 추가.
-- **`visual-verification.md`** — **섹션 정렬 비교 필수 규칙.** 원본과 구현의 섹션별 top offset을 비교해 50px 이상 차이 시 spacing 버그로 판단. 같은 스크롤 위치에서 다른 콘텐츠가 보이는 문제를 방지.
-- **`visual-verification.md`** — **원본 SVG/에셋 추출 필수 규칙.** placeholder SVG 생성을 금지하고, DOM에서 원본 SVG outerHTML을 직접 추출하도록 명시. footer 로고(460×171 viewBox)를 placeholder 타원으로 대체했다가 3회 수정한 사례 기반.
-- **`visual-verification.md`** — **Tailwind arbitrary value 호환성 체크.** `px-[19px]` 등 arbitrary value가 렌더링 후 `0px`이면 inline style로 대체하도록 안내. Tailwind v4에서 무시되어 전체 padding이 0이 된 사례 기반.
-- **`interaction-detection.md`** — **프리로더/스플래시 JS 번들 분석 필수 규칙.** DOM 구조만으로 프리로더를 구현하지 않고, 커스텀 JS 파일을 다운로드하여 GSAP 타임라인, CustomEase, 전용 이미지, sessionStorage 게이팅을 추출하도록 명시. DOM의 `display:none` 상태만 보고 전체 화면 이미지 blur로 구현했다가, 실제로는 209×261px 중앙 박스 + 파란색(#050fff) clip-path + 8개 전용 이미지였던 사례 기반.
-- **`component-generation.md`** — **폰트 사이즈 정확도 규칙 (#1 사용자 피드백).** 추출된 computed value를 그대로 사용하고, 반올림/근사치를 금지. 40px를 18px로 구현하여 반복 수정한 사례 기반.
+- **`style-extraction.md`** — **Mandatory section height/gap extraction rule.** Page-level layout (per-section heights, flex/grid gap, padding) must be extracted. Added after a real session where a flex container's `gap: 234px` was missed, making the implementation 957px shorter overall.
+- **`visual-verification.md`** — **Mandatory section alignment comparison rule.** Compare per-section top offsets between original and implementation; flag as a spacing bug when the difference exceeds 50px. Prevents the case where different content is visible at the same scroll position.
+- **`visual-verification.md`** — **Mandatory original SVG/asset extraction rule.** Forbid generating placeholder SVGs; extract the original SVG `outerHTML` directly from the DOM. Based on a case where the footer logo (460×171 viewBox) was replaced with a placeholder ellipse and required 3 rounds of corrections.
+- **`visual-verification.md`** — **Tailwind arbitrary value compatibility check.** If arbitrary values like `px-[19px]` render as `0px`, fall back to inline styles. Based on a case where Tailwind v4 ignored them and the entire padding collapsed to 0.
+- **`interaction-detection.md`** — **Mandatory preloader/splash JS bundle analysis rule.** Do not implement preloaders from DOM structure alone; download the custom JS file and extract the GSAP timeline, CustomEase, dedicated images, and sessionStorage gating. Based on a case where the DOM's `display:none` state led to a full-screen image blur implementation when the original was actually a 209×261px centered box + blue (#050fff) clip-path + 8 dedicated images.
+- **`component-generation.md`** — **Font size accuracy rule (#1 user feedback).** Use extracted computed values as-is; rounding/approximation forbidden. Based on a case where 40px was implemented as 18px and required repeated fixes.
 
 ### Fixed
-- 섹션 간 간격을 추출하지 않아 스크롤 위치가 맞지 않는 문제
-- placeholder SVG로 에셋을 대체하여 원본과 다른 문제
-- Tailwind v4에서 arbitrary px value가 무시되는 문제 진단 누락
-- 프리로더 애니메이션을 DOM만 보고 추측하여 원본과 다른 문제
-- 폰트 사이즈를 근사치로 설정하여 반복 수정이 필요한 문제
+- Scroll positions not aligning because inter-section gaps were not extracted
+- Assets replaced with placeholder SVGs, diverging from the original
+- Missed diagnosis of arbitrary px values being ignored in Tailwind v4
+- Preloader animations guessed from DOM alone, diverging from the original
+- Font sizes set to approximate values, requiring repeated fixes
 
 ## [0.1.0] - 2026-04-12
 

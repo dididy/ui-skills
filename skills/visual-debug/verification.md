@@ -459,7 +459,7 @@ C1–C3 use pixel-level diff (AE/SSIM) to catch visual mismatches. Phase D goes 
 - `letter-spacing` micro-differences
 - `font-weight: 400` vs `600` at small sizes
 
-Phase D runs **in parallel with C1** (both use the static loaded page). Phase 1 and Phase 2 always both run.
+Phase D runs **in parallel with C1** (both use the static loaded page). Phase D1 and Phase D2 always both run.
 
 **For each major section of the component:**
 
