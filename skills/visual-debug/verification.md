@@ -111,18 +111,24 @@ agent-browser eval "(() => {
 
 ## Anti-pattern: "looks close enough" (HARD RULE)
 
+> **See "No Judgment — Data Only" in `ui-reverse-engineering/SKILL.md` for the full table of judgment traps.**
+
 **Never declare a section "done" or "almost matching" based on your own visual judgment.** Your judgment is unreliable — you consistently overestimate similarity. Instead:
 
-1. Run `getComputedStyle` comparison on key elements (font-size, padding, margin, color)
-2. If ANY value differs by more than 1px or any color differs → it's NOT done
-3. Only numerical match + user confirmation = done
+1. Run `auto-verify.sh` — it runs layout-health-check, batch-scroll+AE comparison, and post-implement gate automatically
+2. Run `computed-diff.sh` on key elements (font-size, padding, margin, color)
+3. If ANY AE > 500 or ANY computed value differs by more than 1px → it's NOT done
+4. Only `auto-verify.sh exit 0` + user confirmation = done
 
-**Phrases that indicate this anti-pattern:**
-- "almost matches" / "very close"
+**Phrases that indicate this anti-pattern (ALL are FORBIDDEN):**
+- "almost matches" / "very close" / "close enough"
 - "nearly identical to the original"
 - "structure is almost the same"
+- "this FAIL is just a content difference"
+- "this is a structural difference, not visual"
+- "the remaining differences are minor"
 
-**Replace with:** Specific numerical comparison results.
+**Replace with:** Specific `auto-verify.sh` exit code, AE numbers, or `computed-diff.sh` output.
 
 ---
 
@@ -449,6 +455,21 @@ done
 5. Targeted fix → re-run scoring → re-run the specific capture that failed → compare
 6. **Score regression → rollback:** If the 10-point score drops after a fix, `git checkout` the component and try a different approach
 7. If the same fix has been tried twice without result, the diagnosis was wrong — re-instrument
+
+### Phase D0: Layout Health Check (MANDATORY before Phase D)
+
+Before pixel-level comparison, verify the implementation's layout structure matches the original:
+
+```bash
+bash "$SCRIPTS_DIR/layout-health-check.sh" <session> <orig-url> <impl-url> tmp/ref/<component>
+```
+
+**Gate:** Exit code 0 (no critical issues). If exit 1:
+- Fix height mismatches first (wrong padding, missing sections, collapsed elements)
+- Re-run layout health check
+- Only proceed to Phase D when D0 passes
+
+**Why D0 before D1/D2:** Pixel comparison on structurally different pages produces noise, not signal. A page with 3000px of blank space will FAIL every position comparison, but the root cause is a layout bug, not a style bug. D0 catches this in 2 seconds.
 
 ### Phase D: Pixel-Perfect Visual Gate (MANDATORY)
 

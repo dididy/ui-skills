@@ -239,6 +239,58 @@ useEffect(() => {
 
 ---
 
+## Auto-rotation / carousel detection
+
+Auto-rotating elements (carousels, sliders, testimonial rotators) are **untriggerable** — you cannot synchronize T=0 between ref and impl for screenshot comparison. Detect and document them during extraction.
+
+### Detection
+
+```bash
+# In downloaded bundles, search for auto-rotation patterns
+grep -nE '(setInterval|repeat:\s*-1|autoplay|auto.?rotate|auto.?slide|auto.?play)' tmp/ref/<effect-name>/bundles/*.js | head -10
+
+# Class-swapping carousels (GSAP or vanilla)
+grep -nE 'classList\.(add|remove|toggle).*setTimeout|classList\.(add|remove|toggle).*setInterval' tmp/ref/<effect-name>/bundles/*.js | head -10
+
+# GSAP repeating timelines
+grep -nE '\.repeat\(-1\)|repeat:\s*-1|yoyo:\s*true' tmp/ref/<effect-name>/bundles/*.js | head -10
+```
+
+### Extract carousel parameters
+
+For each detected auto-rotation, extract:
+
+| Parameter | Example | How to find |
+|---|---|---|
+| Interval/period | `4000ms` | `setInterval(fn, 4000)` or GSAP `duration` on repeating timeline |
+| Variants | `[program1, program2, ...]` | Class names in `classList.add/remove` calls |
+| Mechanism | `setInterval + classList` | The JS API used (setInterval, GSAP timeline, rAF loop) |
+| Initial state | `program1` | Default class on the carousel element in DOM |
+| Transition effect | `background-color crossfade` | What visually changes between variants |
+
+### Verification approach
+
+Auto-rotation animations **cannot** be verified via frame comparison. Use `bundle-verification.md` instead:
+1. Extract exact parameters from bundle
+2. Compare numerically against impl code
+3. Take one frozen resting-state screenshot as sanity check
+
+### Freezing for resting-state screenshot
+
+```js
+// Freeze carousel for screenshot — classList mutation block
+document.querySelectorAll('section[class*=carousel], [class*=slider]').forEach(el => {
+  el.classList.add = function() {};
+  el.classList.remove = function() {};
+});
+// Block future carousel intervals
+const orig = window.setInterval;
+window.setInterval = function(fn, ms) {
+  if (typeof ms === 'number' && ms >= 2000) return -1;
+  return orig.apply(window, arguments);
+};
+```
+
 ## Common pitfalls
 
 ### 1. "Computed values match but animation looks wrong"

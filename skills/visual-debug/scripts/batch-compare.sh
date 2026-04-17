@@ -103,6 +103,26 @@ if [ "$FAIL" -gt 0 ]; then
     echo "Read $DIFF_FILE   # only if ❌ above"
   done
   echo "\`\`\`"
+
+  # Anti-rationalization enforcement
+  if [ "$FAIL" -gt 0 ]; then
+    echo ""
+    echo "═══ MANDATORY DIAGNOSIS ═══"
+    echo "⛔ $FAIL position(s) FAILED. Each FAIL must be diagnosed before proceeding."
+    echo ""
+    echo "DO NOT rationalize FAILs as 'content differences' or 'expected mismatch'."
+    echo "DO NOT proceed to declare any section 'done' until all FAILs are resolved or diagnosed."
+    echo ""
+    echo "For each FAIL position:"
+    echo "  1. Read the diff image (listed above)"
+    echo "  2. Run layout health check:"
+    echo "     bash \"\$(dirname \"\$0\")/layout-health-check.sh\" <session> <orig-url> <impl-url>"
+    echo "  3. Run computed-diff on elements in the failing region:"
+    echo "     bash \"\$(dirname \"\$0\")/computed-diff.sh\" <session> <orig-url> <impl-url> <selectors>"
+    echo ""
+    echo "Only after all FAILs have documented root causes can verification proceed."
+  fi
+
   exit 1
 fi
 

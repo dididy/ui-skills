@@ -17,7 +17,8 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 - **Zero vision tokens for comparison.** The LLM never reads reference vs implementation screenshots side-by-side. AE and SSIM CLI tools do the diff; the LLM only reads a single diff image when something fails.
 - **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules. Detailed procedures (splash extraction, CSS-First generation, verification loops, pitfall tables) live in separate sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
 - **Single source of truth for transitions.** `transition-spec.json` is produced once from bundle analysis. Implementation reads the spec, never re-greps the bundle — avoiding wasted work and the risk of picking the wrong conditional branch.
-- **Automation over introspection.** Script-driven gates (`validate-gate.sh`, `run-pipeline.sh`) decide whether a step is complete. Agents don't self-certify "looks good enough."
+- **Automation over introspection.** Script-driven gates (`validate-gate.sh`, `run-pipeline.sh`, `auto-verify.sh`) decide whether a step is complete. Agents don't self-certify "looks good enough."
+- **No judgment, data only.** Every decision must be backed by extracted data, captured screenshots, or script output. "Probably", "close enough", and "just a content difference" are forbidden — each has a documented failure case.
 
 ## Skills
 
@@ -95,7 +96,8 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 6c. Pre-generation audit       — 6-stage design audit
 7.  Generate component         — CSS-First: download original CSS, use original class names.
                                  Transitions implemented inline. ⛔ gate: pre-generate
-8.  Visual verification        — AE/SSIM (zero tokens) + 10-point score + Phase D pixel-perfect gate
+8.  Visual verification        — Run `auto-verify.sh` (D0 layout + Phase C scroll AE + post-implement gate).
+                                 Phase D pixel-perfect gate runs separately after auto-verify passes.
                                  + Phase E VLM sanity check. ⛔ gate: post-implement
 9.  Interaction verification   — test each hover/click/scroll/timer on localhost
 ```
@@ -112,6 +114,8 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 | `download-chunks.sh` | Downloads ALL loaded chunks, detects animation libs, produces skeleton bundle-map.json |
 | `gsap-to-css.sh` | GSAP easing → CSS cubic-bezier (lookup, full table, or bundle scan) |
 | `extract-dynamic-styles.sh` | Classifies GSAP inline styles: layout (keep) vs animation (remove) |
+| `auto-verify.sh` | Single-command verification: D0 layout health → Phase C scroll AE → post-implement gate |
+| `layout-health-check.sh` | D0: section height/total height comparison before pixel-level diff |
 
 **Input modes:**
 
@@ -149,8 +153,9 @@ Extract the page-load animation from https://example.com
 2b. Extract JS bundle          — for scroll-driven/Motion/GSAP/rAF
 2c. Extract Canvas/WebGL       — for canvas/WebGL
  3. Implement                  — measured values only, never guessed
- 4. Verify                     — frame comparison + Visual Gate (clip AE/SSIM) + Numerical Diagnosis
-                                 (getComputedStyle). Both always run.
+ 4. Verify                     — triggerable: frame comparison + Visual Gate + Numerical Diagnosis.
+                                 untriggerable: bundle-verification.md (carousel, auto-rotate, page-load).
+                                 Both D1 + D2 always run.
 ```
 
 **Supported animation types:**
@@ -231,8 +236,8 @@ The single source of truth for "is it done?" — covers automated AE/SSIM diff, 
 
 **Two modes:**
 
-- **Quick comparison** — `batch-scroll.sh` + `batch-compare.sh` for instant AE/SSIM diff with zero vision tokens. Captures original and implementation at identical scroll positions (0–100%), outputs a markdown table of scores.
-- **Full verification** — `verification.md` with Phase A/B capture → Phase C comparison → Phase D pixel-perfect gate → Phase H self-healing loop → Phase E VLM sanity check.
+- **Quick comparison** — `auto-verify.sh` runs D0 layout health check → batch-scroll capture → AE comparison → post-implement gate in one command. Zero vision tokens.
+- **Full verification** — `verification.md` with Phase A/B capture → Phase C comparison → Phase D0 layout health → Phase D pixel-perfect gate → Phase H self-healing loop → Phase E VLM sanity check.
 
 **Phase D — pixel-perfect gate:**
 

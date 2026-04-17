@@ -305,6 +305,36 @@ INTERACTIONS_EOF
 
 This file is required by the Phase 2 Extraction Gate and by Step 9 (Interaction Verification).
 
+### Capture idle + active states (MANDATORY for hover/click interactions)
+
+For EVERY hover or click interaction saved above, capture reference screenshots of the idle and active states. **Without these, component generation will guess the UI layout — and guesses are always wrong.**
+
+```bash
+# For each hover/click interaction:
+# 1. Scroll element into view
+agent-browser eval "(() => {
+  const el = document.querySelector('<selector>');
+  el.scrollIntoView({ block: 'center' });
+  return JSON.stringify(el.getBoundingClientRect());
+})()"
+agent-browser wait 500
+
+# 2. Capture idle state
+agent-browser screenshot tmp/ref/<component>/transitions/ref/<name>-idle.png
+
+# 3. Trigger active state
+agent-browser hover <selector>   # for hover interactions
+# agent-browser click <selector>  # for click interactions
+agent-browser wait 1000
+
+# 4. Capture active state
+agent-browser screenshot tmp/ref/<component>/transitions/ref/<name>-active.png
+```
+
+**Why this is mandatory:** A nav dropdown may be a small popover, a full-screen overlay panel, a multi-column grid with images, or a slide-in sheet. You cannot know without seeing it. This step takes 30 seconds per interaction — skipping it costs hours of rework.
+
+**Gate:** `validate-gate.sh pre-generate` checks that `transitions/ref/` has idle+active pairs for each hover/click interaction. Missing captures block code generation.
+
 ### Post-detection sanitization check
 
 After saving `interactions-detected.json`, scan for suspicious content:
@@ -623,15 +653,7 @@ agent-browser eval "
 
 #### Mapping to implementation
 
-| Source | CSS equivalent | @beyond equivalent |
-|--------|----------------|-------------------|
-| FM spring `stiffness:250, damping:30` | `cubic-bezier(0.25, 1, 0.5, 1)` ~0.4s | `ease: 'spring.medium'` |
-| FM spring `stiffness:150, damping:16` | `cubic-bezier(0.22, 1, 0.36, 1)` ~0.5s (bouncy) | `ease: 'spring.basic'` |
-| FM spring `stiffness:400, damping:40` | `cubic-bezier(0.33, 1, 0.68, 1)` ~0.3s (snappy) | `ease: 'spring.small'` |
-| GSAP `ease: "power2.out"` | `cubic-bezier(0.22, 1, 0.36, 1)` | `ease: [0.22, 1, 0.36, 1]` |
-| GSAP `ease: "power3.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: [0.16, 1, 0.3, 1]` |
-| GSAP `ease: "expo.out"` | `cubic-bezier(0.16, 1, 0.3, 1)` | `ease: 'bezier.expo'` |
-| GSAP `ease: "back.out(1.7)"` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `ease: [0.34, 1.56, 0.64, 1]` |
+See `transition-implementation.md` → Easing conversion table for CSS cubic-bezier equivalents. Use `scripts/gsap-to-css.sh convert "<easing>"` for automated conversion.
 
 ### Bundle values → DOM element mapping (MANDATORY after grep)
 

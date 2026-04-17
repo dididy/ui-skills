@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.2] - 2026-04-17
+
+Automated verification pipeline, bundle-based verification for untriggerable animations, and anti-rationalization enforcement across all skills.
+
+### Added
+- **`scripts/auto-verify.sh`** — Single-command verification pipeline. Runs D0 (layout-health-check), Phase C (batch-scroll + AE comparison), and post-implement gate sequentially. Replaces manual multi-step verification. `exit 0` = done, `exit 1` = not done.
+- **`skills/visual-debug/scripts/layout-health-check.sh`** — Phase D0: layout structure comparison (section heights, total height ratio) before pixel-level diff. Catches structural mismatches (collapsed sections, missing padding) in 2 seconds that would otherwise produce noise in every Phase D position.
+- **`skills/transition-reverse-engineering/bundle-verification.md`** — Numerical verification for untriggerable animations (carousel, auto-rotate, page-load). Extracts parameters from JS bundles, diffs against implementation code, produces `bundle-verification.json`. Replaces frame comparison for animations where T=0 synchronization is impossible.
+- **`hooks/ui-re-post-verify-check.sh`** — Post-verify hook for enforcement after verification step.
+- **`skills/ui-reverse-engineering/SKILL.md`** — "No Judgment — Data Only" section. Table of 9 judgment traps with required actions (e.g., "This looks close enough" → run `auto-verify.sh`). Exists because the LLM consistently guesses instead of measuring.
+- **`skills/ui-reverse-engineering/transition-implementation.md`** — "GSAP Premium Plugin Alternatives" section. SplitText → `@beyond/core splitText` or `splitting` npm package. MorphSVG → `flubber` or SVG `rx`/`ry` animation. ScrollSmoother → project library or `lenis`. DrawSVG → CSS `stroke-dashoffset`. Prevents skipping features because a library is paid.
+- **`skills/transition-reverse-engineering/js-animation-extraction.md`** — Auto-rotation/carousel detection section. Detection patterns (setInterval, GSAP repeat:-1, classList carousel), parameter extraction table, freezing script for resting-state screenshot.
+- **`skills/visual-debug/scripts/batch-compare.sh`** — Anti-rationalization enforcement block on FAIL. Prints mandatory diagnosis steps and forbids proceeding without documented root causes.
+- **`skills/visual-debug/scripts/batch-scroll.sh`** — Height ratio check with warning when impl is >1.3x or <0.7x of ref height.
+
+### Changed
+- **`skills/visual-debug/scripts/batch-scroll.sh`** — Rewritten to interleaved capture (ref 0% → impl 0% → ref 10% → impl 10% → ...). Eliminates carousel/animation drift between the two sides. Opens both sites in parallel sessions. Adds smart carousel freeze (monkey-patches setInterval ≥2s, pauses GSAP repeat:-1 timelines, freezes classList mutations and inline styles on carousel elements).
+- **`skills/visual-debug/verification.md`** — Phase D0 (Layout Health Check) added as mandatory step before Phase D. Anti-pattern phrases list expanded ("close enough", "just a content difference", "remaining differences are minor" all forbidden). Verification now requires `auto-verify.sh exit 0` instead of manual steps.
+- **`skills/ui-reverse-engineering/SKILL.md`** — Step 8 (Verify) rewritten: single `auto-verify.sh` command replaces selective individual checks. Phase D still runs separately after auto-verify passes. Execution rules renumbered with anti-rationalization rules added.
+- **`skills/ui-reverse-engineering/component-generation.md`** — HARD BLOCK on interaction captures added. Rule 7 (never guess UI layout) and Rule 8 (never skip paid library features) added. Input checklist includes idle+active screenshots from Step 5b/A-C3.
+- **`skills/ui-reverse-engineering/interaction-detection.md`** — Mandatory idle+active state capture section added for every hover/click interaction. Gate: `validate-gate.sh pre-generate` checks captures exist. Easing conversion table replaced with pointer to `transition-implementation.md`.
+- **`skills/transition-reverse-engineering/SKILL.md`** — Step 4 verification split by animation type: triggerable (frame comparison + Phase D) vs untriggerable (bundle-verification.md). Gate conditions updated for both paths.
+- **`skills/transition-reverse-engineering/verification.md`** — Bundle-Based Verification section added for untriggerable animations. "Is This Done?" checklist split into triggerable and untriggerable paths.
+- **`hooks/ui-re-pre-generate-check.sh`** — Picks most recently modified ref dir (not first found). Searches multiple marker files (regions.json, structure.json, etc.). Checks for actual missing artifacts (❌ lines) instead of relying on exit code. Fallback to source repo for `validate-gate.sh`.
+- **`scripts/run-pipeline.sh`** — Step 5-verify now prints `auto-verify.sh` command instead of manual steps.
+- **`scripts/validate-gate.sh`** — `pre-generate` gate: interaction state capture check added (idle+active screenshots for each hover/click interaction). `post-implement` gate: mandatory artifact checks (layout-health.json, style-audit-diff.json, pixel-perfect-diff.json) added before clip comparison.
+- **`plugin.json`, `marketplace.json`** — version bumped to 0.2.2; keywords updated with `auto-verify`, `anti-rationalization`, `bundle-verification`, `layout-health-check`.
+
 ## [0.2.1] - 2026-04-16
 
 Docs restructuring and metadata cleanup. No runtime behavior changes — all pipelines, gates, and generation paths work identically.

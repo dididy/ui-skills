@@ -88,16 +88,37 @@ Save clips under `tmp/ref/<effect-name>/frames/{ref,impl}/<state>.png`.
 
 Gate: `pixel-perfect-diff.json` exists with all elements `"status": "pass"` AND `mismatches = 0` for every captured state.
 
+## Bundle-Based Verification (for untriggerable animations)
+
+**Read `bundle-verification.md`** for the full procedure. Use this instead of frame comparison when:
+- Animation auto-starts (carousel, page-load sequence, timer-based)
+- Scroll-driven animations where GSAP/Motion state varies between captures
+- Any case where T=0 synchronization between ref and impl is impossible
+
+The bundle verification pipeline:
+1. Identify animated elements (DOM scan for `will-change`, `transform`, `transition`)
+2. Grep class names in downloaded JS bundles → extract GSAP/Motion parameters
+3. Build `transition-spec.json` (from/to, duration, ease, trigger per selector)
+4. Numerical diff: spec values vs impl code values → `bundle-verification.json`
+5. One resting-state screenshot as sanity check (idle state, animations frozen)
+
+**Gate:** `bundle-verification.json` all checks `"match": true`.
+
 ## "Is This Done?" Checklist
 
 - [ ] `measurements.json` saved (11-point multi-property measurement from measurement.md)
 - [ ] Non-linear curves / phase boundaries identified and documented
 - [ ] `extracted.json` saved
 - [ ] Implementation written (using measured values, NOT guessed values)
-- [ ] Impl frames captured (localhost, same trigger sequence as ref)
-- [ ] Comparison table filled — every frame has ✅ or ❌
-- [ ] All ❌ rows fixed and re-verified
-- [ ] No white flash / blank frame / layout jump in any impl frame where ref shows content
+- [ ] **For triggerable animations (hover, click, intersection):**
+  - [ ] Impl frames captured (localhost, same trigger sequence as ref)
+  - [ ] Comparison table filled — every frame has ✅ or ❌
+  - [ ] All ❌ rows fixed and re-verified
+  - [ ] No white flash / blank frame / layout jump in any impl frame where ref shows content
+- [ ] **For untriggerable animations (auto-rotation, page-load, timer-based):**
+  - [ ] `transition-spec.json` exists with all animated elements documented
+  - [ ] `bundle-verification.json` exists with all checks `"match": true`
+  - [ ] Resting-state screenshot sanity check passed
 - [ ] **`pixel-perfect-diff.json` exists with all elements `"status": "pass"` AND `mismatches = 0` (all captured states — idle, active/after, or before/mid/after by triggerType)**
 - [ ] Entry points verified: CSS imports loaded (`body { margin: 0 }` etc. in effect), no missing `import` in main entry file
 - [ ] **Scroll transitions: reverse direction verified** — scroll back through trigger zone, confirm animation reverses to initial state

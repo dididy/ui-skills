@@ -184,3 +184,96 @@ const [activeIndex, setActiveIndex] = useState(0);
 ```
 
 **Extract per-tab content** from click-cycle capture states — each `state-N.png` corresponds to `tabs[N].content`.
+
+---
+
+## GSAP Premium Plugin Alternatives
+
+When the original site uses GSAP paid/premium plugins, do NOT purchase them or skip the feature. These alternatives are listed in priority order: (1) project-specific animation library if available (e.g., `@beyond/core` in onpixel monorepo), (2) open-source npm packages, (3) manual CSS implementation.
+
+### SplitText → `@beyond/core` splitText or `splitting` npm package
+
+GSAP's SplitText (paid Club plugin) splits text into chars/words/lines for stagger animations. Project-specific library (e.g., `@beyond/core`) may have the same feature. Open-source alternative: [`splitting`](https://splitting.js.org/) npm package — splits text into chars/words/lines with CSS custom properties for index-based stagger.
+
+```ts
+import { splitText } from '@beyond/core'
+
+// Split into words (identical to GSAP SplitText with type: 'words')
+const { nodes, revert } = splitText(element, 'word')
+
+// Split into characters
+const { nodes, revert } = splitText(element, 'char')
+
+// Split into lines (same offsetTop grouping as GSAP)
+const { nodes, revert } = splitText(element, 'line')
+
+// Animate with GSAP (or @beyond/core animate)
+gsap.set(nodes, { transformOrigin: 'bottom center', scaleY: 0, y: '200%' })
+gsap.to(nodes, {
+  scaleY: 1, y: 0,
+  ease: 'elastic.out(1.2, 0.8)',
+  duration: 1,
+  stagger: 0.1,
+})
+
+// Cleanup
+revert()
+```
+
+**When to use:** Any site with `SplitText.create()` in the bundle. Replace 1:1 — the API surface is identical (element → mode → nodes + revert).
+
+### MorphSVG → Manual SVG path interpolation or rx/ry animation
+
+GSAP's MorphSVG morphs between SVG path shapes. Without the plugin:
+
+1. **For simple rect → circle morphs** (CTA buttons): Animate `rx`/`ry` attributes of the SVG `<rect>` from pill radius to circle radius using `gsap.to()`.
+2. **For complex path morphs**: Use `flubber` (npm package) for path interpolation, or pre-compute intermediate paths and crossfade with opacity.
+
+```ts
+// Simple rect → circle morph (no MorphSVG needed)
+gsap.to(rectElement, {
+  attr: { rx: circleRadius, ry: circleRadius, width: circleSize, height: circleSize },
+  duration: 0.9,
+  ease: 'elastic.out(0.8, 0.8)',
+})
+```
+
+### ScrollSmoother → project library or Lenis
+
+GSAP's ScrollSmoother (paid) adds smooth scroll behavior. Alternatives:
+- Project-specific library (e.g., `@beyond/react` `useSmoothScroll()`) if available
+- [`lenis`](https://github.com/darkroomengineering/lenis) npm package — widely used, lightweight, open-source
+
+### Draggable → Native pointer events
+
+GSAP's Draggable is actually free, but if not using GSAP at all:
+- Use native `pointerdown`/`pointermove`/`pointerup` events
+- Calculate drag delta and apply transforms
+
+### DrawSVG → CSS stroke-dashoffset animation
+
+```css
+.draw-in {
+  stroke-dasharray: var(--path-length);
+  stroke-dashoffset: var(--path-length);
+  transition: stroke-dashoffset 1s ease-out;
+}
+.draw-in.active {
+  stroke-dashoffset: 0;
+}
+```
+
+### Detection rule
+
+When `transition-spec.json` contains entries referencing GSAP premium plugins, add a note in the spec:
+
+```json
+{
+  "name": "text-reveal-stagger",
+  "gsap_plugin": "SplitText",
+  "beyond_alternative": "@beyond/core splitText('word')",
+  "notes": "Replace SplitText.create() with splitText(el, 'word'). Same nodes[] + revert() API."
+}
+```
+
+This ensures the generation step uses the correct alternative without re-discovering it.

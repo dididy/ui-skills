@@ -64,7 +64,7 @@ agent-browser --version           # verify
 | | 6b | Assemble `extracted.json` from all prior artifacts |
 | | 6c | Six-stage pre-generation audit → `data-inventory.json`, `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json`. Skip for single-section/single-element scope. ⛔ Gate: `pre-generate` |
 | **3 — Generation** | 7 | Read `site-detection.md` FIRST (pick CSS-First vs Extract-Values), then `component-generation.md` + `transition-implementation.md`. **Parallel worktree builders** for pages with 4+ sections (see `component-generation.md` Phase 3A/3B/3C). |
-| **4 — Verify** | 8 | Read `visual-debug/verification.md`. Run Phases A/B/C/D/H/E. ⛔ Gate: `post-implement` after each transition. |
+| **4 — Verify** | 8 | **Run `auto-verify.sh`** — this single script runs D0 (layout-health-check), Phase C (batch-scroll + AE comparison), and post-implement gate. `bash "$PLUGIN_ROOT/scripts/auto-verify.sh" <session> <orig-url> <impl-url> tmp/ref/<c>`. DO NOT skip. DO NOT run individual checks selectively. DO NOT declare "done" until auto-verify exits 0. **Phase D (pixel-perfect visual gate) must be run separately after auto-verify passes** — completion criteria still require Phase D to pass. |
 | | 9 | Test every interaction from `interactions-detected.json` on localhost (hover/click/scroll-trigger/auto-timer). Table must be 100% ✅. |
 
 ### Audit stages (Step 6c)
@@ -102,6 +102,26 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 
 **Step 5→6 bundle checkpoint is the one most often skipped.** DOM inspection alone CANNOT reveal GSAP ScrollTrigger config, Lenis params, splash sequences, Framer Motion springs, or state machine transitions. If grep finds nothing in `main.js`, **download more chunks** — page-specific logic lives in lazy chunks. Never conclude "this site doesn't use JS for motion" from DOM inspection.
 
+## No Judgment — Data Only
+
+**Your judgment is unreliable. Every decision must be backed by extracted data, captured screenshots, or script output — never by reasoning like "probably", "should be", "close enough", or "can't because".**
+
+This rule exists because of a consistent failure pattern: the LLM guesses instead of measuring, simplifies instead of extracting, and rationalizes instead of diagnosing. Every instance below has occurred in real sessions and produced wrong results.
+
+| Judgment temptation | Required action instead |
+|---|---|
+| "This dropdown is probably a small popover" | Capture idle + active screenshot. It may be a full-screen overlay. |
+| "This looks close enough" | Run `auto-verify.sh`. AE number decides, not your eyes. |
+| "This plugin is paid, so I'll simplify" | Check project animation library (e.g., `@beyond/core`) or open-source alternatives (`splitting`, `lenis`, CSS `stroke-dashoffset`). Only simplify if no alternative exists AND you document the gap. |
+| "This FAIL is just a content difference" | Run `computed-diff.sh` on elements in the failing region. Name the specific CSS property that differs. "Content difference" is not a diagnosis. |
+| "This asset isn't important, skip it" | Extract ALL visible SVGs (`inline-svgs.json`), ALL images (`visible-images.json`). The LLM cannot judge which assets matter — a "decorative" SVG may contribute 500px of section height. |
+| "I'll use a placeholder for now" | No placeholders. Extract the real asset or leave the component unimplemented. A placeholder that "looks similar" will never be corrected because it passes casual inspection. |
+| "This section is done, moving on" | Run `auto-verify.sh` first. Only `exit 0` = done. |
+| "I already know how this component looks" | You don't. Capture a screenshot. Every site is custom. |
+| "This is too complex, I'll do a simpler version" | Follow the pipeline. Complex sites need MORE rigor, not less. |
+
+**Enforcement:** `validate-gate.sh` blocks code generation without extraction artifacts. `auto-verify.sh` blocks completion without passing checks. `batch-compare.sh` prints anti-rationalization warnings on FAIL. These exist because documentation alone does not prevent the patterns above.
+
 ## Execution rules
 
 **Before any work**
@@ -120,12 +140,15 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 
 **During implementation**
 11. Read `transition-spec.json` first, not the bundle. Re-grepping risks picking the wrong conditional branch.
+12. **Never guess UI layout.** If no idle+active screenshot exists for a hover/click interaction, go back to Step 5b/A-C3 and capture it. Capture first, implement second. Accuracy over speed, always.
+13. **GSAP Premium → project animation library or open-source alternatives.** SplitText → project library (e.g., `splitText()`) or `splitting` npm package. MorphSVG → `flubber` or SVG `rx`/`ry` animation. ScrollSmoother → project library (e.g., `useSmoothScroll()`) or `lenis`. DrawSVG → CSS `stroke-dashoffset`. See `transition-implementation.md` "GSAP Premium Plugin Alternatives". Never simplify a per-char stagger to a whole-block fade.
 
 **During verification**
-12. 60fps frame extraction. AE diff at 60fps costs zero tokens.
-13. Phase D is authoritative. "Looks the same" is not valid.
-14. Test every interaction on localhost — not just screenshots.
-15. Run the verify loop before telling the user. Only declare done when mismatches = 0 AND AE curves align.
+14. **Run `auto-verify.sh` — not individual checks.** One command, no steps to skip.
+15. Phase D is authoritative. "Looks the same" is not valid.
+16. Test every interaction on localhost — not just screenshots.
+17. Run auto-verify BEFORE telling the user anything. Only declare done when auto-verify exits 0.
+18. **DO NOT rationalize FAIL results.** Each FAIL has a root cause. Diagnose it (read diff image, run computed-diff).
 
 ## Scope adjustments
 

@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Clone a live website into React + Tailwind. Three core benefits: (1) CSS-First — downloads original stylesheets and reuses class names for pixel-perfect reproduction instead of guessing from computed values. (2) Zero-vision-token verification — AE/SSIM image diff replaces LLM screenshot reading across all comparisons. (3) Real JS bundle extraction — parses GSAP timelines, Framer Motion springs, Lenis scroll params from live bundles, not heuristics. Four skills (ui-reverse-engineering, transition-reverse-engineering, ui-capture, visual-debug) with progressive-disclosure sub-docs loaded only when needed.",
-      "version": "0.2.1",
+      "description": "Clone a live website into React + Tailwind. Three core benefits: (1) CSS-First — downloads original stylesheets and reuses class names for pixel-perfect reproduction instead of guessing from computed values. (2) Zero-vision-token verification — AE/SSIM image diff replaces LLM screenshot reading across all comparisons. (3) Real JS bundle extraction — parses GSAP timelines, Framer Motion springs, Lenis scroll params from live bundles, not heuristics. Automated verification pipeline (auto-verify.sh), bundle-based verification for untriggerable animations, and anti-rationalization enforcement. Four skills with progressive-disclosure sub-docs loaded only when needed.",
+      "version": "0.2.2",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -32,7 +32,11 @@
         "visual-verification",
         "ae-ssim-diff",
         "zero-vision-tokens",
-        "progressive-disclosure"
+        "progressive-disclosure",
+        "auto-verify",
+        "anti-rationalization",
+        "bundle-verification",
+        "layout-health-check"
       ]
     }
   ]

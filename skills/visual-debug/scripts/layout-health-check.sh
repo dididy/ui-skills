@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# layout-health-check.sh — Structural layout comparison before pixel comparison
+# Catches: empty sections, collapsed text, zero-dimension elements, height ratios
+#
+# Usage: bash layout-health-check.sh <session> <orig-url> <impl-url> [outdir]
+# Exit: 0 = healthy, 1 = issues found
+
+set -uo pipefail
+
+SESSION="${1:?Usage: layout-health-check.sh <session> <orig-url> <impl-url> [outdir]}"
+ORIG_URL="${2:?}"
+IMPL_URL="${3:?}"
+OUTDIR="${4:-tmp/ref/layout-check}"
+
+mkdir -p "$OUTDIR"
+
+EXTRACT_JS='(() => {
+  const body = document.body;
+  const totalHeight = document.documentElement.scrollHeight;
+  const viewportHeight = window.innerHeight;
+
+  // Get all direct children of main/body that are visible sections
+  const main = document.querySelector("main") || body;
+  const sections = [...main.children].filter(c => {
+    return c.offsetHeight > 0 && !["SCRIPT","STYLE","LINK","META"].includes(c.tagName);
+  });
+
+  const sectionData = sections.map((s, i) => {
+    const cn = typeof s.className === "string" ? s.className : "";
+    const cs = getComputedStyle(s);
+
+    // Check for zero-dimension children
+    const children = [...s.querySelectorAll("h1,h2,h3,h4,h5,h6,p,a,button,img,svg,div,span")];
+    const collapsed = children.filter(c => {
+      const r = c.getBoundingClientRect();
+      return c.textContent && c.textContent.trim().length > 0 && (r.width < 1 || r.height < 1);
+    }).length;
+
+    // Check for empty text
+    const textEls = children.filter(c => ["H1","H2","H3","H4","H5","H6","P","SPAN","A","BUTTON"].includes(c.tagName));
+    const emptyText = textEls.filter(c => {
+      const r = c.getBoundingClientRect();
+      return r.height > 0 && r.width > 0 && (!c.textContent || c.textContent.trim().length === 0);
+    }).length;
+
+    return {
+      index: i,
+      tag: s.tagName,
+      class: cn.slice(0, 60),
+      height: Math.round(s.offsetHeight),
+      top: Math.round(s.getBoundingClientRect().top + window.scrollY),
+      position: cs.position,
+      display: cs.display,
+      collapsedChildren: collapsed,
+      emptyTextElements: emptyText,
+      childCount: s.children.length,
+    };
+  });
+
+  return JSON.stringify({
+    totalHeight,
+    viewportHeight,
+    sectionCount: sections.length,
+    sections: sectionData
+  });
+})()'
+
+echo "═══ Layout Health Check ═══"
+echo "Original: $ORIG_URL"
+echo "Implementation: $IMPL_URL"
+echo ""
+
+# Extract from original
+echo "▸ Analyzing original..."
+agent-browser --session "${SESSION}-ref" close 2>/dev/null
+agent-browser --session "${SESSION}-ref" open "$ORIG_URL" 2>/dev/null
+agent-browser --session "${SESSION}-ref" set viewport 1440 900 2>/dev/null
+agent-browser --session "${SESSION}-ref" wait 5000 2>/dev/null
+ORIG_RAW=$(agent-browser --session "${SESSION}-ref" eval "$EXTRACT_JS" 2>/dev/null)
+# agent-browser wraps output in quotes and escapes inner quotes — unwrap
+ORIG_DATA=$(echo "$ORIG_RAW" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g' | sed 's/\\n/\n/g' | sed 's/\\\\/\\/g')
+
+# Extract from implementation
+echo "▸ Analyzing implementation..."
+agent-browser --session "${SESSION}-impl" close 2>/dev/null
+agent-browser --session "${SESSION}-impl" open "$IMPL_URL" 2>/dev/null
+agent-browser --session "${SESSION}-impl" set viewport 1440 900 2>/dev/null
+agent-browser --session "${SESSION}-impl" wait 5000 2>/dev/null
+IMPL_RAW=$(agent-browser --session "${SESSION}-impl" eval "$EXTRACT_JS" 2>/dev/null)
+IMPL_DATA=$(echo "$IMPL_RAW" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g' | sed 's/\\n/\n/g' | sed 's/\\\\/\\/g')
+
+# Save raw data
+echo "$ORIG_DATA" > "$OUTDIR/orig-layout.json"
+echo "$IMPL_DATA" > "$OUTDIR/impl-layout.json"
+
+# Parse and compare using node
+node -e "
+const orig = JSON.parse(process.argv[1]);
+const impl = JSON.parse(process.argv[2]);
+
+let issues = 0;
+
+// 1. Total page height ratio
+const ratio = impl.totalHeight / orig.totalHeight;
+console.log('');
+console.log('── Page Height ──');
+console.log('  Original: ' + orig.totalHeight + 'px');
+console.log('  Implementation: ' + impl.totalHeight + 'px');
+console.log('  Ratio: ' + ratio.toFixed(2) + 'x');
+if (ratio > 1.3 || ratio < 0.7) {
+  console.log('  ⛔ HEIGHT MISMATCH: implementation is ' + (ratio > 1 ? 'taller' : 'shorter') + ' by ' + Math.round(Math.abs(ratio - 1) * 100) + '%');
+  issues++;
+} else if (ratio > 1.1 || ratio < 0.9) {
+  console.log('  ⚠️  Height differs by ' + Math.round(Math.abs(ratio - 1) * 100) + '%');
+} else {
+  console.log('  ✅ Within 10% tolerance');
+}
+
+// 2. Section count
+console.log('');
+console.log('── Section Count ──');
+console.log('  Original: ' + orig.sectionCount);
+console.log('  Implementation: ' + impl.sectionCount);
+if (orig.sectionCount !== impl.sectionCount) {
+  console.log('  ⚠️  Section count differs');
+}
+
+// 3. Per-section comparison
+console.log('');
+console.log('── Section Heights ──');
+console.log('| # | Orig Height | Impl Height | Ratio | Status |');
+console.log('|---|------------|-------------|-------|--------|');
+
+const maxSections = Math.max(orig.sections.length, impl.sections.length);
+for (let i = 0; i < maxSections; i++) {
+  const o = orig.sections[i];
+  const m = impl.sections[i];
+  if (!o && m) {
+    console.log('| ' + i + ' | — | ' + m.height + 'px | — | ⚠️ EXTRA in impl |');
+    continue;
+  }
+  if (o && !m) {
+    console.log('| ' + i + ' | ' + o.height + 'px | — | — | ⛔ MISSING in impl |');
+    issues++;
+    continue;
+  }
+  const sRatio = m.height / o.height;
+  let status = '✅';
+  if (sRatio > 2 || sRatio < 0.3) { status = '⛔ ' + sRatio.toFixed(1) + 'x'; issues++; }
+  else if (sRatio > 1.5 || sRatio < 0.5) { status = '⚠️ ' + sRatio.toFixed(1) + 'x'; }
+  console.log('| ' + i + ' | ' + o.height + 'px | ' + m.height + 'px | ' + sRatio.toFixed(2) + ' | ' + status + ' |');
+}
+
+// 4. Collapsed elements
+console.log('');
+console.log('── Collapsed Elements ──');
+let totalCollapsed = 0;
+impl.sections.forEach((s, i) => {
+  if (s.collapsedChildren > 0) {
+    console.log('  ⛔ Section ' + i + ' (' + s.class.slice(0,30) + '): ' + s.collapsedChildren + ' collapsed children');
+    totalCollapsed += s.collapsedChildren;
+    issues++;
+  }
+});
+if (totalCollapsed === 0) console.log('  ✅ No collapsed elements');
+
+// 5. Empty text elements
+console.log('');
+console.log('── Empty Text Elements ──');
+let totalEmpty = 0;
+impl.sections.forEach((s, i) => {
+  if (s.emptyTextElements > 0) {
+    console.log('  ⚠️  Section ' + i + ': ' + s.emptyTextElements + ' empty text elements');
+    totalEmpty += s.emptyTextElements;
+  }
+});
+if (totalEmpty === 0) console.log('  ✅ No empty text elements');
+
+// 6. Sections taller than 3x viewport (potential blank space)
+console.log('');
+console.log('── Oversized Sections ──');
+impl.sections.forEach((s, i) => {
+  if (s.height > impl.viewportHeight * 3 && s.position !== 'fixed') {
+    console.log('  ⚠️  Section ' + i + ' (' + s.class.slice(0,30) + '): ' + s.height + 'px (' + (s.height / impl.viewportHeight).toFixed(1) + ' viewports)');
+  }
+});
+
+console.log('');
+if (issues > 0) {
+  console.log('⛔ LAYOUT CHECK FAILED: ' + issues + ' critical issue(s)');
+  process.exit(1);
+} else {
+  console.log('✅ Layout check passed');
+}
+" "$ORIG_DATA" "$IMPL_DATA"

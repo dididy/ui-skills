@@ -223,6 +223,35 @@ gate_pre_generate() {
   else
     echo -e "${GREEN}✅${NC} Reference frames ($frame_count files)" >&2
   fi
+
+  # ── Interaction state captures (MANDATORY — prevents guessing UI) ──
+  # Each hover/click interaction in interactions-detected.json must have
+  # idle + active reference screenshots in transitions/ref/
+  if [ -f "$DIR/interactions-detected.json" ] && command -v jq &>/dev/null; then
+    local interaction_count
+    interaction_count=$(jq '[.interactions[]? // empty | select(.type == "hover" or .type == "click" or .triggerType == "css-hover" or .triggerType == "js-class")] | length' "$DIR/interactions-detected.json" 2>/dev/null || echo "0")
+
+    if [ "$interaction_count" -gt 0 ]; then
+      local capture_count
+      capture_count=$(find "$DIR/transitions/ref" -name "*-idle.png" -o -name "*-active.png" 2>/dev/null | wc -l | tr -d ' ')
+
+      if [ "$capture_count" -lt 2 ]; then
+        echo -e "${RED}❌ NO INTERACTION CAPTURES${NC} — $interaction_count hover/click interactions detected but no idle+active screenshots found" >&2
+        echo -e "    Run Phase A-C3: for each interaction, capture idle + active states" >&2
+        echo -e "    Without these, component generation will GUESS the UI layout (the #1 source of visual mismatch)" >&2
+        FAIL=$((FAIL + 1))
+      else
+        local pair_count=$((capture_count / 2))
+        if [ "$pair_count" -lt "$interaction_count" ]; then
+          echo -e "${YELLOW}⚠️${NC} $pair_count/$interaction_count interactions have captures — missing interactions will be guessed" >&2
+        else
+          echo -e "${GREEN}✅${NC} Interaction captures ($capture_count files for $interaction_count interactions)" >&2
+        fi
+      fi
+    else
+      echo -e "${GREEN}✅${NC} No hover/click interactions detected — no captures needed" >&2
+    fi
+  fi
 }
 
 # ─────────────────────────────────────────────
@@ -257,6 +286,40 @@ for t in d.get('transitions', []):
       echo "" >&2
     fi
   fi
+
+  # ── 0b. Mandatory artifact checks ──
+  local MISSING=0
+
+  # Layout health check (mandatory before visual comparison)
+  if [ -f "$DIR/layout-health.json" ]; then
+    echo "  ✓ layout-health.json" >&2
+  else
+    echo "  ✗ layout-health.json missing — run layout-health-check.sh first" >&2
+    echo "    bash \"\$PLUGIN_ROOT/skills/visual-debug/scripts/layout-health-check.sh\" <session> <orig> <impl> $DIR" >&2
+    MISSING=$((MISSING + 1))
+  fi
+
+  # Style audit (mandatory)
+  if [ -f "$DIR/style-audit-diff.json" ]; then
+    echo "  ✓ style-audit-diff.json" >&2
+    # Check score
+    SCORE=$(node -e "const d=require('./$DIR/style-audit-diff.json'); console.log(d.score || 0)" 2>/dev/null || echo "0")
+    if [ "$(echo "$SCORE < 9" | bc -l 2>/dev/null || echo 1)" = "1" ]; then
+      echo "  ⚠️  Score $SCORE < 9 — needs improvement" >&2
+    fi
+  else
+    echo "  ✗ style-audit-diff.json missing — run style audit" >&2
+    MISSING=$((MISSING + 1))
+  fi
+
+  # Pixel-perfect diff (produced by Phase D — run separately after auto-verify)
+  if [ -f "$DIR/pixel-perfect-diff.json" ]; then
+    echo "  ✓ pixel-perfect-diff.json" >&2
+  else
+    echo -e "  ${YELLOW}⚠️  pixel-perfect-diff.json not found — run Phase D after auto-verify passes${NC}" >&2
+  fi
+
+  FAIL=$((FAIL + MISSING))
 
   # ── 1. Check clips exist (preferred) or fallback to frames ──
   local ref_dir=""

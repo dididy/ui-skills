@@ -58,9 +58,11 @@ Step 2a: Extract CSS              — Read css-extraction.md (CSS transitions/an
 Step 2b: Extract JS bundle        — Read js-animation-extraction.md (scroll-driven/Motion/GSAP/rAF)
 Step 2c: Extract Canvas/WebGL     — Read canvas-webgl-extraction.md
 Step  3: Implement                — Read patterns.md for reference patterns
-Step  4: Verify                   — Read verification.md. Frame comparison table AND
-                                    visual-debug Phase D (D1 Visual Gate + D2 Numerical).
-                                    ⛔ Gate: all frames ✅ AND D1 all pass AND D2 mismatches = 0
+Step  4: Verify                   — Read verification.md.
+                                    Triggerable (hover/click/scroll): Frame comparison + visual-debug Phase D.
+                                    Untriggerable (carousel/auto-rotate/page-load): Read bundle-verification.md.
+                                    ⛔ Gate: (triggerable) all frames ✅ AND D1 pass AND D2 mismatches = 0
+                                            (untriggerable) bundle-verification.json all match AND resting screenshot ok
 ```
 
 > Scroll-driven effects MUST go through Step 2b even if they also have CSS — raw stylesheet extraction for responsive units is there.
@@ -146,6 +148,7 @@ agent-browser eval "(() => {
 | `canvas-webgl-extraction.md` | 2c | Engine ID, bundle analysis (Three.js/custom WebGL) |
 | `patterns.md` | 3 | Implementation patterns, character stagger, troubleshooting |
 | `waapi-scrubbing.md` | (optional) | WAAPI scrubber for page-load animations |
+| `bundle-verification.md` | 4 | **Numerical verification for untriggerable animations** (carousel, auto-rotate, page-load). Bundle-extracted values vs impl code comparison |
 | `verification.md` | 4 | Frame comparison table, bug diagnosis protocol, completion checklist |
 | `visual-debug/verification.md` Phase D | 4 | D1 Visual Gate (clip AE/SSIM) + D2 Numerical Diagnosis (getComputedStyle) — both always run. Gate: D1 pass AND D2 mismatches = 0 |
 

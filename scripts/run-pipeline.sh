@@ -115,9 +115,16 @@ for t in d.get('transitions', []):
         fi
         ;;
       5-verify)
-        echo -e "${YELLOW}→ Next: Visual verification${NC}"
-        echo "  Read visual-verification.md"
-        echo "  Run getComputedStyle comparison (not visual judgment)"
+        echo -e "${YELLOW}→ Next: Run automated verification${NC}"
+        echo "  bash $SCRIPT_DIR/auto-verify.sh $SESSION $URL http://localhost:<port> $DIR"
+        echo ""
+        echo "  This runs ALL checks automatically:"
+        echo "    1. Layout health check (height/section comparison)"
+        echo "    2. Batch scroll capture + AE diff comparison"
+        echo "    3. Post-implement gate (artifact checks)"
+        echo ""
+        echo "  ⛔ DO NOT skip this. DO NOT declare 'done' without running it."
+        echo "  ⛔ DO NOT rationalize FAIL results. Fix them."
         ;;
     esac
     echo ""
@@ -154,7 +161,7 @@ for t in d.get('transitions', []):
         echo "# Generate components with original CSS classes + transitions"
         ;;
       5-verify)
-        echo "bash $SCRIPT_DIR/validate-gate.sh $DIR post-implement"
+        echo "bash $SCRIPT_DIR/auto-verify.sh $SESSION $URL http://localhost:<port> $DIR"
         ;;
     esac
     ;;
