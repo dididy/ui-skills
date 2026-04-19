@@ -5,10 +5,11 @@
 **Do not generate code if ANY of these are missing.** Go back to the step that produces the missing artifact.
 
 From **Step 2**: `structure.json`, `portal-candidates.json`, `sticky-elements.json`
-From **Step 2.5**: `head.json`, `assets.json`, `inline-svgs.json`
+From **Step 2.5**: `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`
 From **Step 3**: `styles.json`, `advanced-styles.json`, `body-state.json`, `design-bundles.json`, `decorative-svgs.json`
 From **Step 4**: detected breakpoints + per-breakpoint styles
-From **Step 5**: `interactions-detected.json`, `interaction-states.json`, `scroll-engine.json`
+From **Step 5**: `interactions-detected.json`, `scroll-engine.json`, `scroll-library.json` (if custom scroll detected)
+From **Step 2.6**: `animation-init-styles.json`, `state-coupling.json`
 From **Step 5b/A-C3**: `transitions/ref/<name>-idle.png` + `transitions/ref/<name>-active.png` for every hover/click interaction
 From **Step 6b**: `transition-spec.json`, `bundle-map.json`
 From **Step 6c**: `component-map.json`
@@ -17,7 +18,7 @@ Optional: keyframes or `extracted.json` from `transition-reverse-engineering`
 
 **HARD BLOCK on `transition-spec.json`.** Without it you'll re-grep bundles during implementation, waste tokens, and risk applying values from the wrong conditional branch — the #1 source of implementation errors in real sessions.
 
-**HARD BLOCK on interaction captures.** Every hover/click interaction in `interactions-detected.json` MUST have idle + active reference screenshots before implementing that component. Without these, you WILL guess the UI layout — and guesses are always wrong. A dropdown that looks like a small popover in your imagination may be a full-screen overlay panel in reality. Run `validate-gate.sh pre-generate` to check.
+**HARD BLOCK on interaction captures.** Every hover/click interaction must have idle + active screenshots. Run `validate-gate.sh pre-generate` to check. See SKILL.md rule 12 for why guessing layout is always wrong.
 
 ## Core rules
 
@@ -29,8 +30,11 @@ Optional: keyframes or `extracted.json` from `transition-reverse-engineering`
 4. **Never round extracted values.** `15.84px` is a computed value from the site's token system, not a mistake. Rounding breaks typographic scale.
 5. **Never recreate SVGs from visual appearance.** Use `outerHTML` from `inline-svgs.json` verbatim; convert HTML attributes to JSX (`stroke-width` → `strokeWidth`, `class` → `className`, `fill-rule` → `fillRule`).
 6. **Transitions are part of generation, not a later pass.** A component without its transitions is incomplete. Read `transition-spec.json` entries for the component + implement inline. See `transition-implementation.md`.
-7. **Never guess UI layout.** If you don't have a reference screenshot of a component's active/open/hover state, you CANNOT implement it. Go back and capture it. "It's probably a standard dropdown" is always wrong — real sites have custom layouts (full-screen overlays, multi-column panels, image grids) that look nothing like defaults.
-8. **Never skip features because a library is paid/premium.** If the original uses GSAP SplitText, MorphSVG, ScrollSmoother, or other paid plugins — use `@beyond/core` alternatives (see `transition-implementation.md` "GSAP Premium Plugin Alternatives" section). `splitText()` from `@beyond/core` replaces SplitText 1:1. Do NOT use a simplified fallback ("just animate the whole block") when the original does per-char/per-word stagger.
+7. **Never guess UI layout.** See SKILL.md rule 12 — capture idle + active screenshots before implementing.
+8. **Never skip features because a library is paid/premium.** Use `@beyond/core` alternatives (see `transition-implementation.md` "GSAP Premium Plugin Alternatives"). Never simplify per-char stagger to whole-block fade.
+9. **Auto-timers must respect splash phase.** See SKILL.md rule 13b — delay auto-rotate by `splashDuration + 1s`.
+10. **Reset GSAP-baked inline styles.** See `animation-init-styles.json` from dom-extraction.md Step 2.6a.
+11. **Verify DOM structure before implementing interaction.** See SKILL.md rule 12b — use `agent-browser eval` on the live ref, never assume from HTML alone.
 
 **Post-generation transition coverage gate:** Every entry in `transition-spec.json` must have a corresponding implementation. Missing any = incomplete, don't proceed to verification.
 

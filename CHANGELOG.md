@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.2.3] - 2026-04-19
+
+GSAP-baked style handling, state coupling verification, bundle analysis patterns, and pipeline/script hardening.
+
+### Added
+- **`dom-extraction.md`** — **Step 2.6a: GSAP-Baked Inline Style Catalog.** Scraped HTML contains `visibility:hidden`, `opacity:0`, `transform:translate(-500px)` baked by GSAP at scrape time. These are animation init states, not desired defaults — they make elements invisible. New eval script scans all elements and saves to `animation-init-styles.json`. Each must be explicitly reset during implementation.
+- **`dom-extraction.md`** — **Step 2.6b: State-Coupled Element Mapping.** For carousels/tabs/accordions: identifies ALL elements that change when shared state changes (bg color, card text, illustration, section bg). Saves coupling table to `state-coupling.json`. Missing couplings = elements that stay stale when they should update.
+- **`dom-extraction.md`** — **CSS `background-image` collection** in visible-images step. Previous version only captured `<img>` tags; sites using CSS `background-image` for hero/section backgrounds were missed entirely. New pass checks `getComputedStyle(el).backgroundImage` on all elements with visible dimensions.
+- **`interaction-detection.md`** — **Step 5e: Drag/Swipe Effect Classification.** Three effect types (state-flip, transform-tracking, parallax-tracking) with detection methods and implementation rules. Critical rule: if drag triggers state change (carousel rotation), handler must ONLY detect direction and trigger `goTo()` — never apply `translateX` to illustration.
+- **`interaction-detection.md`** — **Bundle Analysis Patterns** reference section (488 lines). Five pattern guides with DOM inspection commands, bundle grep strategies, verification steps, and common traps:
+  1. Canvas Renderer Detection — size comparison, renderer type check, paint-over verification
+  2. Disc/Carousel Structure Detection — angle delta calculation, transform-origin confirmation, translate trap warning
+  3. Lottie Asset Mapping — fetch intercept, JSON layer name extraction, multi-file composition (pants/nopants pattern)
+  4. State Machine Extraction — MutationObserver, switch/case grep, boolean-collapse trap
+  5. Auto-Timer Extraction — setInterval intercept, GSAP repeat grep, splash-gate/scroll-gate/page-visibility detection
+- **`post-gen-verification.md`** — **Loop 0.5: State Coupling Verification.** For carousels/tabs: verify ALL coupled elements update when shared state changes. Includes splash/auto-timer conflict detection (recording first 8s to check if carousel rotates during splash).
+- **`component-generation.md`** — Rules 9–11 added: auto-timers must respect splash phase (delay start by splash duration + 1s), GSAP-baked inline styles must be explicitly reset, DOM structure must be verified via `agent-browser eval` before implementing interactions.
+- **`SKILL.md`** — 7 new entries in "No Judgment" table: CSS color swap assumption, Canvas size trap, GSAP-baked style recognition, Lottie asset replacement, auto-rotate timing, visual verification requirement, DOM structure assumption.
+- **`SKILL.md`** — Execution rules 10b (GSAP-baked style catalog), 10c (auto-play timer classification), 12b (DOM structure verification), 12c (SVG replacement verification), 12d (drag handler = swipe only), 13b (splash timing), 16b (state coupling verification), 16c (browser-first verification).
+- **`SKILL.md`** — Pipeline table: Step 2.6 added (animation-init-styles.json, state-coupling.json).
+
+### Changed
+- **`interaction-detection.md`** — `scroll-engine.json` now ALWAYS created, even for native scroll sites (`{"type":"native"}`). Previously only created when custom scroll was detected, causing pipeline gate failure on native-scroll sites.
+- **`interaction-detection.md`** — `element-animation-map.json` relationship to `transition-spec.json` clarified: supplement (selector mapping), not replacement. `transition-spec.json` remains single source of truth; conflicts resolved in its favor.
+- **`interaction-detection.md`** — Phase A cross-reference in Step 6 bundle analysis now has ordering note: defer to after animation-detection.md if Phase A hasn't run yet.
+- **`component-generation.md`** — Input checklist: `interaction-states.json` removed (never produced by any step), `fonts.json` added, `animation-init-styles.json` and `state-coupling.json` added from Step 2.6.
+- **`SKILL.md`** — Audit stage (e): `interaction-states.json` removed from required artifacts (dead reference).
+- **`SKILL.md`** — Execution rules: GSAP-baked style warning deduplicated (single reference to dom-extraction.md Step 2.6a instead of inline repetition).
+
+### Fixed
+- **`auto-verify.sh` — wrong `VISUAL_DEBUG_SCRIPTS` path.** `$(dirname "$SCRIPT_DIR")/../visual-debug/scripts` resolved 2 levels above the project root. Now searches sibling skill dir, installed skills, then fallback `find`. Exits with error message if not found.
+- **`auto-verify.sh` / `run-pipeline.sh` — `eval` removed.** Shell-string `eval "$cmd"` replaced with direct `"$@"` execution and helper functions (`has_file`, `has_files`). Paths with spaces or special characters no longer break.
+- **`validate-gate.sh` — `transition-spec.json` structure validation restored.** `gate_spec()` only checked file existence; empty `{}` would pass. Now validates `.transitions` array length and required keys (`id`, `trigger`, `bundle_branch`) when jq is available.
+- **`batch-compare.sh` / `dssim-compare.sh` / `ae-compare.sh` — temp file cleanup.** Resized images in `/tmp/` were never deleted. Added `trap cleanup EXIT`.
+- **`batch-compare.sh` / `ae-compare.sh` — ImageMagick dependency check.** `dssim-compare.sh` checked for `dssim` but the other scripts silently failed without `compare`/`identify`. Now exit with install instructions.
+- **`layout-diff.sh` — N+1 jq invocations.** Called jq 6 times per loop iteration. Replaced with single `jq` call producing TSV, parsed via `while read`. Added jq dependency check.
+- **Duplicate scripts in `skills/ui-reverse-engineering/scripts/`.** Identical copies of `auto-verify.sh`, `run-pipeline.sh`, `validate-gate.sh` diverged from root `scripts/`. Replaced with symlinks.
+- **Hooks hardcoded `~/Documents/ui-skills` path.** `ui-re-pre-generate-check.sh` and `ui-re-post-verify-check.sh` now use `CLAUDE_PLUGIN_ROOT` when available, with `-maxdepth` on `find` fallback.
+- **`interaction-states.json` dead reference** — referenced as BLOCKING input in component-generation.md and SKILL.md audit stage, but never produced by any extraction step. Removed from all references.
+- **`scroll-engine.json` native scroll gap** — not created for native-scroll sites, causing pipeline gate failure. Now always created.
+- **Step 2.5a/2.5b ordering** — Steps labeled as sub-steps of 2.5 but appeared before 2.5 in the file. Renumbered to 2.6a/2.6b and moved after Step 2.5.
+- **`style-audit.md`** — `interaction-states.json` reference updated to `interactions-detected.json` (the file that actually exists).
+- **`css-variables.json` vs `variables.txt` name mismatch** — validate-gate.sh checked `css-variables.json` but dom-extraction.md produces `css/variables.txt`. Gate updated. SKILL.md pipeline table updated.
+- **`run-pipeline.sh` hardcoded `apps/maximatherapy`** — replaced with generic `apps/*/src/components` glob.
+### Removed
+- **`batch-compare.sh.bak`** — stale backup file removed from untracked files.
+- **Near-duplicate rule explanations in `component-generation.md`** — "Never guess UI layout" (33 words → 14-word cross-ref to SKILL.md rule 12), GSAP-baked style explanation (45 words → 11-word cross-ref to dom-extraction.md Step 2.6a), splash timing explanation (46 words → 11-word cross-ref to SKILL.md rule 13b), dropdown/overlay warning (38 words → 14-word cross-ref). ~160 words / ~700 tokens saved per invocation.
+- **Rationalization list in `interaction-detection.md`** — 10-item bullet list duplicating SKILL.md "No Judgment" table. Replaced with one-line cross-reference.
+- **"visual-debug verification Phase D" verbose naming in `style-audit.md`** — 5 occurrences standardized to "Phase D".
+
 ## [0.2.2] - 2026-04-17
 
 Automated verification pipeline, bundle-based verification for untriggerable animations, and anti-rationalization enforcement across all skills.

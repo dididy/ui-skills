@@ -35,9 +35,12 @@ Each SKILL.md contains only the pipeline overview and core rules. Detailed proce
 
 ```bash
 brew install agent-browser   # macOS — or: npm i -g agent-browser
-brew install ffmpeg          # required for frame extraction
+brew install imagemagick     # AE pixel comparison
+brew install dssim           # structural visual similarity (DSSIM)
+brew install ffmpeg          # video capture + frame extraction
 
 agent-browser --version      # verify
+dssim --help                 # verify
 ```
 
 ## Installation
@@ -82,7 +85,9 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 1.  Open & snapshot            — DOM tree, full-page screenshot
 2.  Extract structure          — HTML hierarchy, component boundaries
 2.5 Extract head + assets      — title, favicon, images, original CSS files, fonts (incl. Typekit),
-                                 video backgrounds, CSS variables → variables.txt
+                                 video backgrounds, CSS variables → css/variables.txt
+2.6 Catalog init styles        — GSAP-baked inline styles → animation-init-styles.json,
+                                 state-coupled elements → state-coupling.json
 3.  Extract styles             — computed CSS, colors, typography, spacing, design tokens
 4.  Detect responsive          — 2-pass viewport sweep (coarse 40px → fine 5px) for real breakpoints
 5.  Detect interactions        — hover/click/scroll, mouse-follow, stroke animations
@@ -90,6 +95,8 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 5c. JS bundle download         — ALL loaded chunks via performance API. ⛔ gate: bundle
 5d. Transition spec            — transition-spec.json: trigger, target, easing, duration, bundle branch.
                                  gsap-to-css.sh auto-converts easing. ⛔ gate: spec
+    Bundle analysis patterns   — Canvas renderer detection, disc/carousel structure detection,
+                                 Lottie asset mapping, state machine extraction, auto-timer extraction
 6.  Detect animations          — Phase A idle / B scroll / C per-element (all mandatory)
                                  → transition-reverse-engineering when scroll-driven/canvas/WebGL
 6b. Assemble extracted.json    — combine all extraction artifacts
@@ -115,7 +122,11 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 | `gsap-to-css.sh` | GSAP easing → CSS cubic-bezier (lookup, full table, or bundle scan) |
 | `extract-dynamic-styles.sh` | Classifies GSAP inline styles: layout (keep) vs animation (remove) |
 | `auto-verify.sh` | Single-command verification: D0 layout health → Phase C scroll AE → post-implement gate |
+| `freeze-animations.sh` | Freeze CSS animations, JS timers, canvas, Lottie before screenshot capture |
 | `layout-health-check.sh` | D0: section height/total height comparison before pixel-level diff |
+| `layout-diff.sh` | Structural section bounding-box comparison between two URLs |
+| `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |
+| `dssim-compare.sh` | Structural visual similarity (DSSIM) — catches layout issues AE misses |
 
 **Input modes:**
 

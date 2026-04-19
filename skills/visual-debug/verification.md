@@ -600,24 +600,49 @@ Any single ❌ = NOT DONE.
 Max 3 full iterations before escalating to user with score breakdown.
 ```
 
-### Phase E: VLM Sanity Check (final, 1 pair only)
+### Phase E: LLM Structural Review (MANDATORY, ALL positions)
 
-After all automated gates pass, read **one pair** of screenshots (ref top + impl top) with the Read tool to catch issues that pixel diff and getComputedStyle cannot:
-- Missing visual elements that exist outside the measured selectors
-- z-index stacking order problems
-- Overflow clipping that hides content
-- Overall "feel" mismatch (wrong visual weight, wrong hierarchy)
+After AE + DSSIM complete, the LLM reads **every position's** ref+impl pair. This is NOT a sanity check — it is a **mandatory verification axis** that catches what AE and DSSIM cannot.
 
-```bash
-# Read exactly 2 images — one ref, one impl
-# Read tmp/ref/<component>/static/ref/top.png
-# Read tmp/ref/<component>/static/impl/top.png
+**Why this changed from "1 pair only":** We discovered that AE can report PASS on completely wrong content (scientific notation parsing bug: `1.27e+06` → `1`), and DSSIM can report PASS when content is missing on a same-color background (`empty yellow bg` vs `yellow bg + card` → DSSIM=0.19). Neither automated metric reliably answers "is this the same page?"
+
+#### Procedure
+
+For each scroll position (0%, 10%, ..., 100%):
+
+```
+Read tmp/ref/<component>/static/ref/<pos>pct.png
+Read tmp/ref/<component>/static/impl/<pos>pct.png
 ```
 
-If everything looks correct → DONE.
-If an issue is visible → name it, fix it, re-run from Step 1 of the fix iteration loop.
+Judge each pair:
 
-> **Token budget:** This is the ONLY place in the verification pipeline where ref+impl images are read side-by-side by the LLM. All other comparisons use AE/SSIM. One pair = ~4000 tokens. Do not read additional pairs unless the first pair reveals an issue in a specific scroll region.
+| Verdict | Meaning | Action |
+|---------|---------|--------|
+| **PASS** | Same sections, same content, same visual weight | None |
+| **PARTIAL** | Same structure, minor differences (Lottie frame, icon style, animation state) | Document the difference, acceptable if known |
+| **FAIL** | Different content, missing sections, wrong layout | Must fix before declaring done |
+
+#### Output format
+
+```markdown
+| Position | AE | DSSIM | LLM | Verdict | Issue |
+|----------|-----|-------|-----|---------|-------|
+| 0% | 418K ❌ | 0.38 ✅ | ✅ | PARTIAL | Lottie frame diff |
+| 10% | 1.2M ❌ | 0.19 ✅ | ❌ | FAIL | ServiceCards not visible — scroll trigger not fired |
+| ... | | | | | |
+```
+
+**Final gate:** Every position must be PASS or PARTIAL (with documented reason). Any FAIL blocks completion.
+
+#### What LLM catches that metrics miss
+
+- Empty background where content should be (DSSIM=0.19 on same-color bg)
+- Wrong program/carousel state (AE=1 between two captures of the same wrong page)
+- Missing sections that don't affect pixel count (small element on large background)
+- Structural ordering errors (sections in wrong sequence but similar colors)
+
+> **Token budget:** ~4000 tokens per pair × 11 positions = ~44K tokens. This is expensive but mandatory. The cost of shipping a wrong implementation and re-doing the entire pipeline is higher.
 
 **Before declaring done — entry point check:**
 ```bash

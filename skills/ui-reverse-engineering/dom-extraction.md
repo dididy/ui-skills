@@ -281,7 +281,32 @@ agent-browser eval "
 "
 ```
 
-**Save output to** `tmp/ref/<component>/visible-images.json`
+Also collect CSS `background-image` — many sites use these for hero images, section backgrounds, and card images:
+
+```bash
+agent-browser eval "
+(() => {
+  const bgImages = [];
+  document.querySelectorAll('*').forEach(el => {
+    const bg = getComputedStyle(el).backgroundImage;
+    if (bg && bg !== 'none' && bg.includes('url(')) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 50 && r.height > 50) {
+        const url = bg.match(/url\(['\"]?([^'\"\\)]+)['\"]?\)/)?.[1] || '';
+        if (url.startsWith('http')) {
+          bgImages.push({ type: 'bg-image', src: url, element: el.tagName.toLowerCase(), width: Math.round(r.width), height: Math.round(r.height) });
+        }
+      }
+    }
+  });
+  return JSON.stringify(bgImages, null, 2);
+})()
+"
+```
+
+**Merge both arrays and save to** `tmp/ref/<component>/visible-images.json`
+
+> If no `<img>` tags AND no CSS `background-image` found (site uses 100% SVG/Lottie/Canvas), save `[{"note": "No images found — site uses SVG/Lottie/Canvas only", "images": []}]` so the pipeline gate passes.
 
 ### Collect inline SVGs (logos, icons, brandmarks)
 
@@ -526,3 +551,64 @@ At Step 6b, merge `head.json` and `assets.json` into `extracted.json` alongside 
 ```
 
 > **Security:** Downloaded assets are untrusted. Never execute downloaded files. Use them only as static references (`<img src>`, CSS `url()`). HTTPS only, 10MB limit, no credential forwarding.
+
+---
+
+## Step 2.6a: Catalog GSAP-Baked Inline Styles
+
+Scraped HTML contains inline `style` attributes set by GSAP/Framer Motion at scrape time. These are animation initialization states — NOT desired defaults. They make elements invisible.
+
+```bash
+agent-browser eval "
+(() => {
+  const dangerous = [];
+  document.querySelectorAll('*').forEach(el => {
+    const s = el.style;
+    if (!s || !s.cssText) return;
+    const issues = [];
+    if (s.visibility === 'hidden') issues.push('visibility:hidden');
+    if (s.opacity === '0') issues.push('opacity:0');
+    if (s.transform?.includes('translate(-500')) issues.push('translate:-500px');
+    if (s.transform?.includes('scale(0')) issues.push('scale:0');
+    if (s.transform?.includes('rotateY(180')) issues.push('rotateY:180deg');
+    if (s.transform?.includes('rotateY(-180')) issues.push('rotateY:-180deg');
+    if (issues.length > 0) {
+      dangerous.push({
+        selector: el.tagName + (el.className?.substring?.(0, 40) || ''),
+        issues: issues,
+        text: el.textContent?.substring(0, 30) || '',
+      });
+    }
+  });
+  return dangerous;
+})()
+"
+```
+
+Save output to `tmp/ref/<component>/animation-init-styles.json`. During implementation, each of these MUST be explicitly reset — otherwise scraped elements will be invisible.
+
+## Step 2.6b: Map State-Coupled Elements
+
+For carousels, tabs, accordions — identify ALL elements that change when shared state changes.
+
+```bash
+# On the ref, trigger state change (click arrow, change tab) and diff the DOM
+# Record: which elements changed className, style, textContent, or visibility?
+```
+
+Save to `tmp/ref/<component>/state-coupling.json`:
+```json
+{
+  "carousel": {
+    "trigger": "arrow click / auto-rotate",
+    "coupled_elements": [
+      { "selector": "section.carousel", "changes": "backgroundColor, classList" },
+      { "selector": ".card h3", "changes": "textContent via face swap" },
+      { "selector": ".programs-bg", "changes": "backgroundColor (secondary color)" },
+      { "selector": ".illustration-disc", "changes": "transform: rotate(-90deg)" }
+    ]
+  }
+}
+```
+
+Missing couplings = elements that stay stale when they should update.

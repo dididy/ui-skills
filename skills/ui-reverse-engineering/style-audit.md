@@ -199,7 +199,7 @@ All must pass before declaring done.
 
 ## 10-Point Design Fidelity Score
 
-Diagnostic scoring system for fix iteration guidance. This does NOT replace visual-debug verification Phase D — it tells you **what to fix first**. visual-debug verification Phase D tells you **when you're done**.
+Diagnostic scoring system for fix iteration guidance. This does NOT replace Phase D — it tells you **what to fix first**. Phase D tells you **when you're done**.
 
 ### Checklist (1 point each)
 
@@ -211,7 +211,7 @@ Diagnostic scoring system for fix iteration guidance. This does NOT replace visu
 | 4 | **Surface depth** | surface bundles match: boxShadow, border, backgroundColor layers | Compare impl vs ref surface entries |
 | 5 | **Layout structure** | display, flexDirection, alignItems, justifyContent, grid correct | getComputedStyle layout props comparison |
 | 6 | **Responsive behavior** | layout transitions match at all detected breakpoints | Viewport resize + spot-check at breakpoint boundaries |
-| 7 | **Interaction states** | hover/active/focus deltas match interaction-states.json | Hover eval + getComputedStyle before/after |
+| 7 | **Interaction states** | hover/active/focus deltas match interactions-detected.json | Hover eval + getComputedStyle before/after |
 | 8 | **Motion timing** | motion bundles match: duration + easing correct | Compare impl vs ref motion entries |
 | 9 | **Asset fidelity** | SVG paths verbatim, images correct src, favicon present | DOM check: SVG `d` attr exact match, img src |
 | 10 | **Visual completeness** | No missing elements, z-index order correct, no overflow bugs | Element count ref vs impl, z-index comparison |
@@ -246,7 +246,7 @@ agent-browser --session <impl-session> eval "(() => {
 
 ### Scoring loop protocol
 
-1. **Run scoring at the START of each Step 8 fix iteration** (before visual-debug verification Phase D)
+1. **Run scoring at the START of each Step 8 fix iteration** (before Phase D)
 2. **Save score** to `tmp/ref/<component>/score-history.json` (append):
    ```json
    [
@@ -265,9 +265,9 @@ agent-browser --session <impl-session> eval "(() => {
    - Current score + breakdown
    - Score history (trend)
    - Top 3 remaining failures with specific values (e.g., "font-size: 24px should be 32px on .hero h1")
-6. **Completion:** Score ≥ 9 is a prerequisite for running the final visual-debug verification Phase D gate. Do not run visual-debug verification Phase D until scoring passes 9+.
+6. **Completion:** Score ≥ 9 is a prerequisite for running the final Phase D gate. Do not run Phase D until scoring passes 9+.
 
-### Relationship to visual-debug verification Phase D
+### Relationship to Phase D
 
 ```
   Fix iteration loop:
@@ -277,7 +277,7 @@ agent-browser --session <impl-session> eval "(() => {
   │  3. Score ≥ 9?                              │
   │     NO → fix lowest category                │──→ back to 1
   │     YES ↓                                   │
-  │  4. Run visual-debug verification Phase D                  │ ← "are we done?"
+  │  4. Run Phase D                  │ ← "are we done?"
   │     FAIL → fix specific element             │──→ back to 1
   │     PASS → DONE                             │
   └─────────────────────────────────────────────┘

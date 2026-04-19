@@ -49,6 +49,57 @@ Same rAF capture pointing to `localhost:<port>`. Save to `tmp/ref/<component>/im
 - Desynced phases (splash/text/image should be coupled but aren't)
 - Attributing GSAP's `transform: matrix(...)` init as an animation when it's just setup
 
+## Loop 0.5: State Coupling Verification (MANDATORY for carousels/tabs)
+
+Verify that ALL coupled elements update when shared state changes.
+
+### Step 1: Load `state-coupling.json`
+If it doesn't exist, create it now by clicking through each state on the ref and noting what changes.
+
+### Step 2: For each state transition, verify ALL coupled elements update
+
+```bash
+# On impl: click carousel arrow, then immediately check all coupled elements
+agent-browser eval "
+(() => {
+  // Click arrow
+  document.querySelectorAll('[class*=\"carousel-control\"] button')[1]?.click();
+
+  // Wait 1s for animations
+  return new Promise(resolve => setTimeout(() => {
+    // Check each coupled element
+    const results = {
+      sectionBg: document.querySelector('section[class*=\"carousel\"]')?.style.backgroundColor,
+      cardText: document.querySelector('.card [style*=\"opacity: 1\"] h3')?.textContent,
+      serviceBg: document.querySelector('[class*=\"programs-\"][class*=\"-bg\"]')?.style.backgroundColor,
+      illustRotation: /* rotation wrapper transform */,
+    };
+    resolve(results);
+  }, 1000));
+})()
+"
+```
+
+### Step 3: Compare against ref at same state
+If ANY coupled element didn't update → fix the `goTo()` function.
+
+**Failure modes this prevents:**
+- Carousel rotates but card background stays green (missing bg coupling)
+- Card text updates but illustration doesn't rotate (missing disc rotation)
+- Background color changes but service section bg stays stale (missing secondary color)
+- Lottie SVGs replaced with wrong asset (`kid_flower_pants` → `kid_flower_nopants`)
+
+### Step 4: Verify auto-timer doesn't conflict with splash
+```bash
+# Record first 8 seconds. If carousel rotates during splash overlay → bug.
+agent-browser record start tmp/ref/<c>/splash-timer-check.webm
+sleep 8
+agent-browser record stop
+# Extract frames and check: is splash visible in any frame where illustration has rotated?
+```
+
+---
+
 ## Loop 1: Section height verification
 
 For every section with fixed height (e.g., `style={{ height: N }}`):

@@ -10,6 +10,11 @@
 
 set -uo pipefail
 
+if ! command -v compare &>/dev/null || ! command -v identify &>/dev/null; then
+  echo "ERROR: ImageMagick not installed (need 'compare' and 'identify'). Run: brew install imagemagick"
+  exit 2
+fi
+
 REF="${1:?Usage: ae-compare.sh <ref.png> <impl.png> [diff-output.png]}"
 IMPL="${2:?Usage: ae-compare.sh <ref.png> <impl.png> [diff-output.png]}"
 DIFF="${3:-/dev/null}"
@@ -26,13 +31,15 @@ if [ "$REF_SIZE" != "$IMPL_SIZE" ]; then
   echo "WARN: Size mismatch ref=$REF_SIZE impl=$IMPL_SIZE — resizing impl to match"
   W=$(echo "$REF_SIZE" | cut -dx -f1)
   H=$(echo "$REF_SIZE" | cut -dx -f2)
-  convert "$IMPL" -resize "${W}x${H}!" "/tmp/ae-compare-resized.png"
-  IMPL="/tmp/ae-compare-resized.png"
+  RESIZED="/tmp/ae-compare-resized-$$.png"
+  trap "rm -f '$RESIZED'" EXIT
+  convert "$IMPL" -resize "${W}x${H}!" "$RESIZED"
+  IMPL="$RESIZED"
 fi
 
 # Full image AE
 AE=$(compare -metric AE "$REF" "$IMPL" "$DIFF" 2>&1 || true)
-AE=$(echo "$AE" | grep -oE '^[0-9]+' | head -1)
+AE=$(echo "$AE" | awk '{printf "%d", $1}')
 AE="${AE:-0}"
 
 if [ "$AE" -le "$THRESHOLD" ]; then
@@ -60,7 +67,7 @@ for PART in top middle bottom; do
     -extract "${W}x${CROP}" "$REF" \
     -extract "${W}x${CROP}" "$IMPL" \
     /dev/null 2>&1 || true)
-  PART_AE=$(echo "$PART_AE" | grep -oE '^[0-9]+' | head -1)
+  PART_AE=$(echo "$PART_AE" | awk '{printf "%d", $1}')
   PART_AE="${PART_AE:-0}"
 
   if [ "$PART_AE" -gt "$MAX_AE" ]; then

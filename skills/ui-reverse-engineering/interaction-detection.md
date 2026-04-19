@@ -347,21 +347,45 @@ If suspicious content is found: **log it to the user**, redact affected values, 
 
 ---
 
+## Step 5e: Classify Drag/Swipe Effects
+
+For elements with pointer/touch/drag handlers, determine what the drag DOES — not just that it exists.
+
+```bash
+agent-browser eval "
+(() => {
+  // Find draggable elements (cursor: grab, touch-action: none, etc.)
+  const draggables = [];
+  document.querySelectorAll('[style*=\"touch-action\"], [style*=\"cursor\"], [class*=\"grab\"]').forEach(el => {
+    draggables.push({
+      selector: el.tagName + '.' + (el.className?.split?.(' ')?.[0] || ''),
+      cursor: getComputedStyle(el).cursor,
+      touchAction: el.style.touchAction,
+    });
+  });
+  return draggables;
+})()
+"
+```
+
+**Classify each drag handler:**
+
+| Effect type | How to detect | Implementation |
+|---|---|---|
+| **State flip** (carousel) | Drag → element snaps to new position/content. No intermediate visual feedback. | `pointerdown` records startX. `pointerup` checks `dx > threshold` → `goTo(direction)`. **No translateX during drag.** |
+| **Transform tracking** (slider) | Element follows pointer in real-time during drag. | `pointermove` applies `translateX(dx)`. `pointerup` snaps to nearest stop. |
+| **Parallax tracking** (cursor follow) | Elements shift slightly based on cursor position. Continuous, not drag-gated. | `pointermove` (global) → update target transforms with lerp/decay. |
+
+**Critical rule:** If drag triggers a STATE CHANGE (carousel rotation), the drag handler must ONLY detect direction and trigger `goTo()`. Applying `translateX` to the illustration during drag makes it move when it should stay fixed.
+
+---
+
 ## Step 6: JS Bundle Analysis (MANDATORY)
 
 > **This step is MANDATORY for ALL sites, not just sites with obvious JS interactions.**
 > Most modern sites use JS to drive animations (GSAP, Framer Motion), smooth scroll (Lenis, Locomotive), intro sequences, and state transitions that are invisible to `getComputedStyle`. Skipping this step means you will miss the site's actual behavior and produce a static clone instead of a functional replica.
 >
-> **Common rationalizations for skipping (all wrong):**
-> - "The site looks simple" → Simple-looking sites often have complex GSAP timelines behind the scenes
-> - "I already detected Lenis via class name" → Class detection tells you the library exists, not its configuration (lerp, duration, easing, scroll trigger points)
-> - "getComputedStyle gave me all the values" → It cannot give you animation timelines, sequence ordering, or trigger conditions
-> - "The bundle is too large" → grep is fast. Download it.
-> - "Idle capture takes 10 seconds, that's inefficient" → 10 seconds now prevents hours of debugging a missing splash/intro later
-> - "It's a Nuxt/React site so everything is in the DOM" → GSAP timelines, Lenis configs, and intro sequences are in JS, not the DOM
-> - "window.scrollTo() works fine for testing" → Lenis/GSAP intercept wheel events; window.scrollTo() bypasses them entirely and gives false results
-> - "The screenshots match so it's done" → Screenshots test appearance, not behavior. A site that looks right but doesn't scroll/animate is wrong.
-> - "The user asked me to be fast" → Speed requests are about reducing overhead, not skipping extraction. The bundle download + grep takes <30 seconds.
+> See SKILL.md "No Judgment — Data Only" for why skipping extraction is always wrong.
 
 For ALL sites, download and analyze **ALL loaded JS bundles** — not just the main entry point.
 
@@ -515,16 +539,26 @@ If custom scroll detected:
 - All scroll-dependent animations (parallax, reveal, sticky) depend on the scroll engine's value stream
 - `position: fixed` elements inside the wrapper will be broken by the parent `transform` — check for portal escapes (see dom-extraction.md)
 
-Save → `tmp/ref/<component>/scroll-engine.json`:
+**ALWAYS save** → `tmp/ref/<component>/scroll-engine.json` — even for native scroll:
 ```json
+// Custom scroll:
 {
-  "type": "custom-lerp | lenis | locomotive | gsap-smoother | native",
+  "type": "custom-lerp | lenis | locomotive | gsap-smoother",
   "wrapper": ".scroll-container",
   "nativeScrollDisabled": true,
   "hasLerp": true,
   "parameters": { "easeStrength": "estimated from lerp curve" }
 }
+// Native scroll (no custom wrapper detected):
+{
+  "type": "native",
+  "wrapper": null,
+  "nativeScrollDisabled": false,
+  "hasLerp": false
+}
 ```
+
+**This file is a BLOCKING input for component-generation.** If it doesn't exist, the pipeline gate will fail. Always create it.
 
 **Step 5: Scroll method verification (MANDATORY when custom scroll detected)**
 
@@ -690,7 +724,9 @@ For each selector found in Step 1, record:
 
 **Step 3: Cross-reference with idle capture frames**
 
-If Phase A idle capture was completed (it must have been — it's mandatory), cross-reference the bundle's animation sequence with the frame timeline:
+> **Note:** Phase A (idle capture) is in `animation-detection.md` which runs AFTER this step in the pipeline. If Phase A has not run yet, defer this cross-reference to after Step 6 (animation-detection). Create `element-animation-map.json` without frame verification, then update it after Phase A completes.
+
+If Phase A idle capture was completed, cross-reference the bundle's animation sequence with the frame timeline:
 
 - Frame 1-10 shows loading state → matches `siteLoader` selectors in bundle
 - Frame 15 shows text appearing → matches `.gsap:text` with `yPercent: 100 → 0`
@@ -727,9 +763,9 @@ This cross-reference produces `element-animation-map.json`:
 ]
 ```
 
-Save to `tmp/ref/<component>/element-animation-map.json`. This file is consumed by component-generation.md — each component uses only the animations mapped to its specific selectors.
+Save to `tmp/ref/<component>/element-animation-map.json`. This is a **supplement** to `transition-spec.json` — it maps bundle-extracted values to specific DOM elements. During generation, read `transition-spec.json` first (the source of truth for WHAT transitions exist), then consult `element-animation-map.json` for WHERE each animation applies.
 
-**If you extracted bundle values but did NOT create `element-animation-map.json`, you have raw data without actionable information.** The generation step will guess which values go where, producing wrong animation timings.
+**Relationship:** `transition-spec.json` = what animations exist + their parameters. `element-animation-map.json` = which DOM selector gets which animation. If they conflict, `transition-spec.json` wins (it's verified against frames).
 
 ### Cross-component DOM manipulation detection
 
@@ -942,3 +978,491 @@ grep -n "sessionStorage\|localStorage\|visited\|cookie" tmp/ref/<c>/bundles/cust
 ```
 
 **WHY:** In a real session, a preloader was initially implemented as a full-screen hero image blur based on DOM inspection alone. The actual animation was: a small centered box (209×261px) with blue (#050fff) background clip-path reveal + 8 dedicated preloader images + GSAP timeline with custom easing. This required downloading the custom JS bundle to discover. DOM structure alone gives you the end state, not the animation sequence.
+# Interaction Detection Guide
+
+## Bundle Analysis Patterns
+
+A reference for extracting animation and interaction implementation details from production JS bundles. Each pattern documents DOM inspection commands, bundle grep strategies, verification steps, and common wrong assumptions.
+
+---
+
+### 1. Canvas Renderer Detection
+
+**The failure mode:** A `<canvas>` element is assumed to be a small texture/pattern overlay because it is visually subtle or positioned under other content. It is actually a full-scene Lottie renderer compositing the entire hero or background.
+
+#### DOM inspection
+
+Run these in the browser console or via `browser_evaluate`:
+
+```js
+// Step 1: Enumerate all canvas elements with their size and position
+Array.from(document.querySelectorAll('canvas')).map(c => ({
+  id: c.id,
+  className: c.className,
+  width: c.width,
+  height: c.height,
+  offsetWidth: c.offsetWidth,
+  offsetHeight: c.offsetHeight,
+  rect: c.getBoundingClientRect(),
+  zIndex: getComputedStyle(c).zIndex,
+  position: getComputedStyle(c).position,
+  parent: c.parentElement?.className,
+}))
+```
+
+```js
+// Step 2: Check if a Lottie animation object is attached to the canvas
+// lottie-web attaches the animation instance to the container, not the canvas
+Array.from(document.querySelectorAll('[class*="lottie"], [id*="lottie"], [data-lottie]')).map(el => ({
+  tag: el.tagName,
+  className: el.className,
+  hasCanvas: !!el.querySelector('canvas'),
+  hasSvg: !!el.querySelector('svg'),
+  childCount: el.children.length,
+}))
+```
+
+```js
+// Step 3: Detect renderer type from lottie instance (if globally exposed)
+// lottie-web populates window.lottie or the animation manager
+Object.keys(window).filter(k => k.toLowerCase().includes('lottie'))
+// Then inspect: window.__lottieInstances or the private animation list
+```
+
+```js
+// Step 4: Determine canvas role by checking what draws into it
+const canvas = document.querySelector('canvas')
+const ctx = canvas.getContext('2d') || canvas.getContext('webgl') || canvas.getContext('webgl2')
+console.log('renderer type:', ctx?.constructor?.name)
+// CanvasRenderingContext2D  → 2D lottie renderer or custom 2D canvas
+// WebGLRenderingContext     → WebGL scene or lottie canvas renderer
+// WebGL2RenderingContext    → WebGL2 scene
+```
+
+#### Bundle grep
+
+```bash
+# Detect lottie canvas renderer instantiation
+grep -o 'renderer.*canvas\|canvas.*renderer\|"canvas"\s*,\s*{' dist/_next/static/chunks/*.js | head -20
+
+# lottie-web canvas renderer identifier
+grep -o 'CanvasRenderer\|canvasRenderer\|LottieCanvas' dist/_next/static/chunks/*.js | head -20
+
+# Check for offscreen canvas or pattern usage (true overlays)
+grep -o 'createPattern\|OffscreenCanvas\|patternQuality' dist/_next/static/chunks/*.js | head -20
+
+# Distinguish: full-scene render loop vs. pattern stamp
+grep -o 'fillRect\|drawImage\|clearRect' dist/_next/static/chunks/*.js | wc -l
+# High count (>50) → active draw loop (full renderer)
+# Low count (<10) → pattern stamp or one-shot texture
+```
+
+#### Verification
+
+```js
+// Paint a colored rectangle over the canvas to confirm visual role
+const c = document.querySelector('canvas')
+const ctx = c.getContext('2d')
+ctx.fillStyle = 'rgba(255,0,0,0.5)'
+ctx.fillRect(0, 0, c.width, c.height)
+// If the red overlay covers a Lottie character → it IS the full renderer
+// If nothing visible changes → canvas is composited below something opaque
+```
+
+#### Common traps
+
+- **Size trap:** A canvas that is `100vw × 100vh` is not automatically the background. Check `z-index` and `position`. It may be mounted inside a clipping container that makes it appear small.
+- **SVG fallback trap:** lottie-web uses canvas renderer only when explicitly set (`renderer: 'canvas'`). Default is SVG. If you see `<svg>` inside the Lottie container, the canvas nearby is a separate element.
+- **Pattern overlay tell:** True pattern overlays use `ctx.createPattern()` once during setup and call `ctx.fillRect()` exactly once per frame. Full-scene renderers call `clearRect` + many draw calls per frame.
+
+---
+
+### 2. Disc / Carousel Structure Detection
+
+**The failure mode:** A rotating carousel is implemented as a disc where N children are positioned at equal angular intervals around a center point with `transform-origin: center bottom`. The LLM assumes a standard horizontal slider (translate X) and spends multiple attempts before discovering the radial geometry.
+
+#### DOM inspection
+
+```js
+// Step 1: Find the carousel container and inspect children
+const container = document.querySelector('[class*="carousel"], [class*="disc"], [class*="wheel"], [class*="rotate"]')
+if (container) {
+  const children = Array.from(container.children)
+  children.map((el, i) => ({
+    index: i,
+    transform: getComputedStyle(el).transform,
+    transformOrigin: getComputedStyle(el).transformOrigin,
+    className: el.className,
+  }))
+}
+```
+
+```js
+// Step 2: Parse the rotation matrix to extract the angle of each card
+function getRotationDeg(el) {
+  const t = getComputedStyle(el).transform
+  if (t === 'none') return 0
+  const m = new DOMMatrix(t)
+  return Math.round(Math.atan2(m.b, m.a) * (180 / Math.PI))
+}
+Array.from(document.querySelectorAll('[class*="card"], [class*="item"], [class*="slide"]'))
+  .map((el, i) => ({ i, deg: getRotationDeg(el), origin: getComputedStyle(el).transformOrigin }))
+```
+
+```js
+// Step 3: Confirm disc geometry — angles should be evenly spaced
+// e.g. 4 children → 0°, 90°, 180°, 270°
+// e.g. 5 children → 0°, 72°, 144°, 216°, 288°
+const angles = /* result from step 2 */.map(x => x.deg).sort((a,b) => a-b)
+const deltas = angles.slice(1).map((a, i) => a - angles[i])
+console.log('angle deltas (should all be equal):', deltas)
+```
+
+```js
+// Step 4: Measure transform-origin to confirm radial pivot point
+// "center bottom" → disc card pivots at the center-bottom of the card
+// "center center" → standard rotation around element center
+const card = document.querySelector('[class*="card"], [class*="item"]')
+console.log('transform-origin:', getComputedStyle(card).transformOrigin)
+```
+
+#### Bundle grep
+
+```bash
+# Detect angular rotation step calculation (360 / count)
+grep -oE '360\s*/\s*[a-zA-Z_$][a-zA-Z0-9_$]*|[a-zA-Z_$][a-zA-Z0-9_$]*\s*/\s*360' dist/_next/static/chunks/*.js | head -20
+
+# Detect transform-origin: center bottom in JS or CSS
+grep -o 'center bottom\|transformOrigin.*bottom\|transform-origin.*bottom' dist/_next/static/chunks/*.js | head -10
+
+# Detect explicit degree/radian stepping
+grep -oE '\*\s*\(Math\.PI\s*/\s*180\)|rotateZ\([^)]+\)|rotate3d' dist/_next/static/chunks/*.js | head -20
+
+# Detect disc wrapper that rotates as a unit
+grep -oE '"rotate\([^"]+\)"|rotate\(\s*-?\d+deg' dist/_next/static/chunks/*.js | head -20
+```
+
+#### Verification
+
+```js
+// Manually rotate the disc container and observe all children move together
+const disc = document.querySelector('[class*="disc"], [class*="wheel"]')
+disc.style.transform = 'rotate(45deg)'
+// If all items move together → disc geometry confirmed
+// If items scroll horizontally → it is a standard slider, not a disc
+```
+
+```js
+// Freeze and measure the active/inactive card positions
+const cards = Array.from(document.querySelectorAll('[class*="card"]'))
+cards.forEach((c, i) => {
+  const r = c.getBoundingClientRect()
+  console.log(i, r.top.toFixed(0), r.left.toFixed(0), r.width.toFixed(0), r.height.toFixed(0))
+})
+// Active card should be near viewport center bottom
+// Inactive cards should be above and to the sides, following radial arc
+```
+
+#### Common traps
+
+- **Translate trap:** If you see `translateX` or `translateY` in the transform string, do not immediately conclude it is a slider. Disc cards often combine `rotate()` on the parent disc with a `translateY` offset on the card to set the radius length.
+- **CSS variable trap:** The rotation angle is often a CSS custom property (`--rotation: 90deg`) applied to each child. Grep for `--rotation\|--angle\|--deg` in both the bundle and the element's computed style.
+- **Active-card-at-bottom convention:** Disc carousels almost always have the active card at the bottom (6 o'clock) with the disc rotating clockwise or counter-clockwise to bring the next card down. If you see the active card at the top, re-examine the transform-origin.
+
+---
+
+### 3. Lottie Asset Mapping
+
+**The failure mode:** Multiple Lottie JSON files are loaded for a single visual scene. Each file renders a partial layer (e.g., `kid_flower_pants.json` = lower body, `kid_flower_nopants.json` = same character with different clothing). The LLM maps only one file to the container and renders a headless or legless character.
+
+#### DOM inspection
+
+```js
+// Step 1: Find all Lottie mount containers
+// lottie-web appends <svg> or <canvas> as a direct child of the container
+Array.from(document.querySelectorAll('*')).filter(el => {
+  const first = el.firstElementChild
+  return first && (first.tagName === 'svg' || first.tagName === 'canvas') &&
+    (el.className?.includes?.('lottie') || el.dataset?.lottie || el.id?.includes('lottie') ||
+     (first.tagName === 'svg' && first.querySelector('[class*="lottie"]')))
+}).map(el => ({
+  id: el.id,
+  className: el.className,
+  rect: el.getBoundingClientRect(),
+  childTag: el.firstElementChild?.tagName,
+}))
+```
+
+```js
+// Step 2: Capture all XHR/fetch requests for .json files (run before page load)
+// Inject this before navigation or use the network log
+const origFetch = window.fetch
+window._lottieRequests = []
+window.fetch = function(...args) {
+  if (typeof args[0] === 'string' && args[0].includes('.json')) {
+    window._lottieRequests.push(args[0])
+  }
+  return origFetch.apply(this, args)
+}
+// After page settles:
+console.log(window._lottieRequests)
+```
+
+```js
+// Step 3: Cross-reference network requests with DOM containers
+// Match each JSON URL to the container that loaded it via position/z-index
+window._lottieRequests.map(url => {
+  const filename = url.split('/').pop()
+  return { filename, url }
+})
+```
+
+#### Bundle grep
+
+```bash
+# Find all Lottie JSON file references
+grep -oE '"[^"]*\.json"' dist/_next/static/chunks/*.js | grep -v node_modules | sort -u
+
+# Find lottie loadAnimation calls and what path they reference
+grep -oE 'loadAnimation\s*\(\s*\{[^}]{1,300}\}' dist/_next/static/chunks/*.js | head -20
+
+# Detect multi-layer composition — when two animations share a container
+grep -oE 'animationData\s*:\s*[a-zA-Z_$][a-zA-Z0-9_$]*' dist/_next/static/chunks/*.js | head -20
+
+# Find segment/layer switching (same container, different JSON by state)
+grep -oE 'goToAndPlay\|goToAndStop\|playSegments\|setDirection' dist/_next/static/chunks/*.js | head -20
+```
+
+```bash
+# Download and inspect each Lottie JSON to understand what it renders
+# Check the 'nm' (name) field in each layer to understand composition
+curl -s https://target.com/animations/kid_flower_pants.json | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print('dimensions:', d.get('w'), 'x', d.get('h'))
+print('duration frames:', d.get('op'))
+print('layers:', [(l.get('nm'), l.get('ty')) for l in d.get('layers',[])])
+"
+```
+
+#### Verification
+
+```js
+// Temporarily hide each Lottie container to confirm visual contribution
+const containers = document.querySelectorAll('[class*="lottie"]')
+containers[0].style.visibility = 'hidden'
+// Take screenshot — identify which visual element disappeared
+// Repeat for each container to build the complete layer map
+```
+
+#### Common traps
+
+- **Same-position trap:** Two Lottie containers stacked at identical `top/left` via `position: absolute` look like one element. Always check `z-index` and count containers explicitly.
+- **Variant-not-asset trap:** Sometimes it is the same JSON file loaded with different `initialSegment` or `segments` parameter. The character appears different not because of a different file but because a different frame range plays.
+- **Pants vs. no-pants tell:** When character JSON files share a naming pattern (`_pants`, `_nopants`, `_hat`, `_nohat`), they are clothing/accessory variants of the same character that must ALL be loaded to compose the full scene. Enumerate every file matching the pattern before implementing.
+
+---
+
+### 4. State Machine Extraction
+
+**The failure mode:** A carousel or splash animation has discrete program variants (e.g., card states 0–3) or a multi-phase timeline. These are encoded as integer constants or lookup tables in the minified bundle. The LLM implements a simplified two-state boolean toggle and misses intermediate states.
+
+#### DOM inspection
+
+```js
+// Step 1: Observe state transitions by watching className changes
+const observer = new MutationObserver(mutations => {
+  mutations.forEach(m => {
+    if (m.type === 'attributes') {
+      console.log(m.target.className, m.attributeName, m.oldValue, '->', m.target.getAttribute(m.attributeName))
+    }
+  })
+})
+document.querySelectorAll('[class*="card"], [class*="slide"], [class*="item"]').forEach(el => {
+  observer.observe(el, { attributes: true, attributeOldValue: true })
+})
+// Interact with the carousel — watch the log to enumerate all class states
+```
+
+```js
+// Step 2: Enumerate the current data-* attributes across all interactive elements
+Array.from(document.querySelectorAll('*')).filter(el => el.dataset && Object.keys(el.dataset).length)
+  .map(el => ({ tag: el.tagName, id: el.id, className: el.className, dataset: el.dataset }))
+  .slice(0, 30)
+```
+
+```js
+// Step 3: Watch for React/Vue state changes (if devtools available)
+// For React fiber inspection:
+function getFiberProps(el) {
+  const key = Object.keys(el).find(k => k.startsWith('__reactFiber'))
+  if (!key) return null
+  let fiber = el[key]
+  while (fiber) {
+    if (fiber.memoizedState) return fiber.memoizedState
+    fiber = fiber.return
+  }
+}
+getFiberProps(document.querySelector('[class*="carousel"]'))
+```
+
+#### Bundle grep
+
+```bash
+# Find integer state constants (carousel program variants)
+# Look for switch/case blocks with sequential integers
+grep -oE 'case\s+[0-9]+\s*:' dist/_next/static/chunks/*.js | sort | uniq -c | sort -rn | head -20
+
+# Find state transition tables (object with numeric keys mapping to config)
+grep -oE '\{0:\s*[^,}]+,\s*1:\s*[^,}]+,\s*2:' dist/_next/static/chunks/*.js | head -10
+
+# Find splash/timeline phase arrays
+grep -oE '\[\s*\{[^]]{20,200}\},\s*\{[^]]{20,200}\}' dist/_next/static/chunks/*.js | head -10
+
+# Find scroll-driven card flip parameters (threshold values, easing)
+grep -oE 'scrollY\s*[><=]+\s*[0-9]+\|threshold\s*:\s*[0-9.]+' dist/_next/static/chunks/*.js | head -20
+
+# Find named state strings (active, inactive, prev, next, entering, leaving)
+grep -oE '"active"\s*:\s*"[^"]+"\|"state"\s*:\s*"[^"]+"' dist/_next/static/chunks/*.js | head -20
+```
+
+```bash
+# Extract the full switch/case block for a state machine (get surrounding context)
+grep -oE '.{0,200}case 0:.{0,500}' dist/_next/static/chunks/*.js | head -5
+```
+
+#### Verification
+
+```js
+// Drive through each state manually by triggering the carousel controls
+// Capture className snapshot at each step
+const snapshots = []
+document.querySelector('[class*="next"], button[aria-label*="next"]')?.click()
+snapshots.push(
+  Array.from(document.querySelectorAll('[class*="card"]')).map(el => el.className)
+)
+// Repeat for each state — compare snapshots to enumerate the full state machine
+```
+
+#### Common traps
+
+- **Boolean collapse trap:** If you see `isActive: true/false` in the React fiber, do not assume a two-state machine. The boolean often gates entry into a sub-state machine with 4+ variants controlled by a separate index.
+- **CSS-class-as-state trap:** Classes like `is-entering`, `is-active`, `is-leaving`, `is-hidden` encode a 4-phase transition, not just on/off. All four must be styled or the animation will skip frames.
+- **Minified constant trap:** State values like `0, 1, 2, 3` in the bundle are often minified from named enums (`IDLE = 0, ENTERING = 1, ACTIVE = 2, LEAVING = 3`). Grep for the number patterns, then read 200 characters of surrounding context to reconstruct the intent.
+
+---
+
+### 5. Auto-Timer Extraction
+
+**The failure mode:** A carousel auto-advances on a timer. The LLM either misses the timer entirely (no auto-advance in clone), uses the wrong interval, or applies the timer unconditionally when the original is splash-gated or scroll-gated.
+
+#### DOM inspection
+
+```js
+// Step 1: Intercept and log all timers set during page load
+const intervals = [], timeouts = [], rafs = []
+const origSetInterval = window.setInterval
+const origSetTimeout = window.setTimeout
+const origRAF = window.requestAnimationFrame
+
+window.setInterval = function(fn, delay, ...args) {
+  const id = origSetInterval(fn, delay, ...args)
+  intervals.push({ id, delay, fnStr: fn.toString().slice(0, 120) })
+  console.log('setInterval', delay, fn.toString().slice(0, 80))
+  return id
+}
+window.setTimeout = function(fn, delay, ...args) {
+  const id = origSetTimeout(fn, delay, ...args)
+  timeouts.push({ id, delay, fnStr: fn.toString().slice(0, 120) })
+  return id
+}
+// Inject BEFORE page navigation, then inspect intervals/timeouts after settle
+```
+
+```js
+// Step 2: After page settles, check active intervals
+// (Only works if the intercept above was active during load)
+console.table(intervals)
+console.log('total active intervals:', intervals.length)
+```
+
+```js
+// Step 3: Detect rAF-based auto-advance (used by GSAP, lottie)
+// GSAP registers itself on the ticker — check for GSAP ticker presence
+console.log('GSAP ticker:', typeof gsap !== 'undefined' ? gsap.ticker.fps() : 'not found')
+// For custom rAF loops, pause execution and check active animations
+document.querySelectorAll('[class*="carousel"]').forEach(el => {
+  console.log(el.className, 'data:', el.dataset)
+})
+```
+
+```js
+// Step 4: Determine gate conditions — is the timer splash-gated?
+// Check if the timer start is deferred behind a splash-complete event
+window._timerGates = []
+const origDispatch = EventTarget.prototype.dispatchEvent
+EventTarget.prototype.dispatchEvent = function(e) {
+  if (['splashComplete', 'introEnd', 'animationComplete'].some(n => e.type.includes(n))) {
+    window._timerGates.push({ type: e.type, time: Date.now() })
+    console.log('gate event fired:', e.type)
+  }
+  return origDispatch.call(this, e)
+}
+```
+
+#### Bundle grep
+
+```bash
+# Find setInterval calls with their delay values
+grep -oE 'setInterval\s*\([^,)]+,\s*[0-9]+\)' dist/_next/static/chunks/*.js | head -20
+
+# Find requestAnimationFrame usage patterns (rAF-based carousels)
+grep -oE 'requestAnimationFrame\s*\([a-zA-Z_$][a-zA-Z0-9_$]*\)' dist/_next/static/chunks/*.js | head -20
+
+# Find GSAP-based auto-advance (GSAP timeline repeat)
+grep -oE 'repeat\s*:\s*-1\|yoyo\s*:\s*true\|repeatDelay\s*:\s*[0-9.]+' dist/_next/static/chunks/*.js | head -10
+
+# Find splash-gate pattern — timer started inside an event callback
+grep -oE 'addEventListener\s*\(\s*"[a-zA-Z]+"\s*,[^)]{0,200}setInterval' dist/_next/static/chunks/*.js | head -10
+
+# Find scroll-gate pattern — timer started when scroll position passes threshold
+grep -oE 'scrollY\s*[><=]+\s*[0-9]+[^;]{0,100}setInterval\|IntersectionObserver[^;]{0,200}setInterval' dist/_next/static/chunks/*.js | head -10
+
+# Find the auto-advance interval value specifically
+grep -oE 'setInterval[^;]{0,50}[0-9]{3,5}' dist/_next/static/chunks/*.js | head -20
+```
+
+```bash
+# For GSAP: find the timeline duration that drives rotation
+grep -oE 'duration\s*:\s*[0-9.]+[^}]{0,100}to\|gsap\.to[^;]{0,200}duration' dist/_next/static/chunks/*.js | head -10
+```
+
+#### Verification
+
+```js
+// Manually verify the auto-advance interval by timing it with a stopwatch
+// Mark a card's position, wait for it to advance, measure elapsed time
+let startTime, startIndex
+const cards = document.querySelectorAll('[class*="card"]')
+const observer = new MutationObserver(() => {
+  if (!startTime) { startTime = Date.now(); return }
+  console.log('advance interval:', Date.now() - startTime, 'ms')
+  startTime = Date.now()
+})
+cards.forEach(c => observer.observe(c, { attributes: true, attributeFilter: ['class'] }))
+```
+
+```js
+// Verify gate condition: does the timer start before or after splash?
+// Check if carousel advances while splash overlay is still visible
+const splash = document.querySelector('[class*="splash"], [class*="intro"]')
+console.log('splash visible:', splash ? getComputedStyle(splash).display !== 'none' : 'no splash element')
+// Then verify carousel: check if active card changes while splash is visible
+```
+
+#### Common traps
+
+- **GSAP vs. setInterval trap:** GSAP auto-advance carousels use `gsap.to()` with `repeat: -1` and `repeatDelay`, not `setInterval`. The interval-sniffing approach above will return zero results. grep for `repeat.*-1` or `repeatDelay` instead.
+- **Splash-gate miss:** The most common error. A splash animation plays for 2–4 seconds on first load. The carousel timer starts only after splash completes. Without the gate, the clone auto-advances immediately, which is wrong. Always check whether there is a splash/intro component and trace the event that starts the timer.
+- **Scroll-gate miss:** Some carousels start auto-advancing only after the user scrolls the section into view. The trigger is typically an `IntersectionObserver` callback or a scroll position threshold. Grep for `IntersectionObserver` near `setInterval` or `play()`.
+- **Page-visibility pause:** Production implementations often pause the timer when `document.visibilityState === 'hidden'`. If your clone does not, the timer accumulates lag during tab switches and jumps when the user returns. Always add `document.addEventListener('visibilitychange', ...)` alongside the timer.

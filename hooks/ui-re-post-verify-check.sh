@@ -32,15 +32,25 @@ done
 DIFF_COUNT=$(find "$REF_DIR/static/diff" -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
 HEALTH_FILE="$REF_DIR/layout-health.json"
 
-if [ "$DIFF_COUNT" -lt 3 ] && [ ! -f "$HEALTH_FILE" ]; then
-  # Find auto-verify.sh dynamically
-  VERIFY_SCRIPT="$(find ~/.claude/skills -name 'auto-verify.sh' 2>/dev/null | head -1)"
-  [ -z "$VERIFY_SCRIPT" ] && VERIFY_SCRIPT="$(find ~/Documents/ui-skills -name 'auto-verify.sh' 2>/dev/null | head -1)"
+# Only warn on Bash commands that look like completion signals
+TOOL_INPUT="${TOOL_INPUT:-}"
+IS_COMPLETION=false
+if echo "$TOOL_INPUT" | grep -qiE 'commit|done|complete|finish|merge|push'; then
+  IS_COMPLETION=true
+fi
+
+if [ "$IS_COMPLETION" = true ] && [ "$DIFF_COUNT" -lt 3 ] && [ ! -f "$HEALTH_FILE" ]; then
+  VERIFY_SCRIPT=""
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/scripts/auto-verify.sh" ]; then
+    VERIFY_SCRIPT="$CLAUDE_PLUGIN_ROOT/scripts/auto-verify.sh"
+  else
+    VERIFY_SCRIPT="$(find "$HOME/.claude/skills" -maxdepth 3 -name 'auto-verify.sh' 2>/dev/null | head -1)"
+  fi
   [ -z "$VERIFY_SCRIPT" ] && VERIFY_SCRIPT="auto-verify.sh"
 
   echo ""
-  echo "⚠️  UI Reverse Engineering: Verification has NOT been run yet."
-  echo "    Before declaring any section 'done', run:"
+  echo "⚠️  UI Reverse Engineering: Verification has NOT been run."
+  echo "    Before declaring done, run:"
   echo "    bash \"$VERIFY_SCRIPT\" <session> <orig-url> <impl-url> $REF_DIR"
   echo ""
 fi
