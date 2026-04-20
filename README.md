@@ -29,38 +29,74 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 | **`ui-capture`** | Baseline screenshots + transition capture + comparison page. Auto-detects custom scroll (Lenis, Locomotive). Classifies effects by trigger type. |
 | **`visual-debug`** | All visual comparison in one skill. Quick mode (AE/SSIM batch) and full verification (Phase A→E with self-healing loop). |
 
-Each SKILL.md contains only the pipeline overview and core rules. Detailed procedures live in focused sub-docs loaded only when that step runs — for example, `splash-extraction.md` is read only when splash/intro motion is detected, `css-first-generation.md` only when generating components, `generation-pitfalls.md` only when debugging a specific failure.
-
 ## Requirements
 
 ```bash
-brew install agent-browser   # macOS — or: npm i -g agent-browser
-brew install imagemagick     # AE pixel comparison
-brew install dssim           # structural visual similarity (DSSIM)
-brew install ffmpeg          # video capture + frame extraction
+npm i -g agent-browser       # browser automation for AI agents
+brew install imagemagick     # AE pixel comparison (apt: imagemagick, choco: imagemagick)
+brew install dssim           # structural visual similarity (cargo install dssim)
+brew install ffmpeg          # video capture + frame extraction (apt: ffmpeg, choco: ffmpeg)
 
-agent-browser --version      # verify
-dssim --help                 # verify
+# verify
+agent-browser --version
+magick --version             # ImageMagick 7 (or: convert --version for v6)
+dssim --help
+ffmpeg -version
 ```
 
 ## Installation
 
 ```bash
 # npx skills (recommended)
-npx skills install dididy/ui-skills
+npx skills add dididy/ui-skills
 
-# Claude Code plugin marketplace
-/plugin marketplace add dididy/ui-skills
-/plugin install ui-skills@dididy
-
-# Clone directly (CLAUDE_SKILLS_DIR defaults to ~/.claude/skills)
+# Or clone directly
 mkdir -p ~/.claude/skills
 git clone https://github.com/dididy/ui-skills.git ~/.claude/skills/ui-skills
 ```
 
-### Optional: pre-generate hook
+### Optional: pipeline hooks
 
-`hooks/ui-re-pre-generate-check.sh` runs `validate-gate.sh pre-generate` before any component file is written. To enable it, add a `PreToolUse` entry for `Write`/`Edit` in your Claude Code `settings.json` pointing at the script. Skips automatically when no `tmp/ref/` directory exists, so it's safe to install globally.
+Three hooks enforce the extraction-before-generation discipline. They skip automatically when no `tmp/ref/` directory or active session marker exists, so they won't interfere with non-ui-re projects.
+
+| Hook | Event | Purpose |
+|------|-------|---------|
+| `hooks/ui-re-start-session.sh` | Pipeline start | Creates `tmp/.ui-re-active` marker so the pre-generate hook can block writes before `tmp/ref/` exists |
+| `hooks/ui-re-pre-generate-check.sh` | `PreToolUse` (Write/Edit) | Blocks component file writes until extraction pipeline completes. Only enforces on `src/components/`, `src/app/*/page.*`, and `src/projects/*/components/` |
+| `hooks/ui-re-post-verify-check.sh` | `PostToolUse` (Bash) | Warns on completion signals (`commit`, `done`, etc.) if verification hasn't run, has failing positions, or is missing multi-state coverage |
+
+Add to `.claude/settings.json` in your project root. Replace `<PLUGIN_PATH>` with the plugin root directory (e.g. `~/.claude/skills/ui-skills` for git clone, or the parent of the skill paths shown by `npx skills ls`):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash <PLUGIN_PATH>/hooks/ui-re-pre-generate-check.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash <PLUGIN_PATH>/hooks/ui-re-post-verify-check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Session marker (optional):** Before starting the pipeline, run `bash <PLUGIN_PATH>/hooks/ui-re-start-session.sh tmp/ref/<name>` to create a `tmp/.ui-re-active` marker. This lets the pre-generate hook block component writes even before any extraction files exist in `tmp/ref/`. Without the marker, the hook only activates once `tmp/ref/` has pipeline artifacts.
 
 ---
 
@@ -109,20 +145,25 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 9.  Interaction verification   — test each hover/click/scroll/timer on localhost
 ```
 
-**Automation scripts:**
+**Automation scripts** (`scripts/`):
 
 | Script | Purpose |
 |---|---|
 | `run-pipeline.sh` | State machine orchestrator — detects current phase, prints next action |
 | `validate-gate.sh` | Enforces gates (bundle, spec, pre-generate, post-implement). Exits 1 on failure |
+| `auto-verify.sh` | Single-command verification: D0 layout health → Phase C scroll AE → post-implement gate |
 | `extract-assets.sh` | Downloads video backgrounds, Typekit fonts, CDN fonts. Extracts video poster frames |
 | `extract-section-html.sh` | Per-section HTML + computed CSS + media element extraction |
 | `compare-sections.sh` | 3-layer comparison: section SSIM + element RMSE + getComputedStyle diff |
 | `download-chunks.sh` | Downloads ALL loaded chunks, detects animation libs, produces skeleton bundle-map.json |
 | `gsap-to-css.sh` | GSAP easing → CSS cubic-bezier (lookup, full table, or bundle scan) |
 | `extract-dynamic-styles.sh` | Classifies GSAP inline styles: layout (keep) vs animation (remove) |
-| `auto-verify.sh` | Single-command verification: D0 layout health → Phase C scroll AE → post-implement gate |
 | `freeze-animations.sh` | Freeze CSS animations, JS timers, canvas, Lottie before screenshot capture |
+
+**Visual comparison scripts** (`skills/visual-debug/scripts/`):
+
+| Script | Purpose |
+|---|---|
 | `layout-health-check.sh` | D0: section height/total height comparison before pixel-level diff |
 | `layout-diff.sh` | Structural section bounding-box comparison between two URLs |
 | `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |

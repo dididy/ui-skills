@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.4] - 2026-04-20
+
+Hook hardening: result-aware verification, multi-state extraction checks, and session marker for early pipeline enforcement.
+
+### Added
+- **`hooks/ui-re-start-session.sh`** — Creates `tmp/.ui-re-active` marker file at pipeline start. Pre-generate hook reads this marker to block component writes before extraction completes, even when no `tmp/ref/` directory exists yet.
+- **`hooks/ui-re-post-verify-check.sh`** — **Check 2: PASS/FAIL result inspection.** Reads `batch-compare-result.txt` and counts `❌`/`✅` markers. Previously only checked whether verification had been *run*; now also checks whether it *passed*. Warns with fail/pass counts and points to diff images.
+- **`hooks/ui-re-post-verify-check.sh`** — **Check 3: Multi-state verification.** When `interactions-detected.json` contains click interactions, checks for alternate-state captures (search, active, result, click). Warns if state-changing interactions exist but no alternate view was verified.
+- **`hooks/ui-re-pre-generate-check.sh`** — **Multi-state extraction check.** When click interactions exist, checks for per-state extraction files (`styles-*.json`, `structure-*.json`) or `transition-spec.json` state documentation. Advisory warning (non-blocking) to avoid breaking existing workflows.
+
+### Changed
+- **README.md** — Installation: `npx skills install` → `npx skills add` (correct CLI command). Removed non-existent `/plugin marketplace add` and `/plugin install` methods.
+- **README.md** — Requirements: `agent-browser` changed from `brew install` to `npm i -g` for cross-platform support. Added `magick --version` and `ffmpeg -version` to verification commands.
+- **README.md** — Hooks section rewritten: added `settings.json` config example with `<PLUGIN_PATH>` placeholder, `start-session.sh` manual invocation, and skip-condition explanation. Replaced single-hook paragraph with 3-hook table.
+- **README.md** — Automation scripts table split into `scripts/` and `skills/visual-debug/scripts/` to reflect actual file locations.
+- **README.md** — Removed duplicate "progressive-disclosure sub-docs" paragraph (already in Design principles).
+- **`hooks/ui-re-pre-generate-check.sh`** — **Component-only enforcement.** Now checks `file_path` from tool input and only enforces pipeline on `*/src/components/*`, `*/src/app/*/page.*`, and `*/src/projects/*/components/*`. Non-component files pass freely.
+- **`hooks/ui-re-pre-generate-check.sh`** — **Active session marker (Mode 1).** Reads `tmp/.ui-re-active` to detect pipeline-in-progress state before any `tmp/ref/` directory exists. Denies component writes with actionable error message.
+- **`hooks/ui-re-pre-generate-check.sh`** — Tool input now read from `$1` or stdin fallback (`${1:-$(cat 2>/dev/null)}`), fixing cases where the argument wasn't passed.
+- **`hooks/ui-re-pre-generate-check.sh`** — Deny message now includes missing artifact count for quicker triage.
+- **`hooks/ui-re-post-verify-check.sh`** — Completion-signal pattern expanded: now also matches `"looks good"` and `"all pass"`.
+- **`hooks/ui-re-post-verify-check.sh`** — Early exit when command is not a completion signal, avoiding unnecessary file checks on every Bash invocation.
+
 ## [0.2.3] - 2026-04-19
 
 GSAP-baked style handling, state coupling verification, bundle analysis patterns, and pipeline/script hardening.
