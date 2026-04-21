@@ -1,7 +1,7 @@
 {
   "name": "ui-skills",
-  "version": "0.2.4",
-  "description": "Clone a live website into React + Tailwind. CSS-First generation (original stylesheets + class names), zero-vision-token AE/SSIM verification, real JS bundle extraction (GSAP/Framer Motion/Lenis), GSAP-baked style handling, state coupling verification, bundle analysis patterns (Canvas renderer, disc/carousel, Lottie asset mapping, state machine, auto-timer), and result-aware pipeline hooks with multi-state extraction checks. Automated pipeline with anti-rationalization gates.",
+  "version": "0.2.5",
+  "description": "Clone a live website into React + Tailwind. CSS-First generation (original stylesheets + class names), zero-vision-token AE/SSIM verification, real JS bundle extraction (GSAP/Framer Motion/Lenis), GSAP-baked style handling, state coupling verification, bundle analysis patterns (Canvas renderer, disc/carousel, Lottie asset mapping, state machine, auto-timer), result-aware pipeline hooks with multi-state extraction checks, and token-optimized SKILL.md (~6.8K tokens total). Automated pipeline with anti-rationalization gates.",
   "license": "Apache-2.0",
   "author": {
     "name": "YONGJAE LEE"

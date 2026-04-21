@@ -335,6 +335,88 @@ agent-browser screenshot tmp/ref/<component>/transitions/ref/<name>-active.png
 
 **Gate:** `validate-gate.sh pre-generate` checks that `transitions/ref/` has idle+active pairs for each hover/click interaction. Missing captures block code generation.
 
+### Extract click-transition structure (MANDATORY for content-swap transitions)
+
+When clicking an element triggers a **content swap** (e.g., image grid → search results, tab content replacement, page-level view change), you MUST extract the transition's DOM structure — not just the visual result.
+
+**Why:** A transition that *looks like* "fade to gray, then new content appears" can be implemented in fundamentally different ways:
+
+| Pattern | DOM structure | Visual result |
+|---------|--------------|---------------|
+| **Single pane, class toggle** | 1 pane; `old_pane` class added then removed | Fadegray on same element, images swap in-place |
+| **Old on top, fadeout** | 2 panes; old pane z-index higher, fades out | Old content fades revealing new underneath |
+| **New on top, fadein** | 2 panes; new pane z-index higher, images load on top | New images cover old pane as they load; old fades underneath |
+
+These look similar in screenshots but require completely different implementations. Getting this wrong causes: double-layer bleed-through, fadeout applied to new content, white flash between states, or invisible fadegray.
+
+**Extraction script — run at 100ms after clicking a content-swap element:**
+
+```bash
+agent-browser eval "
+(() => {
+  // Set up observer BEFORE clicking
+  window.__transStructure = null;
+  const containerSel = '<looking-glass-or-main-container-selector>';
+  const container = document.querySelector(containerSel);
+  if (!container) return 'container not found';
+
+  // Click the element
+  document.querySelector('<click-target-selector>').click();
+
+  // Capture DOM structure at 100ms (before any cleanup)
+  setTimeout(() => {
+    const panes = container.querySelectorAll('[class*=pane]');
+    window.__transStructure = {
+      paneCount: panes.length,
+      panes: Array.from(panes).map((p, i) => {
+        const cs = getComputedStyle(p);
+        return {
+          domIndex: i,
+          classes: p.className,
+          zIndex: cs.zIndex,
+          position: cs.position,
+          opacity: cs.opacity,
+          background: cs.backgroundColor,
+          animationName: cs.animationName,
+          animationDuration: cs.animationDuration,
+          animationDelay: cs.animationDelay,
+          filter: cs.filter.substring(0, 60),
+          childImageCount: p.querySelectorAll('[class*=image], img').length,
+        };
+      }),
+    };
+  }, 100);
+  return 'click + observe';
+})()
+"
+
+agent-browser wait 500
+agent-browser eval "(() => JSON.stringify(window.__transStructure, null, 2))()"
+```
+
+**Save to** `tmp/ref/<component>/transition-structure.json`
+
+**Interpretation rules:**
+
+| Observation | Meaning | Implementation |
+|-------------|---------|----------------|
+| `paneCount: 1` | Single pane with class toggle | Toggle `old_pane` class on/off; swap images when class removed |
+| `paneCount: 2`, old has higher z-index | Old on top pattern | Old pane fades out revealing new pane underneath |
+| `paneCount: 2`, new has higher z-index (or later DOM order) | **New on top pattern** | New pane sits above with transparent bg; images load with fadein covering old pane; old pane fades underneath |
+| `paneCount: 2`, both z-index auto/same | DOM order determines stacking | Later DOM element is on top |
+| Old pane has `background: transparent/rgba(0,0,0,0)` | Old pane content bleeds through new | New pane must be on top OR old pane needs `background: #fff` |
+| New pane has `background: transparent` + images load async | Images cover old pane progressively | Each image needs `se_image_fadein` animation |
+
+**Critical properties to capture:**
+- **`paneCount`**: 1 vs 2 — determines entire architecture
+- **`zIndex`** of each pane — determines which is visually on top
+- **`background`** — transparent means content below shows through
+- **`animationName`** — which pane gets fadegray/fadeout
+- **`childImageCount`** — 0 in new pane means images load async (fadein pattern)
+- **DOM order** — with equal z-index, later sibling renders on top
+
+**Gate:** If clicking an element causes a content swap (grid rearrangement, view mode change, search results), `transition-structure.json` MUST exist before implementing the transition. Without it, you will guess the stacking order — and guesses are always wrong.
+
 ### Post-detection sanitization check
 
 After saving `interactions-detected.json`, scan for suspicious content:

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.5] - 2026-04-21
+
+SKILL.md token optimization — 43% reduction (11,836 → 6,780 tokens) across all 4 skills with zero functional regression.
+
+### Changed
+- **`ui-reverse-engineering/SKILL.md`** — 259 → 187 lines (-28%). "No Judgment" table: 13 → 8 rows (kept highest-impact anti-patterns, dropped rows covered by execution rules or sub-docs). Execution rules restructured from numbered list to 3 categories (extraction/implementation/verification). Security section inlined to 1 sentence. `agent-browser` cheatsheet removed (available in sub-docs). Output schema shortened. Input modes table consolidated.
+- **`transition-reverse-engineering/SKILL.md`** — 174 → 132 lines (-24%). Security section inlined. `agent-browser` cheatsheet removed. Step 0 detail section removed (covered by pipeline table + sub-docs). Troubleshooting rows for `onfinish` callbacks and CSS class rules removed (handled by sub-docs). Ralph worker rules consolidated.
+- **`ui-capture/SKILL.md`** — 200 → 137 lines (-32%). Phase R inline description removed (sub-doc `report-page.md` is authoritative). Phase 1 setup/video instructions compressed. Troubleshooting table reduced to top issues. Phases R/3/4/5 consolidated.
+- **`visual-debug/SKILL.md`** — 166 → 104 lines (-37%). Anti-patterns table removed (replaced by hard rule). Script path resolution shortened. Example section trimmed. Phase E description compressed.
+
+### Preserved (verified by audit)
+- All sub-doc file references and step numbers unchanged
+- All gate names (`bundle`, `spec`, `pre-generate`, `post-implement`) unchanged
+- All artifact file names and directory paths unchanged
+- All script names unchanged
+- `waapi-scrubbing.md` reference restored after initial removal flagged by audit
+- Phase 2C "No video" constraint restored
+- Phase 3 identity constraint (same speeds/wait times/hover durations) restored
+- Phase 5 autonomous retry/escalation protocol (≤3 retries → escalate) restored
+- Rule 12d drag handler constraint restored
+- GSAP Premium alternative mappings (SplitText→splitting, MorphSVG→flubber, etc.) restored inline
+- `splash-extraction.md` trigger condition ("Tier 1 AE shows changes in first 1–3s") restored
+
 ## [0.2.4] - 2026-04-20
 
 Hook hardening: result-aware verification, multi-state extraction checks, and session marker for early pipeline enforcement.

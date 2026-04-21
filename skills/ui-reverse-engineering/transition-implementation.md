@@ -46,6 +46,71 @@ Adjust `scrollStart` based on the original `start` value:
 | `to(el, { scale: 1.1 })` with scrub | `scale(1 + progress * 0.1)` |
 | Background crossfade overlays | Multiple absolute divs, toggle `opacity: 0/1` by active index |
 
+### Click-triggered content transitions (view swap / search results)
+
+When clicking an element swaps the visible content (e.g., image grid → search results), the implementation depends on `transition-structure.json` from interaction detection.
+
+**MANDATORY:** Read `transition-structure.json` before implementing. Never guess the pane architecture.
+
+#### Pattern: New-on-top (most common for image grids)
+
+The new pane sits above the old pane. New images load asynchronously with fadein, progressively covering the old pane. Old pane fades out underneath.
+
+```
+DOM order: old pane (first) → new pane (last, renders on top)
+z-index:   old=1, new=2
+background: new pane = transparent (old pane shows through image gaps)
+```
+
+Implementation:
+1. On click: snapshot current images → `oldImages` state, render old pane with fadegray+fadeout CSS
+2. Clear `currentImages` to `[]` → new pane is empty (transparent bg shows old pane)
+3. Set new layout (column count, viewMode)
+4. Fetch API → set `currentImages` to response
+5. Each new `<img>` gets `se_image_fadein` class → loads with 0.15s fadein
+6. As images load, they cover the old pane from top to bottom
+7. Timer removes old pane after fadeout animation completes (e.g., 4.5s)
+
+CSS:
+```css
+/* Old pane — below, fades out */
+.old_pane {
+  animation: fadegray 0.35s forwards, fadeout 4s 0.35s forwards;
+  z-index: 1;
+}
+
+/* New pane — above, transparent so old shows through gaps */
+.new_pane {
+  z-index: 2;
+  background: transparent;
+}
+
+/* Individual images fade in as they load */
+.image_fadein {
+  animation: fadein 0.15s forwards;
+}
+```
+
+#### Pattern: Old-on-top (old content fades revealing new)
+
+Old pane sits above with `background: #fff`. Fadegray runs on old pane, then fadeout reveals new pane underneath. **Requires `background: #fff`** on old pane — otherwise both panes' images blend through each other.
+
+#### Pattern: Single pane (class toggle)
+
+One pane element. `old_pane` class is added (triggering fadegray CSS), then removed when new images arrive (canceling animation, showing fresh content).
+
+Simplest implementation but no progressive image loading effect.
+
+#### Anti-patterns (all observed in real failures)
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| Old pane on top WITHOUT `background: #fff` | New pane images bleed through during fadegray | Add `background: #fff` to old pane OR use new-on-top pattern |
+| Old pane on top WITH fadeout + same images in both panes | Fadegray desaturates then color returns as old fades | Clear new pane images OR use new-on-top pattern |
+| New pane with fadein CSS + old pane also has fadeout | Both layers animate simultaneously, double-ghost effect | Only ONE pane should have opacity animation |
+| `setViewMode` before API response with two panes | Column count changes, same images in wrong layout visible | Keep viewMode until API responds, or clear images first |
+| Timer removes old pane before images load | White flash | Extend timer OR use API response timing |
+
 ### Page-load animations
 
 | Bundle pattern | Implementation |
