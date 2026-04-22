@@ -43,6 +43,100 @@ agent-browser eval "
 "
 ```
 
+### Extract typography scale system (MANDATORY)
+
+`getComputedStyle` returns **px values** — these are viewport-specific snapshots, NOT the original CSS values. Sites like Webflow use `em`-based typography with a viewport-scaled `body` font-size (e.g., `body { font-size: 0.83vw }`), making all `em` fonts scale proportionally. If you hardcode the computed px values, the font sizes will be **wrong at every viewport width except the one you measured at**.
+
+**This step detects and records the typography scaling system so the implementation can reproduce it.**
+
+```bash
+agent-browser eval "
+(() => {
+  const root = getComputedStyle(document.documentElement);
+  const body = getComputedStyle(document.body);
+
+  // 1. Find the raw body font-size declaration (not computed)
+  // Checks: stylesheets, inline style, and resolves var() references
+  let bodyFontSizeRaw = '';
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) {
+        if (rule.selectorText === 'body' || rule.selectorText === 'html') {
+          const fs = rule.style?.fontSize;
+          if (fs && fs !== '') bodyFontSizeRaw = fs;
+        }
+      }
+    } catch(e) {} // CORS-blocked sheets silently skip
+  }
+  // Fallback: check inline style (React/CSS-in-JS)
+  if (!bodyFontSizeRaw && document.body.style.fontSize) {
+    bodyFontSizeRaw = document.body.style.fontSize;
+  }
+  // Resolve var() to its computed expression
+  let bodyFontSizeResolved = bodyFontSizeRaw;
+  if (bodyFontSizeRaw.startsWith('var(')) {
+    const varName = bodyFontSizeRaw.match(/var\(([^)]+)\)/)?.[1];
+    if (varName) bodyFontSizeResolved = root.getPropertyValue(varName).trim();
+  }
+
+  // 2. Extract CSS custom properties for typography
+  const typographyVars = {};
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) {
+        if (!rule.style) continue;
+        for (let i = 0; i < rule.style.length; i++) {
+          const prop = rule.style[i];
+          if (prop.startsWith('--') && (prop.includes('font') || prop.includes('heading') || prop.includes('paragraph') || prop.includes('size'))) {
+            const val = rule.style.getPropertyValue(prop).trim();
+            if (val) typographyVars[prop] = val;
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 3. Detect font families used
+  const fontFamilies = new Set();
+  document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,a,button,li,div').forEach(el => {
+    if (!el.textContent?.trim() || el.children.length > 5) return;
+    const s = getComputedStyle(el);
+    if (s.display !== 'none') fontFamilies.add(s.fontFamily);
+  });
+
+  // 4. Check if site uses viewport-based scaling (check both raw and resolved)
+  const checkStr = bodyFontSizeRaw + ' ' + bodyFontSizeResolved;
+  const usesVwScaling = /vw|dvw|calc|clamp/.test(checkStr);
+  const usesEmScaling = Object.values(typographyVars).some(v => v.includes('em'));
+
+  return JSON.stringify({
+    rootFontSize: root.fontSize,
+    bodyFontSizeComputed: body.fontSize,
+    bodyFontSizeRaw: bodyFontSizeRaw || '(not found — check CSS-in-JS or inline styles)',
+    bodyFontSizeResolved: bodyFontSizeResolved || bodyFontSizeRaw,
+    scalingSystem: usesVwScaling ? 'viewport-scaled (vw/calc/clamp)' : usesEmScaling ? 'em-based (relative to body)' : 'px-fixed',
+    fontFamilies: Array.from(fontFamilies),
+    typographyVars: typographyVars,
+    implementationGuide: usesVwScaling || usesEmScaling
+      ? 'DO NOT use computed px values. Reproduce the body font-size expression (vw/clamp) and use em units for all text.'
+      : 'Computed px values are safe to use directly.',
+  }, null, 2);
+})()
+"
+```
+
+**Save output to** `tmp/ref/<component>/typography.json`
+
+**Implementation rules based on `scalingSystem`:**
+
+| Scaling system | What to do |
+|---|---|
+| `viewport-scaled` | Copy `bodyFontSizeRaw` to `globals.css` body rule. Use `em` for all font sizes. |
+| `em-based` | Copy the `typographyVars` as CSS custom properties. Use `var()` references. |
+| `px-fixed` | Hardcoded px values are safe. But always check at 2+ viewport widths. |
+
+**Common mistake this prevents:** Extracting `fontSize: 26.67px` (computed at 1280px) and hardcoding `fontSize: 30px` (guessing the "design" value). The actual value is `2.5em` relative to a `0.83vw` body font. At 1440px it's 30px, at 1280px it's 26.67px, at 768px it's 16px — one px value cannot represent this.
+
 ### Extract advanced visual properties (MANDATORY)
 
 The key element extraction above captures basic layout properties but misses several CSS effects that are invisible in screenshots yet critical for accurate reproduction. Extract these for EVERY element that has non-default values:

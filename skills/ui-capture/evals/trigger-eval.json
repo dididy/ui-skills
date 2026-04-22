@@ -63,7 +63,7 @@
   {
     "query": "reverse-engineer the animation on this button hover effect from https://ui.shadcn.com",
     "should_trigger": false,
-    "note": "This is transition-reverse-engineering — user wants to replicate an effect, not capture baseline"
+    "note": "This is ui-reverse-engineering (transition extraction) — user wants to replicate an effect, not capture baseline"
   },
   {
     "query": "run my playwright tests and tell me why they're failing",

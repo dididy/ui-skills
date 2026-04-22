@@ -14,7 +14,7 @@ From **Step 5b/A-C3**: `transitions/ref/<name>-idle.png` + `transitions/ref/<nam
 From **Step 6b**: `transition-spec.json`, `bundle-map.json`
 From **Step 6c**: `component-map.json`
 From **Phase 1**: reference frames in `tmp/ref/<component>/frames/ref/`
-Optional: keyframes or `extracted.json` from `transition-reverse-engineering`
+Optional: keyframes or `extracted.json` from transition extraction pipeline (Step T)
 
 **HARD BLOCK on `transition-spec.json`.** Without it you'll re-grep bundles during implementation, waste tokens, and risk applying values from the wrong conditional branch — the #1 source of implementation errors in real sessions.
 
@@ -26,15 +26,20 @@ Optional: keyframes or `extracted.json` from `transition-reverse-engineering`
 
 1. **Never write a value that isn't in extracted data.** If you are, stop and go extract it.
 2. **Never invent interactions or effects.** If extracted data shows no hover transform, don't add one "because it seems like it should have one." Only implement what was observed.
-3. **Never approximate font sizes.** Use EXACT computed values (`text-[40px]`, not `text-4xl`). Font-size is the #1 source of user corrections.
+3. **Never approximate font sizes — check `typography.json` first.** If `scalingSystem` is `viewport-scaled` or `em-based`, do NOT use computed px values. Reproduce the body font-size expression (`vw`/`clamp`) in `globals.css` and use `em` units from `typographyVars`. Only use px values if `scalingSystem` is `px-fixed`. Font-size mismatch is the #1 source of user corrections.
 4. **Never round extracted values.** `15.84px` is a computed value from the site's token system, not a mistake. Rounding breaks typographic scale.
-5. **Never recreate SVGs from visual appearance.** Use `outerHTML` from `inline-svgs.json` verbatim; convert HTML attributes to JSX (`stroke-width` → `strokeWidth`, `class` → `className`, `fill-rule` → `fillRule`).
-6. **Transitions are part of generation, not a later pass.** A component without its transitions is incomplete. Read `transition-spec.json` entries for the component + implement inline. See `transition-implementation.md`.
-7. **Never guess UI layout.** See SKILL.md rule 12 — capture idle + active screenshots before implementing.
-8. **Never skip features because a library is paid/premium.** Use `@beyond/core` alternatives (see `transition-implementation.md` "GSAP Premium Plugin Alternatives"). Never simplify per-char stagger to whole-block fade.
-9. **Auto-timers must respect splash phase.** See SKILL.md rule 13b — delay auto-rotate by `splashDuration + 1s`.
-10. **Reset GSAP-baked inline styles.** See `animation-init-styles.json` from dom-extraction.md Step 2.6a.
-11. **Verify DOM structure before implementing interaction.** See SKILL.md rule 12b — use `agent-browser eval` on the live ref, never assume from HTML alone.
+5. **Recover responsive expressions from per-breakpoint styles.** `getComputedStyle` returns pixel values for the current viewport only. Compare `styles.json` (1440px) with `styles-<bp>.json` to recover the original CSS expression:
+   - Same pixel value at all breakpoints → safe to use the pixel value
+   - Value scales linearly with viewport → use `calc()` or viewport units (e.g., `1376px` at 1440 + `704px` at 768 → `calc(100vw - 64px)`)
+   - Value jumps at a breakpoint → use Tailwind responsive prefix (e.g., `w-full md:w-[704px]`)
+   - When in doubt, download the original CSS stylesheet and grep for the selector to find the raw expression (see `js-animation-extraction.md` Step 5)
+6. **Never recreate SVGs from visual appearance.** Use `outerHTML` from `inline-svgs.json` verbatim; convert HTML attributes to JSX (`stroke-width` → `strokeWidth`, `class` → `className`, `fill-rule` → `fillRule`).
+7. **Transitions are part of generation, not a later pass.** A component without its transitions is incomplete. Read `transition-spec.json` entries for the component + implement inline. See `transition-implementation.md`.
+8. **Never guess UI layout.** See SKILL.md rule 12 — capture idle + active screenshots before implementing.
+9. **Never skip features because a library is paid/premium.** Use project animation library or OSS alternatives (see `transition-implementation.md` "GSAP Premium Plugin Alternatives"). Never simplify per-char stagger to whole-block fade.
+10. **Auto-timers must respect splash phase.** See SKILL.md rule 13b — delay auto-rotate by `splashDuration + 1s`.
+11. **Reset GSAP-baked inline styles.** See `animation-init-styles.json` from dom-extraction.md Step 2.6a.
+12. **Verify DOM structure before implementing interaction.** See SKILL.md rule 12b — use `agent-browser eval` on the live ref, never assume from HTML alone.
 
 **Post-generation transition coverage gate:** Every entry in `transition-spec.json` must have a corresponding implementation. Missing any = incomplete, don't proceed to verification.
 

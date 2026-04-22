@@ -1,6 +1,6 @@
-# Capture Reference — Single Element (Step 0, Option B)
+# Element-Scope Capture (Single Effect)
 
-For `element` scope (isolated target). For `fullpage` scope, use `/ui-capture <url>` instead and copy relevant frames into `tmp/ref/<effect-name>/frames/ref/`.
+> Element-scope captures — isolated target element effects (hover, scroll-driven, page-load). For `fullpage` scope, use the main ui-capture pipeline (Phase 1+2) instead.
 
 ## Setup
 
@@ -105,7 +105,7 @@ Save as `before.png`, `mid.png`, `after.png`.
 
 ## Gate
 
-`tmp/ref/<effect-name>/frames/ref/` must contain the appropriate frames for your classification before proceeding to Step 1.
+`tmp/ref/<effect-name>/frames/ref/` must contain the appropriate frames for your classification before proceeding.
 
 - CSS hover/click → `idle.png`, `active.png`
 - Page-load → `frame-0001.png`, `frame-0002.png`, ... (≥10 frames)

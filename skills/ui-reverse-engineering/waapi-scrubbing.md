@@ -13,9 +13,9 @@ agent-browser open https://target-site.com
 # Searches: CLAUDE_SKILLS_DIR env var → project-local → ~/.claude/skills
 SKILL_DIR=""
 for candidate in \
-  "${CLAUDE_SKILLS_DIR:+$CLAUDE_SKILLS_DIR/skills/transition-reverse-engineering}" \
-  "$(git rev-parse --show-toplevel 2>/dev/null)/skills/transition-reverse-engineering" \
-  "$HOME/.claude/skills/ui-skills/skills/transition-reverse-engineering"; do
+  "${CLAUDE_SKILLS_DIR:+$CLAUDE_SKILLS_DIR/skills/ui-reverse-engineering}" \
+  "$(git rev-parse --show-toplevel 2>/dev/null)/skills/ui-reverse-engineering" \
+  "$HOME/.claude/skills/ui-skills/skills/ui-reverse-engineering"; do
   [ -n "$candidate" ] && [ -f "$candidate/waapi-scrub-inject.js" ] && SKILL_DIR="$candidate" && break
 done
 if [ -z "$SKILL_DIR" ]; then

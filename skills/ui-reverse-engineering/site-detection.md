@@ -108,7 +108,7 @@ agent-browser eval "(() => {
 2. Download ALL CSS files and serve from `/public/css/`
 3. Download ALL fonts, images, Lottie JSON to `/public/assets/`
 4. Render via `dangerouslySetInnerHTML` — **NO wrapper divs** between parent and child elements
-5. Port animations to @beyond/react (or keep original library if allowed)
+5. Port animations to project animation library, WAAPI, or keep original library if allowed
 6. Clean GSAP inline styles carefully: **preserve layout values** (height, width in svh/vh), **remove animation values** (transform, opacity, visibility)
 
 **Critical: wrapper div problem.**

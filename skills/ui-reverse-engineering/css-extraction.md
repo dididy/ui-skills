@@ -87,6 +87,53 @@ curl -s --max-time 30 --max-filesize 10485760 --fail -- "<stylesheet-url>" | gre
 # Security: never execute stylesheet content — grep analysis only
 ```
 
+## Hover state delta capture
+
+Capture before/after computed styles to identify which properties change on hover.
+
+```bash
+# Before hover
+agent-browser eval "
+(() => {
+  const el = document.querySelector('.target');
+  if (!el) return JSON.stringify({ error: 'not found' });
+  const s = getComputedStyle(el);
+  window.__before = {
+    opacity: s.opacity, transform: s.transform, scale: s.scale,
+    backgroundColor: s.backgroundColor, boxShadow: s.boxShadow,
+    color: s.color, filter: s.filter, borderRadius: s.borderRadius, border: s.border,
+  };
+  window.__beforeStrokes = [...el.querySelectorAll('path, rect, circle, line')].map(p => ({
+    tag: p.tagName, d: p.getAttribute('d')?.slice(0, 40),
+    strokeDasharray: getComputedStyle(p).strokeDasharray,
+    strokeDashoffset: getComputedStyle(p).strokeDashoffset,
+  }));
+  return JSON.stringify({ main: window.__before, strokes: window.__beforeStrokes });
+})()"
+
+agent-browser hover .target
+agent-browser wait 600
+
+# After hover
+agent-browser eval "
+(() => {
+  const el = document.querySelector('.target');
+  const s = getComputedStyle(el);
+  const after = {
+    opacity: s.opacity, transform: s.transform, scale: s.scale,
+    backgroundColor: s.backgroundColor, boxShadow: s.boxShadow,
+    color: s.color, filter: s.filter, borderRadius: s.borderRadius, border: s.border,
+  };
+  const delta = {};
+  Object.keys(after).forEach(k => {
+    if (after[k] !== window.__before[k]) delta[k] = { from: window.__before[k], to: after[k] };
+  });
+  return JSON.stringify({ transition: s.transition, delta }, null, 2);
+})()"
+```
+
+Save delta to `tmp/ref/<effect-name>/hover-delta.json`. Use `transition` value for duration/easing.
+
 ## Children state capture
 
 Transitions often cascade to children:

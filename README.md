@@ -15,7 +15,7 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 
 - **Real values, not guesses.** Every number — font-size, easing curve, scroll offset, stagger delay — comes from `getComputedStyle`, raw CSS, or a JS bundle grep. The plugin refuses to ship approximations.
 - **Zero vision tokens for comparison.** The LLM never reads reference vs implementation screenshots side-by-side. AE and SSIM CLI tools do the diff; the LLM only reads a single diff image when something fails.
-- **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules (~6.8K tokens total across 4 skills). Detailed procedures (splash extraction, CSS-First generation, verification loops, pitfall tables) live in separate sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
+- **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules (~6.3K tokens total across 3 skills). Detailed procedures live in 32 focused sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
 - **Single source of truth for transitions.** `transition-spec.json` is produced once from bundle analysis. Implementation reads the spec, never re-greps the bundle — avoiding wasted work and the risk of picking the wrong conditional branch.
 - **Automation over introspection.** Script-driven gates (`validate-gate.sh`, `run-pipeline.sh`, `auto-verify.sh`) decide whether a step is complete. Agents don't self-certify "looks good enough."
 - **No judgment, data only.** Every decision must be backed by extracted data, captured screenshots, or script output. "Probably", "close enough", and "just a content difference" are forbidden — each has a documented failure case.
@@ -24,8 +24,7 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 
 | Skill | Purpose |
 |---|---|
-| **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component |
-| **`transition-reverse-engineering`** | Frame-precise animation extraction (WAAPI, canvas/WebGL, Three.js, character stagger, scroll-driven JS) |
+| **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component. Includes transition extraction (WAAPI, canvas/WebGL, Three.js, scroll-driven JS). |
 | **`ui-capture`** | Baseline screenshots + transition capture + comparison page. Auto-detects custom scroll (Lenis, Locomotive). Classifies effects by trigger type. |
 | **`visual-debug`** | All visual comparison in one skill. Quick mode (AE/SSIM batch) and full verification (Phase A→E with self-healing loop). |
 
@@ -120,21 +119,20 @@ Turn this screen recording into a working component
 R.  Capture reference          — static screenshots + scroll video (60 fps)
 1.  Open & snapshot            — DOM tree, full-page screenshot
 2.  Extract structure          — HTML hierarchy, component boundaries
-2.5 Extract head + assets      — title, favicon, images, original CSS files, fonts (incl. Typekit),
-                                 video backgrounds, CSS variables → css/variables.txt
+2.5 Extract assets             — CSS files, fonts (incl. Typekit), images, SVGs, videos,
+                                 head metadata, CSS variables → asset-extraction.md
 2.6 Catalog init styles        — GSAP-baked inline styles → animation-init-styles.json,
                                  state-coupled elements → state-coupling.json
 3.  Extract styles             — computed CSS, colors, typography, spacing, design tokens
 4.  Detect responsive          — 2-pass viewport sweep (coarse 40px → fine 5px) for real breakpoints
 5.  Detect interactions        — hover/click/scroll, mouse-follow, stroke animations
 5b. Capture C3 (deferred)      — interaction/transition videos using selectors from Step 5
-5c. JS bundle download         — ALL loaded chunks via performance API. ⛔ gate: bundle
-5d. Transition spec            — transition-spec.json: trigger, target, easing, duration, bundle branch.
+5c. Bundle analysis            — ALL loaded chunks, scroll engine, external SDK detection. ⛔ gate: bundle
+5d. Transition spec            — transition-spec.json + bundle-map.json. SDK scene data download.
                                  gsap-to-css.sh auto-converts easing. ⛔ gate: spec
-    Bundle analysis patterns   — Canvas renderer detection, disc/carousel structure detection,
-                                 Lottie asset mapping, state machine extraction, auto-timer extraction
+5e. Capture verification       — record original, extract frames, verify spec spatial values against frames
 6.  Detect animations          — Phase A idle / B scroll / C per-element (all mandatory)
-                                 → transition-reverse-engineering when scroll-driven/canvas/WebGL
+                                 → transition extraction pipeline (Step T) for scroll-driven/canvas/WebGL
 6b. Assemble extracted.json    — combine all extraction artifacts
 6c. Pre-generation audit       — 6-stage design audit
 7.  Generate component         — CSS-First: download original CSS, use original class names.
@@ -177,57 +175,6 @@ R.  Capture reference          — static screenshots + scroll video (60 fps)
 | Screenshot | Approximation (Claude Vision) | Design mockup, inaccessible site |
 | Video / recording | Approximation (Claude Vision) | Interactions visible in recording |
 | Multiple screenshots | Approximation (Claude Vision) | Different pages or breakpoints |
-
----
-
-## `transition-reverse-engineering` — Exact Animation Extraction
-
-Extracts animations with frame-level precision. Called automatically by `ui-reverse-engineering` when complex motion is detected, or used standalone.
-
-Measures ALL animated properties at 11 progress points (0%–100%) before writing code — catches multi-phase timing, non-linear curves, and property-specific phase boundaries that start/end extraction misses.
-
-**Usage:**
-
-```
-Copy this transition: https://example.com
-Replicate this animation exactly
-Clone this canvas effect
-Extract the page-load animation from https://example.com
-```
-
-**Pipeline:**
-
-```
--1. Multi-point measurement    — 11 progress points, ALL animated properties
- 0. Capture reference frames   — screenshots or video
- 1. Classify effect            — CSS transition, JS animation, or canvas/WebGL
-2a. Extract CSS                — for CSS transitions/animations
-2b. Extract JS bundle          — for scroll-driven/Motion/GSAP/rAF
-2c. Extract Canvas/WebGL       — for canvas/WebGL
- 3. Implement                  — measured values only, never guessed
- 4. Verify                     — triggerable: frame comparison + Visual Gate + Numerical Diagnosis.
-                                 untriggerable: bundle-verification.md (carousel, auto-rotate, page-load).
-                                 Both D1 + D2 always run.
-```
-
-**Supported animation types:**
-
-| Type | Method |
-|---|---|
-| CSS transitions (hover/click) | computedStyle delta before/after |
-| CSS keyframe animations | CSSKeyframesRule extraction |
-| Page-load WAAPI | waapi-scrub-inject.js + capture-frames.sh |
-| Character stagger | Per-char selector + delay configs |
-| Three.js / custom WebGL | Bundle download + grep patterns |
-| Spline / Rive / Lottie | Engine detection → scene URL reference |
-| Scroll-driven (Motion/GSAP/rAF) | JS bundle analysis — `useTransform`/`useScroll` keyframes, interpolation ranges, scroll offsets |
-| Scroll behavior (snap/smooth/overscroll) | CSS detection + JS library extraction (Lenis, ScrollSmoother, Locomotive) |
-| Auto-timer (carousel/slideshow) | Timed screenshot comparison + `setInterval`/`setTimeout` bundle grep |
-| Framer Motion springs | Bundle grep — `stiffness`/`damping`/`mass` → cubic-bezier mapping |
-| GSAP tweens | Bundle grep — `gsap.to`/`fromTo`/`timeline`, `ScrollTrigger`, ease/duration/stagger |
-| CSS-in-JS responsive layout | Raw stylesheet extraction — `calc()`, `cqw`, `%`, custom properties |
-| Mouse-follow / parallax tilt | DOM detection — absolutely-positioned `pointer-events: none` children |
-| Stroke-based SVG hover | Stroke delta — idle/active `stroke-dasharray` + `stroke-dashoffset` |
 
 ---
 

@@ -89,9 +89,9 @@ gate_bundle() {
   check_file "$REF_DIR/scroll-engine.json" "scroll-engine.json"
 }
 
-# ── Gate: spec (Phase 2 Step 5d — transition-spec written) ──
+# ── Gate: spec (Phase 2 Step 5d+5e — transition-spec written AND verified) ──
 gate_spec() {
-  echo "Gate: spec (Phase 2 Step 5d)"
+  echo "Gate: spec (Phase 2 Step 5d+5e)"
   check_file "$REF_DIR/transition-spec.json" "transition-spec.json (single source of truth)"
 
   # Validate structure if file exists and jq is available
@@ -109,13 +109,26 @@ gate_spec() {
     # Check first entry has required keys
     TOTAL=$((TOTAL + 1))
     local has_keys
-    has_keys=$(jq '.transitions[0] | has("id","trigger","bundle_branch")' "$REF_DIR/transition-spec.json" 2>/dev/null || echo "false")
+    has_keys=$(jq '.transitions[0] | (has("id") and has("trigger") and has("bundle_branch"))' "$REF_DIR/transition-spec.json" 2>/dev/null || echo "false")
     if [ "$has_keys" = "true" ]; then
       echo -e "  ${GREEN}✓${NC} transitions[0] has id, trigger, bundle_branch"
     else
       echo -e "  ${RED}✗${NC} transitions[0] missing required keys (id, trigger, bundle_branch)"
       FAIL=$((FAIL + 1))
     fi
+  fi
+
+  # Step 5e: Capture verification — verify/ directory must exist with frames
+  TOTAL=$((TOTAL + 1))
+  local verify_frames
+  verify_frames=$(find "$REF_DIR/verify" -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$verify_frames" -ge 5 ]; then
+    echo -e "  ${GREEN}✓${NC} capture verification frames ($verify_frames frames in verify/)"
+  else
+    echo -e "  ${YELLOW}⚠${NC} capture verification missing or incomplete ($verify_frames frames — need ≥5)"
+    echo -e "    Record the original site, extract frames, verify spatial values."
+    echo -e "    See interaction-detection.md 'MANDATORY: Capture Verification'."
+    # Warning only, not blocking — but strongly recommended
   fi
 }
 
@@ -124,12 +137,50 @@ gate_pre_generate() {
   echo "Gate: pre-generate (Phase 2 Step 6c)"
   check_file "$REF_DIR/extracted.json" "extracted.json (assembled extraction)"
   check_file "$REF_DIR/transition-spec.json" "transition-spec.json"
+
+  # Section map (from dom-extraction.md Step 2 enumeration)
+  check_file "$REF_DIR/section-map.json" "section-map.json (semantic section enumeration)"
+
   # Audit artifacts (skip for single-section scope)
-  if [ -f "$REF_DIR/data-inventory.json" ]; then
+  if [ -f "$REF_DIR/data-inventory.json" ] || [ -f "$REF_DIR/section-map.json" ]; then
     check_file "$REF_DIR/element-roles.json" "element-roles.json"
     check_file "$REF_DIR/element-groups.json" "element-groups.json"
     check_file "$REF_DIR/layout-decisions.json" "layout-decisions.json"
     check_file "$REF_DIR/component-map.json" "component-map.json"
+  fi
+
+  # Cross-check: section count in section-map vs component-map
+  if [ -f "$REF_DIR/section-map.json" ] && [ -f "$REF_DIR/component-map.json" ]; then
+    local section_count component_count
+    section_count=$(python3 -c "import json; d=json.load(open('$REF_DIR/section-map.json')); print(d.get('totalCount', len(d.get('sections', []))))" 2>/dev/null || echo "0")
+    component_count=$(python3 -c "import json; d=json.load(open('$REF_DIR/component-map.json')); print(d.get('sectionCount', len(d.get('sections', []))))" 2>/dev/null || echo "0")
+
+    if [ "$section_count" != "0" ] && [ "$component_count" != "0" ] && [ "$section_count" != "$component_count" ]; then
+      echo -e "  ${RED}✗${NC} Section count mismatch: section-map has $section_count sections, component-map has $component_count"
+      echo -e "    You are likely MISSING a section (footer? header?). Run section-audit.md Stage 1 again."
+      FAIL=$((FAIL + 1))
+    else
+      echo -e "  ${GREEN}✓${NC} Section count matches ($section_count sections)"
+    fi
+
+    # Check if footer exists in section-map but not in component-map
+    local has_footer
+    has_footer=$(python3 -c "import json; d=json.load(open('$REF_DIR/section-map.json')); print('true' if d.get('hasFooter') else 'false')" 2>/dev/null || echo "false")
+    if [ "$has_footer" = "true" ]; then
+      local footer_in_map
+      footer_in_map=$(python3 -c "
+import json
+d=json.load(open('$REF_DIR/component-map.json'))
+sections = d.get('sections', [])
+has = any(s.get('sourceTag','').lower() == 'footer' or 'footer' in s.get('componentName','').lower() or 'footer' in s.get('sourceClass','').lower() for s in sections)
+print('true' if has else 'false')
+" 2>/dev/null || echo "unknown")
+      if [ "$footer_in_map" = "false" ]; then
+        echo -e "  ${RED}✗${NC} section-map.json has a <footer> but component-map.json does not include it"
+        echo -e "    Add a Footer component to component-map.json before generating code."
+        FAIL=$((FAIL + 1))
+      fi
+    fi
   fi
 }
 

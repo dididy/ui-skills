@@ -133,5 +133,5 @@ Retry: 3s → 5s → stop and report.
 ## Integration
 
 - **ui-reverse-engineering**: Phase A → Phase 1+2; Phase 4 → Phase 3+4
-- **transition-reverse-engineering**: Step 0 → Phase 1+2; Step 4 → Phase 3+4
+- **ui-reverse-engineering** (transition extraction): Step T0 → Phase 1+2; Step T4 → Phase 3+4
 - **ralph**: on `reference_url` → Phase 1+2 → task generation; before visual approval → Phase 3+4

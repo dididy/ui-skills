@@ -2,7 +2,11 @@
 
 Splash animations (page-load intros, logo reveals, curtain opens) are the hardest motion to extract because they fire during page load — before any `agent-browser eval` can attach. This doc covers the full workflow for reliably capturing them.
 
-**When to read:** during `animation-detection.md` Phase A, when Tier 1 AE diff shows significant changes in the first 1–3 seconds of the idle capture.
+**When to read:**
+- **Step 5c:** preloader detected (bundle grep or DOM class) → read now for timeline extraction
+- **Step 6 Phase A:** Tier 1 AE diff shows significant changes in first 1–3s → read for capture technique
+
+**This doc** solves the *capture problem* (splash fires before eval can attach) with throttle + record techniques. Called from pipeline Steps 5c and 6A. Do not read back into calling docs from here.
 
 ## The capture problem
 

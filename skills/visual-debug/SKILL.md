@@ -92,13 +92,14 @@ AE=500 allows anti-aliasing variance. Bump to 2000 for dynamic content.
 
 ## Full verification
 
-Read `verification.md` for complete flow: Phase A/B (capture) → C (AE+DSSIM) → D (pixel-perfect gate) → E (LLM review) → H (self-healing, max 3 cycles) → completion gate.
+- `verification.md` — Phase A/B (capture) + D (pixel-perfect gate) + auxiliary checks
+- `comparison-fix.md` — Phase C (AE+DSSIM comparison, computed-style diagnosis, Phase E LLM review, Phase H self-healing loop)
 
 ## Integration
 
 | Skill | Where |
 |---|---|
 | `ui-reverse-engineering` Step 8+9 | Full verification procedure |
-| `transition-reverse-engineering` Step 4 | Phase D for resting states |
+| `ui-reverse-engineering` Step T4 | Phase D for transition resting states |
 | `ui-capture` Phase 4A | Phase D before compare.html |
 | Standalone | batch-scroll + batch-compare on any two URLs |

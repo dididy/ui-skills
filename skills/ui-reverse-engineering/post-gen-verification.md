@@ -199,6 +199,70 @@ useEffect(() => {
 
 **Why CSS cascade, not React state:** a single body-class toggle coordinated by CSS rules is simpler, avoids prop drilling, and matches the original site's architecture. Do NOT replicate with per-component `isDark` state + conditional classNames on every element.
 
+## Loop 4: Hover transition verification (MANDATORY if hover-deltas.json exists)
+
+Hover effects are the most commonly "approximately close but wrong" part of clones. The fix is simple: hover on both original and implementation, measure the same properties, compare.
+
+### Step 1: For each element in hover-deltas.json
+
+```bash
+# On ORIGINAL site:
+agent-browser open <original-url>
+# scroll to element
+agent-browser hover "<selector>"
+# wait for transition
+agent-browser eval "(() => {
+  const el = document.querySelector('<selector>');
+  const s = getComputedStyle(el);
+  // Capture all visual properties
+  return JSON.stringify({
+    transform: s.transform,
+    opacity: s.opacity,
+    scale: s.scale,
+    backgroundColor: s.backgroundColor,
+    color: s.color,
+    boxShadow: s.boxShadow,
+    borderColor: s.borderColor,
+    filter: s.filter,
+    clipPath: s.clipPath,
+  });
+})()"
+```
+
+### Step 2: Same measurement on implementation
+
+```bash
+agent-browser open <impl-url>
+agent-browser hover "<selector>"
+agent-browser eval "/* same property extraction */"
+```
+
+### Step 3: Compare
+
+For each property in the delta:
+```
+□ Property changes in SAME direction (scale up vs scale down)
+□ End value matches within 2% tolerance
+□ Duration is within ±100ms
+□ Easing curve SHAPE matches (bounce vs linear vs ease-out)
+□ Child elements that should ALSO change are changing
+```
+
+**Common hover mismatches:**
+
+| Symptom | Root cause |
+|---|---|
+| Hover works but feels "flat" | Missing easing — using `ease` instead of `cubic-bezier(0.625, 0.05, 0, 1)` |
+| Hover effect instant (no transition) | CSS `transition` property missing or overridden by Tailwind reset |
+| Hover shows wrong element | `display: none → block` controlled by JS, not CSS `:hover` |
+| Image zooms differently | Original uses GSAP `scale: 1.05` with custom ease, impl uses CSS `hover:scale-105` with default ease |
+| Text split-hover broken | Original uses GSAP SplitText per-character stagger on hover, impl does whole-block transition |
+| Hover doesn't revert smoothly | `mouseleave` transition missing — GSAP has separate `leave` tween |
+
+### Step 4: Fix and re-verify
+
+After fixing, re-hover on both and confirm the delta matches. Maximum 3 iterations.
+
 ## Animation library → wiring pattern mapping
 
 When Step 6 bundle analysis detects an animation library, use these patterns:

@@ -45,18 +45,19 @@ brew install agent-browser imagemagick dssim ffmpeg
 |---|---|---|
 | **0** | — | Load `transition-spec.json`/`bundle-map.json` if they exist. Skip re-extraction of known transitions. |
 | **1** | R | `/ui-capture <url>` → `static/ref/`, `transitions/ref/`, `regions.json`. ⛔ Gate: all three exist. |
-| **2** | 1–2 | `dom-extraction.md` → `structure.json`, `portal-candidates.json`, `sticky-elements.json` |
-| | 2.5 | `dom-extraction.md` Step 2.5 → `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`, `visible-images.json`, CSS files, `css/variables.txt` |
+| **2** | 1–2 | `dom-extraction.md` → `structure.json`, `section-map.json`, `portal-candidates.json`, `sticky-elements.json`, `hidden-elements.json`. **Must enumerate all semantic sections** (section/footer/header) AND **extract hidden/collapsed elements** (height:0, display:none). |
+| | 2.5 | `asset-extraction.md` → `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`, `visible-images.json`, CSS files, `css/variables.txt` |
 | | 2.6 | `dom-extraction.md` Steps 2.6a–b → `animation-init-styles.json`, `state-coupling.json` |
 | | 3 | `style-extraction.md` → `styles.json`, `advanced-styles.json`, `body-state.json`, `decorative-svgs.json`, `design-bundles.json` |
 | | 4 | `responsive-detection.md` → `detected-breakpoints.json`, `responsive/ref-*.png` |
-| | 5 | `interaction-detection.md` → `interactions-detected.json`, `scroll-engine.json`, `scroll-transitions.json` |
+| | 5 | `interaction-detection.md` → `interactions-detected.json`, `scroll-transitions.json` |
 | | 5b | If new interactive elements found → re-run `/ui-capture` Phase 2B–2E |
-| | 5c | `interaction-detection.md` Step 6. Download ALL JS chunks via `performance.getEntriesByType('resource')`. ⛔ Gate: `bundle` |
-| | 5d | `interaction-detection.md` Step 6b → `bundle-map.json`, `transition-spec.json`. ⛔ Gate: `spec` |
-| | 6 | `animation-detection.md`. ALL 3 phases: A (idle 10s), B (scroll), C (per-element). Canvas/WebGL → `/transition-reverse-engineering`. |
+| | 5c | `bundle-analysis.md` — Download ALL JS chunks, detect scroll engine → `scroll-engine.json`, detect external SDKs → `external-sdks.json`. ⛔ Gate: `bundle` |
+| | 5d | `bundle-analysis.md` output + `transition-spec-rules.md` format → `bundle-map.json`, `transition-spec.json` (DRAFT). For SDKs: download scene data + textures. ⛔ Gate: `spec` |
+| | 5e | `transition-spec-rules.md` §5 — **Capture verification**. Record original, extract frames, verify spatial values. Update spec. |
+| | 6 | `animation-detection.md`. ALL 3 phases: A (idle 10s), B (scroll), C (per-element). Canvas/WebGL → `canvas-webgl-extraction.md`. |
 | | 6b | Assemble `extracted.json` |
-| | 6c | Six-stage audit → `data-inventory.json`, `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json`. Skip for single-section scope. ⛔ Gate: `pre-generate` |
+| | 6c | `section-audit.md` — Six-stage audit → `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json`. Cross-checks element ownership via DOM parentElement chain. **Never skip.** ⛔ Gate: `pre-generate` |
 | **3** | 7 | Read `site-detection.md` FIRST, then `component-generation.md` + `transition-implementation.md`. Parallel worktree for 4+ sections. |
 | **4** | 8 | `auto-verify.sh <session> <orig-url> <impl-url> tmp/ref/<c>`. DO NOT skip. Phase D (pixel-perfect) runs separately after. |
 | | 9 | Test every interaction from `interactions-detected.json` on localhost. 100% ✅. |
@@ -82,6 +83,68 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 ```
 
 "Approximately same" = FAIL. Max 3 verify→fix iterations.
+
+## Transition Extraction (integrated from transition-reverse-engineering)
+
+When animation detection (Step 5/6) identifies transitions, use this sub-pipeline for precise extraction.
+
+### Transition scope
+
+| Scope | When | Compare |
+|---|---|---|
+| `element` | Isolated element ("copy this hover effect") | Cropped frames of target only |
+| `fullpage` | Route change, modal, page-load sequence | Full-page screenshots across transition |
+
+### Transition extraction pipeline
+
+```
+Step T-1: Multi-point measurement  — measurement.md → measurements.json (11 points). ⛔ Gate.
+Step T0:  Capture reference frames — element-capture.md (element scope) or /ui-capture (fullpage). ⛔ Gate: frames/ref/ populated
+Step T1:  Classify effect          — See classification eval below. ⛔ Gate: eval result recorded
+Step T2a: CSS path                 — css-extraction.md
+Step T2b: JS bundle path           — js-animation-extraction.md (scroll/Motion/GSAP/rAF)
+Step T2c: Canvas/WebGL path        — canvas-webgl-extraction.md
+Step T3:  Implement                — patterns.md + transition-implementation.md
+Step T4:  Verify                   — visual-debug/comparison-fix.md (Element-Scope section) + Phase D
+          Triggerable: frame comparison + D1 pass + D2 mismatches = 0
+          Untriggerable: bundle-verification.md (carousel/auto-rotate/page-load)
+```
+
+> Scroll-driven effects MUST go through Step T2b even if they also have CSS.
+> Page-load animations that need WAAPI scrubbing → Read `waapi-scrubbing.md`.
+
+### Effect classification
+
+```bash
+agent-browser eval "(() => {
+  const el = document.querySelector('.target');
+  if (!el) return JSON.stringify({ error: 'not found' });
+  const s = getComputedStyle(el);
+  return JSON.stringify({
+    cssTransition: s.transitionDuration !== '0s',
+    cssAnimation: s.animationName !== 'none',
+    canvases: document.querySelectorAll('canvas').length,
+    waapiAnimations: el.getAnimations?.().length || 0,
+    isScrollDriven: s.position === 'sticky' || s.willChange.includes('transform'),
+  });
+})()"
+```
+
+| Signal | Path |
+|---|---|
+| Pure CSS, no scroll | **CSS** → `css-extraction.md` |
+| Scroll-driven / `willChange` / empty `getAnimations()` | **JS** → `js-animation-extraction.md` |
+| Canvas/WebGL | **Canvas** → `canvas-webgl-extraction.md` |
+| Both | **Hybrid** — run both paths |
+
+**Scroll-driven = almost never pure CSS.** Classify as JS path.
+
+### Transition principles
+
+1. **Measure ALL animated properties at MULTIPLE progress points.** See `measurement.md`.
+2. **Never assume linearity.** Real animations use multi-phase timing.
+3. **`getComputedStyle()` alone is NOT enough for JS-driven animations.** Download the JS bundle.
+4. **Raw CSS > computed values for layout.** Raw CSS reveals `calc()`, `cqw`, `%`, custom properties.
 
 ## No Judgment — Data Only
 
@@ -159,24 +222,37 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 | File | Step | Role |
 |---|---|---|
 | `site-detection.md` | 1 | Auto-detect stack; pick CSS-First vs Extract-Values |
-| `dom-extraction.md` | 1–2.5 | DOM hierarchy, head metadata, asset + font download |
+| `dom-extraction.md` | 1–2 | DOM hierarchy, semantic section enumeration, hidden element extraction, portal detection, sticky elements |
+| `section-audit.md` | 6c | Six-stage audit: element ownership via parentElement chain, section boundaries, component-map.json |
+| `asset-extraction.md` | 2.5 | CSS files, fonts, images, SVGs, videos, head metadata, CSS variables |
 | `style-extraction.md` | 3 | Computed styles, design tokens, design bundles |
 | `responsive-detection.md` | 4 | Viewport sweep for real breakpoints |
-| `interaction-detection.md` | 5–6 | Interactions + mandatory bundle download & analysis |
+| `interaction-detection.md` | 5 | Interaction detection only (hover, scroll, click, drag) |
+| `bundle-analysis.md` | 5c–5d | JS bundle download, scroll engine, animation library, element mapping |
+| `transition-spec-rules.md` | 5d–5e | spec format, capture verification, external SDK detection + reuse |
+| `element-capture.md` | T0 | Element-scope capture (hover/scroll/page-load) |
+| `measurement.md` | T-1 | 11-point multi-property measurement |
+| `css-extraction.md` | T2a | Computed styles, keyframes, hover delta, frame capture |
+| `js-animation-extraction.md` | T2b | Bundle analysis for scroll/Motion/GSAP/rAF |
+| `canvas-webgl-extraction.md` | T2c | Three.js/custom WebGL engine ID |
+| `patterns.md` | T3 | Detection + implementation patterns, character stagger |
+| `waapi-scrubbing.md` | T(opt) | WAAPI scrubber for page-load animations |
+| `bundle-verification.md` | T4 | Numerical verification for untriggerable animations |
 | `animation-detection.md` | 6 | 3-phase motion detection (idle + scroll + per-element) |
-| `splash-extraction.md` | 6A | Read ONLY when Tier 1 AE shows changes in first 1–3s. Throttled capture, GSAP timeline parsing |
+| `dynamic-content-protocol.md` | 6 | Non-deterministic capture (Lottie, Canvas, video, auto-timer) |
+| `splash-extraction.md` | 6A | Throttled capture, GSAP timeline parsing |
 | `component-generation.md` | 7 | Generation entry, parallel worktree, verification gates |
 | `css-first-generation.md` | 7 | CSS-First path |
 | `generation-pitfalls.md` | 7 | CSS-to-React errors + diagnosis table |
 | `post-gen-verification.md` | 7 | Loop 0–3 verification + library wiring |
 | `transition-implementation.md` | 7 | Bundle → code translation |
-| `visual-debug/verification.md` | 8 | Full verification: AE/SSIM → pixel-perfect gate → self-healing |
+| `visual-debug/verification.md` | 8 | Phase A/B capture + Phase D pixel-perfect gate |
+| `visual-debug/comparison-fix.md` | 8 | Phase C comparison + Phase E LLM review + Phase H self-healing |
 | `style-audit.md` | 8 | Class-level computed-style comparison |
 
 ## Sub-skills
 
 - **`ui-capture`** — reference capture, transition detection, comparison
-- **`transition-reverse-engineering`** — precise animation extraction
 - **`visual-debug`** — automated AE/SSIM comparison (zero vision tokens)
 
 ## Ralph worker mode

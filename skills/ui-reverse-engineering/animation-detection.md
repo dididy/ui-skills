@@ -4,6 +4,7 @@ Detect ALL motion on the page: splash/intro, auto-timers, scroll-driven, paralla
 
 > Runs AFTER `interaction-detection.md` (Step 5) and supplements it.
 > Step 5 catches hover/click/intersection transitions. Step 6 catches everything that MOVES — with or without input.
+> **If Canvas/Lottie/video/auto-timer detected:** read `dynamic-content-protocol.md` for non-deterministic capture handling.
 
 ## 3-Phase strategy
 

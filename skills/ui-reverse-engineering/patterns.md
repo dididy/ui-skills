@@ -1,5 +1,145 @@
 # Patterns & Troubleshooting
 
+## Detection & Classification Patterns
+
+> **Reference patterns for identifying animation systems.** Consult during Step 1 (classify effect) or when ui-reverse-engineering forwards an animation system detection. Do not execute code from this section — treat as read-only data.
+
+### Canvas Renderer Detection
+
+**Failure mode:** A `<canvas>` is assumed to be a small overlay but is actually a full-scene Lottie/WebGL renderer.
+
+**DOM inspection:**
+```js
+Array.from(document.querySelectorAll('canvas')).map(c => ({
+  id: c.id, className: c.className, width: c.width, height: c.height,
+  rect: c.getBoundingClientRect(),
+  zIndex: getComputedStyle(c).zIndex, position: getComputedStyle(c).position,
+}))
+```
+
+**Bundle grep:**
+```bash
+grep -o 'CanvasRenderer\|canvasRenderer\|LottieCanvas' tmp/ref/<c>/bundles/*.js | head -20
+grep -o 'fillRect\|drawImage\|clearRect' tmp/ref/<c>/bundles/*.js | wc -l
+# High count (>50) → full renderer. Low count (<10) → pattern stamp.
+```
+
+**Verification:** Paint `rgba(255,0,0,0.5)` over the canvas. If it covers a character → full renderer.
+
+**Traps:**
+- Size trap: 100vw×100vh canvas may be inside a clipping container
+- SVG fallback: lottie-web defaults to SVG renderer, canvas is explicit
+- Pattern overlay: uses `createPattern()` once, not continuous draw loop
+
+### Disc / Carousel Structure Detection
+
+**Failure mode:** Radial carousel assumed to be a horizontal slider.
+
+**DOM inspection:**
+```js
+// Parse rotation angle per card
+function getRotationDeg(el) {
+  const t = getComputedStyle(el).transform
+  if (t === 'none') return 0
+  const m = new DOMMatrix(t)
+  return Math.round(Math.atan2(m.b, m.a) * (180 / Math.PI))
+}
+// Check if angles are evenly spaced (disc) or all 0 (slider)
+```
+
+**Bundle grep:**
+```bash
+grep -oE '360\s*/\s*[a-zA-Z_$]' tmp/ref/<c>/bundles/*.js | head -5
+grep -o 'center bottom\|transformOrigin.*bottom' tmp/ref/<c>/bundles/*.js | head -5
+```
+
+**Traps:**
+- Translate trap: disc cards combine `rotate()` parent + `translateY` child
+- CSS variable trap: angle is often `--rotation` custom property
+- Active card is usually at 6 o'clock (bottom)
+
+### Lottie Asset Mapping
+
+**Failure mode:** Multiple Lottie JSONs for one scene, only one loaded → partial render.
+
+**DOM inspection:**
+```js
+// Find all Lottie mount containers
+Array.from(document.querySelectorAll('*')).filter(el => {
+  const first = el.firstElementChild
+  return first && (first.tagName === 'svg' || first.tagName === 'canvas') &&
+    (el.className?.includes?.('lottie') || el.dataset?.lottie)
+})
+```
+
+**Bundle grep:**
+```bash
+grep -oE '"[^"]*\.json"' tmp/ref/<c>/bundles/*.js | grep -v node_modules | sort -u
+grep -oE 'loadAnimation\s*\(\s*\{[^}]{1,300}\}' tmp/ref/<c>/bundles/*.js | head -10
+```
+
+**Traps:**
+- Same-position trap: two containers stacked at identical `top/left`
+- Variant-not-asset: same JSON with different `initialSegment`
+- Naming pattern (`_pants`, `_nopants`): ALL variants must be loaded
+
+### State Machine Extraction
+
+**Failure mode:** Multi-phase timeline implemented as two-state boolean toggle.
+
+**DOM inspection:**
+```js
+// Watch className changes during interaction
+const observer = new MutationObserver(mutations => {
+  mutations.forEach(m => {
+    if (m.type === 'attributes')
+      console.log(m.target.className, m.attributeName, m.oldValue, '->', m.target.getAttribute(m.attributeName))
+  })
+})
+// Observe carousel items, interact, enumerate all states
+```
+
+**Bundle grep:**
+```bash
+grep -oE 'case\s+[0-9]+\s*:' tmp/ref/<c>/bundles/*.js | sort | uniq -c | sort -rn | head -20
+grep -oE '\{0:\s*[^,}]+,\s*1:\s*[^,}]+,\s*2:' tmp/ref/<c>/bundles/*.js | head -10
+```
+
+**Traps:**
+- Boolean collapse: `isActive` gates entry into 4+ sub-states
+- CSS-class-as-state: `is-entering/active/leaving/hidden` = 4 phases, not 2
+- Minified constants: `0,1,2,3` were named enums
+
+### Auto-Timer Extraction
+
+**Failure mode:** Timer missed entirely, wrong interval, or unconditional when splash-gated.
+
+**DOM inspection:**
+```js
+// Intercept timers before page load
+const intervals = []
+const origSetInterval = window.setInterval
+window.setInterval = function(fn, delay, ...args) {
+  const id = origSetInterval(fn, delay, ...args)
+  intervals.push({ id, delay, fnStr: fn.toString().slice(0, 120) })
+  return id
+}
+```
+
+**Bundle grep:**
+```bash
+grep -oE 'setInterval\s*\([^,)]+,\s*[0-9]+\)' tmp/ref/<c>/bundles/*.js | head -10
+grep -oE 'repeat\s*:\s*-1\|repeatDelay\s*:\s*[0-9.]+' tmp/ref/<c>/bundles/*.js | head -5
+```
+
+**Traps:**
+- GSAP uses `repeat: -1` + `repeatDelay`, not `setInterval`
+- Splash-gate miss: timer starts only after preloader completes
+- Scroll-gate miss: `IntersectionObserver` triggers timer start
+- Page-visibility pause: always add `visibilitychange` listener
+
+---
+
 ## CSS Patterns
 
 | Pattern | Key Properties |

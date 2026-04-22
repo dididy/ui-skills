@@ -1,6 +1,6 @@
 [
   {
-    "query": "hey can you clone this page for me? https://stripe.com/payments — i need a react component that looks exactly like it, with the hover effects and everything",
+    "query": "hey can you clone this page for me? https://stripe.com/payments \u2014 i need a react component that looks exactly like it, with the hover effects and everything",
     "should_trigger": true
   },
   {
@@ -8,19 +8,19 @@
     "should_trigger": true
   },
   {
-    "query": "replicate this UI (attached screenshot of a pricing page) — turn it into a working React component with the card hover animations",
+    "query": "replicate this UI (attached screenshot of a pricing page) \u2014 turn it into a working React component with the card hover animations",
     "should_trigger": true
   },
   {
-    "query": "I recorded my screen showing how this carousel works on https://vercel.com — can you copy the transition timing and make it work the same way in my project?",
+    "query": "I recorded my screen showing how this carousel works on https://vercel.com \u2014 can you copy the transition timing and make it work the same way in my project?",
     "should_trigger": true
   },
   {
-    "query": "make it look like https://tailwindcss.com/docs — I want the sidebar nav, the content area, and the responsive breakpoints to match exactly",
+    "query": "make it look like https://tailwindcss.com/docs \u2014 I want the sidebar nav, the content area, and the responsive breakpoints to match exactly",
     "should_trigger": true
   },
   {
-    "query": "copy the hero section from notion.so — the gradient background, the CTA buttons, the responsive layout. I want computed CSS values not guesses from a screenshot",
+    "query": "copy the hero section from notion.so \u2014 the gradient background, the CTA buttons, the responsive layout. I want computed CSS values not guesses from a screenshot",
     "should_trigger": true
   },
   {
@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "clone the CSS animation on this button — when you hover it does a scale + shadow transition over 300ms with some kind of ease-out curve. URL: https://ui.shadcn.com",
+    "query": "clone the CSS animation on this button \u2014 when you hover it does a scale + shadow transition over 300ms with some kind of ease-out curve. URL: https://ui.shadcn.com",
     "should_trigger": true
   },
   {
@@ -36,19 +36,19 @@
     "should_trigger": true
   },
   {
-    "query": "reverse-engineer the footer from https://github.com — I need the exact column layout, link styles, and the responsive stacking behavior",
+    "query": "reverse-engineer the footer from https://github.com \u2014 I need the exact column layout, link styles, and the responsive stacking behavior",
     "should_trigger": true
   },
   {
-    "query": "turn this into code — https://dribbble.com/shots/12345 — it's a card-based dashboard with data visualization placeholders",
+    "query": "turn this into code \u2014 https://dribbble.com/shots/12345 \u2014 it's a card-based dashboard with data visualization placeholders",
     "should_trigger": true
   },
   {
-    "query": "I want to copy the sidebar navigation from https://docs.github.com — the expandable tree structure with icons and active state highlighting",
+    "query": "I want to copy the sidebar navigation from https://docs.github.com \u2014 the expandable tree structure with icons and active state highlighting",
     "should_trigger": true
   },
   {
-    "query": "clone this FAQ page at https://example.com/faq — the accordions expand on click with smooth height transitions",
+    "query": "clone this FAQ page at https://example.com/faq \u2014 the accordions expand on click with smooth height transitions",
     "should_trigger": true
   },
   {
@@ -56,11 +56,11 @@
     "should_trigger": true
   },
   {
-    "query": "just copy the modal dialog from https://example.com — click the Contact button to open it. I need the modal component with the backdrop animation.",
+    "query": "just copy the modal dialog from https://example.com \u2014 click the Contact button to open it. I need the modal component with the backdrop animation.",
     "should_trigger": true
   },
   {
-    "query": "I only need the navigation bar and footer from https://example.com — skip everything in between. Make them separate components.",
+    "query": "I only need the navigation bar and footer from https://example.com \u2014 skip everything in between. Make them separate components.",
     "should_trigger": true
   },
   {
@@ -68,7 +68,7 @@
     "should_trigger": false
   },
   {
-    "query": "can you help me debug this CSS issue? my flexbox layout is breaking on mobile — the items aren't wrapping correctly. here's my component code...",
+    "query": "can you help me debug this CSS issue? my flexbox layout is breaking on mobile \u2014 the items aren't wrapping correctly. here's my component code...",
     "should_trigger": false
   },
   {
@@ -76,7 +76,7 @@
     "should_trigger": false
   },
   {
-    "query": "refactor this React component to use server components instead of client components — it's currently fetching data with useEffect but I want to move to RSC",
+    "query": "refactor this React component to use server components instead of client components \u2014 it's currently fetching data with useEffect but I want to move to RSC",
     "should_trigger": false
   },
   {
@@ -84,11 +84,11 @@
     "should_trigger": false
   },
   {
-    "query": "write playwright e2e tests for my checkout flow — it should test adding items to cart, entering shipping info, and completing payment",
+    "query": "write playwright e2e tests for my checkout flow \u2014 it should test adding items to cart, entering shipping info, and completing payment",
     "should_trigger": false
   },
   {
-    "query": "optimize the performance of my React app — the bundle is 2MB and the LCP is terrible. Can you analyze what's causing the bloat?",
+    "query": "optimize the performance of my React app \u2014 the bundle is 2MB and the LCP is terrible. Can you analyze what's causing the bloat?",
     "should_trigger": false
   },
   {
@@ -112,7 +112,7 @@
     "should_trigger": false
   },
   {
-    "query": "I need to extract the hover animation timing from a button — not clone the whole site, just get the cubic-bezier and duration",
+    "query": "I need to extract the hover animation timing from a button \u2014 not clone the whole site, just get the cubic-bezier and duration",
     "should_trigger": false
   },
   {
@@ -120,18 +120,118 @@
     "should_trigger": false
   },
   {
-    "query": "it still looks different from the original — what's wrong?",
+    "query": "it still looks different from the original \u2014 what's wrong?",
     "should_trigger": false,
-    "note": "This is visual-debug, not ui-reverse-engineering — user is comparing existing impl, not starting a new clone"
+    "note": "This is visual-debug, not ui-reverse-engineering \u2014 user is comparing existing impl, not starting a new clone"
   },
   {
-    "query": "원본이랑 아직 다르다 확인해줘",
+    "query": "\uc6d0\ubcf8\uc774\ub791 \uc544\uc9c1 \ub2e4\ub974\ub2e4 \ud655\uc778\ud574\uc918",
     "should_trigger": false,
-    "note": "This is visual-debug — user wants comparison, not new extraction"
+    "note": "This is visual-debug \u2014 user wants comparison, not new extraction"
   },
   {
     "query": "run AE diff between original and my implementation",
     "should_trigger": false,
-    "note": "This is visual-debug — explicit AE diff request"
+    "note": "This is visual-debug \u2014 explicit AE diff request"
+  },
+  {
+    "query": "Extract the hover animation from the pricing cards on https://vercel.com/pricing \u2014 when you hover a card, it scales up and shows a shadow. I need the exact timing curve.",
+    "should_trigger": true
+  },
+  {
+    "query": "The hero section on https://lobehub.com has a character-by-character stagger animation on page load. Extract the exact timing, per-character delay, and easing.",
+    "should_trigger": true
+  },
+  {
+    "query": "there's a Three.js particle effect on this landing page (https://example.com/cool-particles) and I want to extract the exact particle count, distribution formula, and animation parameters from the JS bundle",
+    "should_trigger": true
+  },
+  {
+    "query": "This site has a scroll-driven animation where elements parallax at different rates. I need the exact scroll multipliers and easing from https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "copy the page-load transition \u2014 text fades in with blur over 800ms with a cubic-bezier curve. URL: https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "extract the CSS @keyframes from this loading spinner \u2014 it has a non-linear rotation with color change at 50%. URL: https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "the modal open animation on https://example.com has a spring-like overshoot \u2014 extract the exact easing and duration for both the backdrop and the modal panel",
+    "should_trigger": true
+  },
+  {
+    "query": "this canvas animation at https://example.com uses WebGL shaders for a morphing blob effect \u2014 I need to extract the shader code and animation parameters from the bundle",
+    "should_trigger": true
+  },
+  {
+    "query": "the route transition on this Next.js app fades out the old page and slides in the new one \u2014 extract the exact timing from https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "there's a Rive animation in the hero section \u2014 I need the .riv file URL and the state machine inputs. URL: https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "extract the Lottie animation from this landing page \u2014 the confetti burst plays on button click. URL: https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "this hero has a 3-line heading where characters stagger continuously across all lines \u2014 extract the per-character delay including the line-break continuity. URL: https://example.com",
+    "should_trigger": true
+  },
+  {
+    "query": "the scroll animation on https://example.com plays forward when scrolling down but also reverses when scrolling up \u2014 extract both directions",
+    "should_trigger": true
+  },
+  {
+    "query": "write me a framer-motion animation for a card flip effect with spring physics",
+    "should_trigger": false
+  },
+  {
+    "query": "how do I use CSS keyframes to create a pulse animation?",
+    "should_trigger": false
+  },
+  {
+    "query": "help me optimize my React app's performance \u2014 too many re-renders on state changes",
+    "should_trigger": false
+  },
+  {
+    "query": "build a carousel component with autoplay and swipe gestures using embla-carousel",
+    "should_trigger": false
+  },
+  {
+    "query": "clone this page for me: https://stripe.com \u2014 I need a react component that looks exactly like it",
+    "should_trigger": false
+  },
+  {
+    "query": "add a fade-in animation to my hero section using Tailwind's animate utilities",
+    "should_trigger": false
+  },
+  {
+    "query": "implement drag-and-drop sortable list using @dnd-kit with smooth transition animations",
+    "should_trigger": false
+  },
+  {
+    "query": "what's the best animation library for React? comparing framer-motion vs react-spring vs GSAP",
+    "should_trigger": false
+  },
+  {
+    "query": "my CSS transition isn't working \u2014 the opacity change happens instantly without any animation. here's my component...",
+    "should_trigger": false
+  },
+  {
+    "query": "create a skeleton loading animation component with a shimmer effect for my card placeholders",
+    "should_trigger": false
+  },
+  {
+    "query": "I need to animate a bar chart in React \u2014 the bars should grow from 0 to their final height when the component mounts",
+    "should_trigger": false
+  },
+  {
+    "query": "how do I implement view transitions API in my Next.js app for smooth page navigation?",
+    "should_trigger": false
   }
 ]

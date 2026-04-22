@@ -254,38 +254,35 @@ const [activeIndex, setActiveIndex] = useState(0);
 
 ## GSAP Premium Plugin Alternatives
 
-When the original site uses GSAP paid/premium plugins, do NOT purchase them or skip the feature. These alternatives are listed in priority order: (1) project-specific animation library if available (e.g., `@beyond/core` in onpixel monorepo), (2) open-source npm packages, (3) manual CSS implementation.
+When the original site uses GSAP paid/premium plugins, do NOT purchase them or skip the feature. These alternatives are listed in priority order: (1) project-specific animation library if available, (2) open-source npm packages, (3) manual CSS implementation.
 
-### SplitText → `@beyond/core` splitText or `splitting` npm package
+### SplitText → `splitting` npm package (or project animation library)
 
-GSAP's SplitText (paid Club plugin) splits text into chars/words/lines for stagger animations. Project-specific library (e.g., `@beyond/core`) may have the same feature. Open-source alternative: [`splitting`](https://splitting.js.org/) npm package — splits text into chars/words/lines with CSS custom properties for index-based stagger.
+GSAP's SplitText (paid Club plugin) splits text into chars/words/lines for stagger animations. Open-source alternative: [`splitting`](https://splitting.js.org/) npm package — splits text into chars/words/lines with CSS custom properties for index-based stagger. If the project has its own animation library with splitText support, prefer that.
 
 ```ts
-import { splitText } from '@beyond/core'
+// Using splitting (npm install splitting)
+import Splitting from 'splitting'
 
-// Split into words (identical to GSAP SplitText with type: 'words')
-const { nodes, revert } = splitText(element, 'word')
+const result = Splitting({ target: element, by: 'chars' })
+const chars = result[0].chars
 
-// Split into characters
-const { nodes, revert } = splitText(element, 'char')
-
-// Split into lines (same offsetTop grouping as GSAP)
-const { nodes, revert } = splitText(element, 'line')
-
-// Animate with GSAP (or @beyond/core animate)
-gsap.set(nodes, { transformOrigin: 'bottom center', scaleY: 0, y: '200%' })
-gsap.to(nodes, {
-  scaleY: 1, y: 0,
-  ease: 'elastic.out(1.2, 0.8)',
-  duration: 1,
-  stagger: 0.1,
+// Animate with WAAPI
+chars.forEach((char, i) => {
+  char.style.opacity = '0'
+  char.style.transform = 'translateY(200%)'
+  const anim = char.animate(
+    [
+      { opacity: 0, transform: 'translateY(200%) scaleY(0)' },
+      { opacity: 1, transform: 'translateY(0) scaleY(1)' },
+    ],
+    { delay: i * 100, duration: 1000, fill: 'forwards', easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+  )
+  anim.onfinish = () => { char.style.opacity = '1'; char.style.transform = 'none'; anim.cancel() }
 })
-
-// Cleanup
-revert()
 ```
 
-**When to use:** Any site with `SplitText.create()` in the bundle. Replace 1:1 — the API surface is identical (element → mode → nodes + revert).
+**When to use:** Any site with `SplitText.create()` in the bundle.
 
 ### MorphSVG → Manual SVG path interpolation or rx/ry animation
 
@@ -303,11 +300,11 @@ gsap.to(rectElement, {
 })
 ```
 
-### ScrollSmoother → project library or Lenis
+### ScrollSmoother → Lenis (or project library)
 
 GSAP's ScrollSmoother (paid) adds smooth scroll behavior. Alternatives:
-- Project-specific library (e.g., `@beyond/react` `useSmoothScroll()`) if available
 - [`lenis`](https://github.com/darkroomengineering/lenis) npm package — widely used, lightweight, open-source
+- Project-specific smooth scroll library if available
 
 ### Draggable → Native pointer events
 
@@ -336,8 +333,8 @@ When `transition-spec.json` contains entries referencing GSAP premium plugins, a
 {
   "name": "text-reveal-stagger",
   "gsap_plugin": "SplitText",
-  "beyond_alternative": "@beyond/core splitText('word')",
-  "notes": "Replace SplitText.create() with splitText(el, 'word'). Same nodes[] + revert() API."
+  "oss_alternative": "splitting (npm) or project animation library",
+  "notes": "Replace SplitText.create() with splitting({ target: el, by: 'chars' })"
 }
 ```
 

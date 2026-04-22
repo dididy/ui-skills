@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.2.6] - 2026-04-22
+
+Split oversized files, added hidden element extraction and external SDK reuse pipeline, then absorbed transition-reverse-engineering into ui-reverse-engineering — 4 skills → 3 skills.
+
+### Split: `interaction-detection.md` (1767 → 279 lines)
+- **`interaction-detection.md`** — Step 5 only (hover, scroll, click, drag detection)
+- **`bundle-analysis.md`** (NEW, 142L) — Step 6: JS bundle download, scroll engine, animation library, preloader detection, external SDK detection
+- **`transition-spec-rules.md`** (NEW, 170L) — Spec format, rules, capture verification (Step 5e), external SDK reuse procedure
+
+### Split: `dom-extraction.md` (670 → 341 lines)
+- **`dom-extraction.md`** — Steps 1–2 + 2.6 (DOM structure, hidden elements, portals, sticky, section HTML)
+- **`asset-extraction.md`** (NEW, 339L) — Step 2.5: CSS files, fonts, images, SVGs, videos, head metadata, CSS variables
+
+### Split: `visual-debug/verification.md` (764 → 465 lines)
+- **`verification.md`** — Phase A/B (capture) + Phase D (pixel-perfect gate) + auxiliary checks
+- **`comparison-fix.md`** (NEW, 309L) — Phase C: AE/SSIM comparison, computed-style diagnosis, Phase E LLM review, Phase H self-healing
+
+### Skill boundary restructure: detect(ui-reverse-engineering) → extract(transition-reverse-engineering) → absorb
+
+**Merged into transition-reverse-engineering (intermediate step, later absorbed):**
+- **`patterns.md`** — Canvas Renderer, Disc/Carousel, Lottie Asset Mapping, State Machine, Auto-Timer detection patterns added as "Detection & Classification Patterns" section (from ui-reverse-engineering/bundle-patterns.md)
+- **`css-extraction.md`** — Hover state delta capture added (from ui-reverse-engineering/interaction-detection.md)
+
+**Replaced with forwards in ui-reverse-engineering:**
+- **`bundle-analysis.md`** — Framer/GSAP/scroll lib detailed greps replaced with quick-detect + forward to transition-reverse-engineering
+- **`interaction-detection.md`** — CSS keyframe eval + hover delta eval replaced with forwards to transition-reverse-engineering/css-extraction.md
+
+**Moved across skills:**
+- **`capture-reference.md`** → **`ui-capture/element-capture.md`** — Element-scope capture (hover/scroll/page-load) now lives in ui-capture
+- **`verification.md`** (transition-reverse-engineering) → **`visual-debug/comparison-fix.md`** — Element-Scope Verification section added (frame comparison, bug diagnosis protocol, completion checklist)
+
+**Deleted (content merged elsewhere):**
+- ui-reverse-engineering/bundle-patterns.md -- merged into ui-reverse-engineering/patterns.md
+- transition-reverse-engineering/capture-reference.md -- moved to ui-capture/element-capture.md
+- transition-reverse-engineering/verification.md -- merged into visual-debug/comparison-fix.md
+
+**Absorbed transition-reverse-engineering into ui-reverse-engineering (4 to 3 skills):**
+- 7 sub-docs (measurement, css-extraction, js-animation-extraction, canvas-webgl-extraction, patterns, waapi-scrubbing, bundle-verification) moved into ui-reverse-engineering
+- Transition extraction pipeline added as Step T in ui-reverse-engineering SKILL.md (classification eval, scope, sub-pipeline)
+- All invoke transition-reverse-engineering replaced with direct sub-doc references
+- transition-reverse-engineering directory deleted
+- element-capture.md moved from ui-capture to ui-reverse-engineering (only used by Step T0)
+- interaction-detection.md idle+active capture code removed (duplicated ui-capture Phase 2C), replaced with delegation
+
+### New features
+- **Hidden element extraction** (`dom-extraction.md`) — Elements with `height:0`, `display:none`, `opacity:0` are force-shown and extracted → `hidden-elements.json`
+- **External SDK detection** (`transition-spec-rules.md`) — Auto-detect UnicornStudio, Spline, Rive, Lottie, Three.js → reuse SDK directly instead of CSS replication
+- **Splash detection flow** (`bundle-analysis.md`) — Bundle grep + DOM class check at Step 5c, before capture verification
+- **Orphan fix** — `dynamic-content-protocol.md` routed from `animation-detection.md`
+
+### Accuracy improvements
+- **Responsive value recovery** (`component-generation.md` Rule 5) — Compare per-breakpoint computed styles to recover original CSS expressions (calc, viewport units, responsive prefixes) instead of hardcoding pixel values from a single viewport
+- **Project-specific references removed** — All `@beyond/core`, `@beyond/react`, `onpixel` hardcoded references replaced with generic "project animation library or OSS alternative" across 4 sub-docs (transition-implementation, generation-pitfalls, site-detection, component-generation)
+- **Evals merged** — 22 transition-reverse-engineering evals + 25 trigger-evals merged into ui-reverse-engineering (total: 57 evals, 58 trigger-evals)
+
+### Fixes
+- **`validate-gate.sh`** — `gate_spec`: fixed `jq has()` multi-line output bug. Added `verify/` frame count check
+- **Back-references clarified** — Sub-docs no longer reference calling docs ambiguously (prevents circular confusion)
+- **R&R dedup** — interaction-detection.md idle+active capture code removed (duplicated ui-capture Phase 2C)
+
+### Updated
+- **All 3 SKILL.md files** -- Pipeline tables + reference files tables updated for all changes
+- **animation-detection.md** -- Added routing to dynamic-content-protocol.md
+- All cross-references updated (ui-capture, visual-debug, evals.json)
+
+### Audit results
+- 3 skills, 35 files total (27 + 5 + 3), 0 broken references, 0 orphans
+- ui-reverse-engineering: 26 sub-docs (57 evals, 58 trigger-evals), ui-capture: 4 sub-docs, visual-debug: 2 sub-docs
+- No project-specific hardcoded references remain
+
 ## [0.2.5] - 2026-04-21
 
 SKILL.md token optimization — 43% reduction (11,836 → 6,780 tokens) across all 4 skills with zero functional regression.

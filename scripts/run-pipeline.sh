@@ -82,9 +82,9 @@ echo ""
 # ── Phase 2: Extraction ──
 echo -e "${BOLD}Phase 2 — Extraction${NC}"
 
-# Step 1-2: DOM
-phase_status "Step 1-2: structure.json" has_file "$REF_DIR/structure.json" || {
-  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md → run Step 1-2."
+# Step 1-2: DOM + section enumeration
+phase_status "Step 1-2: structure.json + section-map.json" test -f "$REF_DIR/structure.json" -a -f "$REF_DIR/section-map.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md → run Step 2 (structure) + semantic section enumeration (section-map)."
 }
 
 # Step 2.5: Head/assets/fonts
