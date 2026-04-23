@@ -21,6 +21,15 @@ SESSION="${1:?Usage: layout-diff.sh <session> <orig-url> <impl-url>}"
 ORIG="${2:?}"
 IMPL="${3:?}"
 
+cleanup_browsers() {
+  agent-browser close --session "${SESSION}-layout-orig" 2>/dev/null
+  agent-browser close --session "${SESSION}-layout-impl" 2>/dev/null
+}
+trap cleanup_browsers EXIT
+
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
+
 EXTRACT_SCRIPT='(() => {
   const els = document.querySelectorAll("section, header, footer, main, nav, [role=banner], [role=main], [role=contentinfo]");
   const result = [];
@@ -47,14 +56,14 @@ echo ""
 
 # Extract from original
 agent-browser open "$ORIG" --session "${SESSION}-layout-orig" 2>/dev/null
-agent-browser set viewport 1440 900 --session "${SESSION}-layout-orig" 2>/dev/null
+agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-layout-orig" 2>/dev/null
 agent-browser wait 5000 --session "${SESSION}-layout-orig" 2>/dev/null
 ORIG_LAYOUT=$(agent-browser eval "$EXTRACT_SCRIPT" --session "${SESSION}-layout-orig" 2>/dev/null | tail -1)
 agent-browser close --session "${SESSION}-layout-orig" 2>/dev/null
 
 # Extract from implementation
 agent-browser open "$IMPL" --session "${SESSION}-layout-impl" 2>/dev/null
-agent-browser set viewport 1440 900 --session "${SESSION}-layout-impl" 2>/dev/null
+agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-layout-impl" 2>/dev/null
 agent-browser wait 5000 --session "${SESSION}-layout-impl" 2>/dev/null
 IMPL_LAYOUT=$(agent-browser eval "$EXTRACT_SCRIPT" --session "${SESSION}-layout-impl" 2>/dev/null | tail -1)
 agent-browser close --session "${SESSION}-layout-impl" 2>/dev/null
@@ -68,7 +77,7 @@ IMPL_COUNT=$(echo "$IMPL_LAYOUT" | jq 'length' 2>/dev/null || echo "0")
 FAIL=0
 
 # Merge both arrays into tab-separated rows in one jq invocation
-jq -r --argjson orig "$ORIG_LAYOUT" --argjson impl "$IMPL_LAYOUT" -n '
+TSV_DATA=$(jq -r --argjson orig "$ORIG_LAYOUT" --argjson impl "$IMPL_LAYOUT" -n '
   ([($orig | length), ($impl | length)] | max) as $max |
   range($max) | . as $i |
   [
@@ -80,7 +89,9 @@ jq -r --argjson orig "$ORIG_LAYOUT" --argjson impl "$IMPL_LAYOUT" -n '
     ($impl[$i].landmark // ""),
     ($impl[$i].h // 0)
   ] | @tsv
-' 2>/dev/null | while IFS=$'\t' read -r i OTAG OLAND OH ITAG ILAND IH; do
+' 2>/dev/null)
+
+while IFS=$'\t' read -r i OTAG OLAND OH ITAG ILAND IH; do
   LANDMARK="${OLAND:-$ILAND}"
   [ -z "$LANDMARK" ] && LANDMARK="(no heading)"
 
@@ -104,13 +115,7 @@ jq -r --argjson orig "$ORIG_LAYOUT" --argjson impl "$IMPL_LAYOUT" -n '
       FAIL=$((FAIL + 1))
     fi
   fi
-  # Write FAIL count to temp file (subshell can't update parent var)
-  echo "$FAIL" > /tmp/layout-diff-fail-count
-done
-
-# Read FAIL count from subshell
-FAIL=$(cat /tmp/layout-diff-fail-count 2>/dev/null || echo "0")
-rm -f /tmp/layout-diff-fail-count
+done <<< "$TSV_DATA"
 
 echo ""
 echo "Sections: orig=$ORIG_COUNT impl=$IMPL_COUNT"

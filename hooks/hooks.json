@@ -1,0 +1,27 @@
+{
+  "description": "ui-skills pipeline enforcement hooks",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ui-re-pre-generate-check.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ui-re-post-verify-check.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

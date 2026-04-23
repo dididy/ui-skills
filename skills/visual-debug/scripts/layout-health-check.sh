@@ -7,10 +7,23 @@
 
 set -uo pipefail
 
+if ! command -v node &>/dev/null; then
+  echo "ERROR: node not installed"
+  exit 2
+fi
+
 SESSION="${1:?Usage: layout-health-check.sh <session> <orig-url> <impl-url> [outdir]}"
 ORIG_URL="${2:?}"
 IMPL_URL="${3:?}"
 OUTDIR="${4:-tmp/ref/layout-check}"
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
+
+cleanup_browsers() {
+  agent-browser close --session "${SESSION}-ref" 2>/dev/null
+  agent-browser close --session "${SESSION}-impl" 2>/dev/null
+}
+trap cleanup_browsers EXIT
 
 mkdir -p "$OUTDIR"
 
@@ -74,7 +87,7 @@ echo ""
 echo "▸ Analyzing original..."
 agent-browser --session "${SESSION}-ref" close 2>/dev/null
 agent-browser --session "${SESSION}-ref" open "$ORIG_URL" 2>/dev/null
-agent-browser --session "${SESSION}-ref" set viewport 1440 900 2>/dev/null
+agent-browser --session "${SESSION}-ref" set viewport $VIEW_W $VIEW_H 2>/dev/null
 agent-browser --session "${SESSION}-ref" wait 5000 2>/dev/null
 ORIG_RAW=$(agent-browser --session "${SESSION}-ref" eval "$EXTRACT_JS" 2>/dev/null)
 # agent-browser wraps output in quotes and escapes inner quotes — unwrap
@@ -84,7 +97,7 @@ ORIG_DATA=$(echo "$ORIG_RAW" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g' | sed 's/\\
 echo "▸ Analyzing implementation..."
 agent-browser --session "${SESSION}-impl" close 2>/dev/null
 agent-browser --session "${SESSION}-impl" open "$IMPL_URL" 2>/dev/null
-agent-browser --session "${SESSION}-impl" set viewport 1440 900 2>/dev/null
+agent-browser --session "${SESSION}-impl" set viewport $VIEW_W $VIEW_H 2>/dev/null
 agent-browser --session "${SESSION}-impl" wait 5000 2>/dev/null
 IMPL_RAW=$(agent-browser --session "${SESSION}-impl" eval "$EXTRACT_JS" 2>/dev/null)
 IMPL_DATA=$(echo "$IMPL_RAW" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g' | sed 's/\\n/\n/g' | sed 's/\\\\/\\/g')

@@ -9,9 +9,16 @@
 
 set -uo pipefail
 
+if ! command -v python3 &>/dev/null; then
+  echo "ERROR: python3 not installed"
+  exit 2
+fi
+
 SESSION="${1:?Usage: computed-diff.sh <session> <orig-url> <impl-url> <selector1> ...}"
 ORIG_URL="${2:?}"
 IMPL_URL="${3:?}"
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
 shift 3
 SELECTORS=("$@")
 
@@ -43,14 +50,14 @@ echo ""
 
 # Extract from original
 agent-browser --session "$SESSION" open "$ORIG_URL" 2>&1 > /dev/null
-agent-browser --session "$SESSION" set viewport 1440 900 2>&1 > /dev/null
+agent-browser --session "$SESSION" set viewport $VIEW_W $VIEW_H 2>&1 > /dev/null
 agent-browser --session "$SESSION" wait 5000 2>&1 > /dev/null
 
 ORIG_STYLES=$(agent-browser --session "$SESSION" eval "$EXTRACT_JS" 2>&1)
 
 # Extract from implementation
 agent-browser --session "$SESSION" open "$IMPL_URL" 2>&1 > /dev/null
-agent-browser --session "$SESSION" set viewport 1440 900 2>&1 > /dev/null
+agent-browser --session "$SESSION" set viewport $VIEW_W $VIEW_H 2>&1 > /dev/null
 agent-browser --session "$SESSION" wait 5000 2>&1 > /dev/null
 
 IMPL_STYLES=$(agent-browser --session "$SESSION" eval "$EXTRACT_JS" 2>&1)

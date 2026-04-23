@@ -40,6 +40,16 @@ RECORD_DURATION="${RECORD_DURATION:-5}"
 SSIM_THRESHOLD="${SSIM_THRESHOLD:-0.90}"
 FPS="${FPS:-10}"
 PRE_ACTION_WAIT="${PRE_ACTION_WAIT:-3}"
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
+
+# Cleanup browser sessions on exit (including errors/signals)
+cleanup_browsers() {
+  agent-browser close --session "${SESSION}-orig" 2>/dev/null
+  agent-browser close --session "${SESSION}-impl" 2>/dev/null
+}
+trap cleanup_browsers EXIT
+
 # Optional: skip SSIM comparison, just extract frames for manual review
 SKIP_SSIM="${SKIP_SSIM:-false}"
 # Optional: only compare timing (detect when frames start changing)
@@ -95,7 +105,7 @@ if [[ "$ACTION" == "splash" ]]; then
   # For splash: open site, dismiss any modal, then record the content area
   agent-browser open "$ORIG_URL" --session "${SESSION}-orig" 2>&1 | head -1
   sleep 3
-  agent-browser set viewport 1440 900 --session "${SESSION}-orig" 2>&1 | head -1
+  agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-orig" 2>&1 | head -1
   # Start recording, then dismiss modal — this captures the splash behind the modal
   agent-browser record start "$OUT_DIR/ref-video/raw.webm" --session "${SESSION}-orig" 2>&1 | head -1
   agent-browser eval '(() => {
@@ -108,7 +118,7 @@ if [[ "$ACTION" == "splash" ]]; then
 else
   agent-browser open "$ORIG_URL" --session "${SESSION}-orig" 2>&1 | head -1
   sleep "$PRE_ACTION_WAIT"
-  agent-browser set viewport 1440 900 --session "${SESSION}-orig" 2>&1 | head -1
+  agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-orig" 2>&1 | head -1
   # Dismiss modal if present
   agent-browser eval '(() => { var b=document.querySelector("input[value=Enter]"); if(b){b.click();return "dismissed"} return "no modal"; })()' --session "${SESSION}-orig" 2>&1 | head -1
   sleep 2
@@ -132,7 +142,7 @@ if [[ "$ACTION" == "splash" ]]; then
 else
   agent-browser open "$IMPL_URL" --session "${SESSION}-impl" 2>&1 | head -1
   sleep "$PRE_ACTION_WAIT"
-  agent-browser set viewport 1440 900 --session "${SESSION}-impl" 2>&1 | head -1
+  agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-impl" 2>&1 | head -1
   sleep 2
   agent-browser record start "$OUT_DIR/impl-video/raw.webm" --session "${SESSION}-impl" 2>&1 | head -1
   perform_action "${SESSION}-impl" "$ACTION"

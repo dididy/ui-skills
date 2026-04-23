@@ -54,48 +54,16 @@ mkdir -p ~/.claude/skills
 git clone https://github.com/dididy/ui-skills.git ~/.claude/skills/ui-skills
 ```
 
-### Optional: pipeline hooks
+### Pipeline hooks (automatic)
 
-Three hooks enforce the extraction-before-generation discipline. They skip automatically when no `tmp/ref/` directory or active session marker exists, so they won't interfere with non-ui-re projects.
+Hooks register automatically via `hooks/hooks.json` on plugin install — no manual setup needed.
 
 | Hook | Event | Purpose |
 |------|-------|---------|
-| `hooks/ui-re-start-session.sh` | Pipeline start | Creates `tmp/.ui-re-active` marker so the pre-generate hook can block writes before `tmp/ref/` exists |
-| `hooks/ui-re-pre-generate-check.sh` | `PreToolUse` (Write/Edit) | Blocks component file writes until extraction pipeline completes. Only enforces on `src/components/`, `src/app/*/page.*`, and `src/projects/*/components/` |
-| `hooks/ui-re-post-verify-check.sh` | `PostToolUse` (Bash) | Warns on completion signals (`commit`, `done`, etc.) if verification hasn't run, has failing positions, or is missing multi-state coverage |
+| `ui-re-pre-generate-check.sh` | `PreToolUse` (Write/Edit) | Blocks component writes until extraction completes |
+| `ui-re-post-verify-check.sh` | `PostToolUse` (Bash) | Warns on completion signals if verification hasn't run |
 
-Add to `.claude/settings.json` in your project root. Replace `<PLUGIN_PATH>` with the plugin root directory (e.g. `~/.claude/skills/ui-skills` for git clone, or the parent of the skill paths shown by `npx skills ls`):
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash <PLUGIN_PATH>/hooks/ui-re-pre-generate-check.sh"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash <PLUGIN_PATH>/hooks/ui-re-post-verify-check.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Session marker (optional):** Before starting the pipeline, run `bash <PLUGIN_PATH>/hooks/ui-re-start-session.sh tmp/ref/<name>` to create a `tmp/.ui-re-active` marker. This lets the pre-generate hook block component writes even before any extraction files exist in `tmp/ref/`. Without the marker, the hook only activates once `tmp/ref/` has pipeline artifacts.
+Hooks skip automatically when no `tmp/ref/` directory exists, so they won't interfere with non-ui-re projects.
 
 ---
 
@@ -168,6 +136,9 @@ R.   Capture reference         — static screenshots + scroll video (60 fps)
 | `layout-diff.sh` | Structural section bounding-box comparison between two URLs |
 | `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |
 | `dssim-compare.sh` | Structural visual similarity (DSSIM) — catches layout issues AE misses |
+| `computed-diff.sh` | Per-selector `getComputedStyle` comparison between two URLs |
+
+All visual-debug scripts support `VIEW_W`/`VIEW_H` env vars (default 1440×900) for custom viewport sizes. All scripts that open `agent-browser` sessions have `trap EXIT` cleanup.
 
 **Input modes:**
 

@@ -9,6 +9,11 @@ Reverse-engineer a live website into a **React + Tailwind** component.
 
 > **`agent-browser` is a system CLI.** Execute all commands via the Bash tool.
 > **Session rule:** always pass `--session <project-name>` — default session is shared globally.
+> **Token rule:** pipe large `eval` output to a file, then `Read` only what you need:
+> ```bash
+> agent-browser --session <s> eval "<script>" > tmp/ref/<name>.json
+> ```
+> Never let large JSON (DOM trees, computed styles, frame arrays) print to stdout — it wastes tokens.
 
 ## Core principles
 
@@ -47,7 +52,7 @@ brew install agent-browser imagemagick dssim ffmpeg
 | **1** | R | `/ui-capture <url>` → `static/ref/`, `transitions/ref/`, `regions.json`. ⛔ Gate: all three exist. |
 | **2** | 1–2 | `dom-extraction.md` → `structure.json`, `section-map.json`, `portal-candidates.json`, `sticky-elements.json`, `hidden-elements.json`. **Must enumerate all semantic sections** (section/footer/header) AND **extract hidden/collapsed elements** (height:0, display:none). |
 | | 2.5 | `asset-extraction.md` → `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`, `visible-images.json`, CSS files, `css/variables.txt` |
-| | 2.5b | `dom-extraction.md` Step 2.5b — **SVG-as-text detection** → `svg-text-elements.json`. Headings/brand text rendered as SVG paths, not fonts. |
+| | 2.5b | `dom-extraction.md` Step 2.5b — **SVG-as-text detection** → `svg-text-elements.json`. Headings/brand text rendered as SVG paths, not fonts. ⛔ Gate: `svg-text-elements.json` MUST exist (even if empty `[]`). Generation BLOCKED without it. |
 | | 2.6-pre | `dom-extraction.md` Step 2.6-pre — **Dual-snapshot**: extract DOM state pre-splash AND post-splash → `dom-state-diff.json`. Splash auto-detect via polling (no hardcoded wait). ⛔ MANDATORY if site has preloader. |
 | | 2.6 | `dom-extraction.md` Steps 2.6a–b → `animation-init-styles.json`, `state-coupling.json` |
 | | 3 | `style-extraction.md` → `styles.json`, `advanced-styles.json`, `body-state.json`, `decorative-svgs.json`, `design-bundles.json`. ⛔ Pre-step: merge runtime transitions from `dom-state-diff.json`. ⛔ If `scalingSystem !== 'px-fixed'` → `em-conversion.json` MUST exist. |
@@ -62,6 +67,8 @@ brew install agent-browser imagemagick dssim ffmpeg
 | | 6c | `section-audit.md` — Six-stage audit → `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json`. Cross-checks element ownership via DOM parentElement chain. **Never skip.** ⛔ Gate: `pre-generate` |
 | **3** | 7 | Read `site-detection.md` FIRST, then `component-generation.md` + `transition-implementation.md`. Parallel worktree for 4+ sections. |
 | **4** | 8 | `auto-verify.sh <session> <orig-url> <impl-url> tmp/ref/<c>`. DO NOT skip. Phase D (pixel-perfect) runs separately after. |
+| | 8b | **Section-level comparison** — `section-compare.sh <orig-url> <impl-url> <session> tmp/ref/<c>`. Crops each section independently, compares AE + structure. Catches SVG-as-text, layout mismatches, height drift. ⛔ MANDATORY — replaces noisy full-page scroll comparison. |
+| | 8c | **Transition comparison** — `transition-compare.sh <orig-url> <impl-url> <session> tmp/ref/<c>`. Compares idle/hover states per element: screenshots + computedStyle + timing. ⛔ MANDATORY if `interactions-detected.json` exists. |
 | | 9 | Test every interaction from `interactions-detected.json` on localhost. Verify hover effects match `hover-css-rules.json`. Dispatch `mouseenter` for JS hovers. 100% ✅. |
 
 ### Validation gates
@@ -91,6 +98,8 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 | **7 Rule 14** Smooth scroll | `useScroll`/`addEventListener('scroll')` used | Parallax and scroll effects don't update | Use RAF + `getBoundingClientRect()` |
 | **7 CSS diff** | Values copied from original CSS are wrong/incomplete | Padding, line-height, white-space mismatch | Diff every key class against original CSS file |
 | **7 Body scoping** | `body {}` styles not copied to project container | line-height, font-family wrong in embedded context | Copy body styles to `[data-project]` selector |
+| **8b** Section compare | "Full-page comparison already ran" | Section-level mismatches hidden in scroll noise | Run `section-compare.sh` — it catches SVG-as-text, layout type, height ratio |
+| **8c** Transition compare | "Hover looks right to me" | Wrong easing, missing hover effect, timing mismatch | Run `transition-compare.sh` — auto-detects ALL transition elements |
 | **9** Interaction test | "Hover works" concluded without actually hovering | JS-driven hover (GSAP mouseenter) not triggered | Dispatch `mouseenter` event + check `getAnimations()` |
 
 **Anti-skip rule:** If you think "this step probably won't find anything" — that is exactly when it WILL find something. Run it anyway. The steps above were identified from real failures where skipping caused user-visible bugs.
@@ -101,6 +110,8 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 □ C1 static ✅  □ C2 scroll ✅  □ C3 transitions ✅
 □ D1 Visual Gate pass  □ D2 Numerical mismatches = 0
 □ 10-point audit ≥ 9   □ Step 9 interactions: all ✅
+□ Section compare: all sections PASS, no SVG_TEXT_MISSING
+□ Transition compare: all PASS, no HOVER_*_NOT_APPLIED
 ```
 
 "Approximately same" = FAIL. Max 3 verify→fix iterations.
@@ -275,11 +286,27 @@ agent-browser eval "(() => {
 | `visual-debug/verification.md` | 8 | Phase A/B capture + Phase D pixel-perfect gate |
 | `visual-debug/comparison-fix.md` | 8 | Phase C comparison + Phase E LLM review + Phase H self-healing |
 | `style-audit.md` | 8 | Class-level computed-style comparison |
+| `visual-debug/scripts/section-compare.sh` | 8b | Section-level crop + AE + structure diff |
+| `visual-debug/scripts/transition-compare.sh` | 8c | Idle/hover state comparison + timing diff |
 
 ## Sub-skills
 
 - **`ui-capture`** — reference capture, transition detection, comparison
 - **`visual-debug`** — automated AE/SSIM comparison (zero vision tokens)
+
+## Browser cleanup (MANDATORY)
+
+**Every skill run MUST end with browser cleanup — success, failure, or interruption.**
+
+```bash
+# Always close your own session(s) by name
+agent-browser --session <session-name> close
+```
+
+- Close every `--session <name>` you opened during the pipeline
+- Run cleanup **before returning control to the user**, even on error/early exit
+- Unclosed sessions spawn Chrome Helper processes (GPU + Renderer) that persist indefinitely
+- **Never use `close --all`** — other Claude sessions may have active browsers. Only close sessions you own.
 
 ## Ralph worker mode
 

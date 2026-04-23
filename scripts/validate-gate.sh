@@ -65,6 +65,7 @@ check_dir() {
 gate_reference() {
   echo "Gate: reference (Phase 1)"
   check_dir "$REF_DIR/static/ref" "static/ref screenshots" 5
+  check_file "$REF_DIR/regions.json" "regions.json (transition regions)"
 }
 
 # ── Gate: extraction (Phase 2 Steps 1-3 complete) ──

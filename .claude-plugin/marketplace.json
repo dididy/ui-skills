@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Clone a live website into React + Tailwind. Splash-aware dual-snapshot extraction (auto-detect completion, no hardcoded waits), SVG-as-text detection, hover completeness enforcement (inline style rules, data-text swap, video capture), smooth-scroll scroll capture (wheel events), CSS value accuracy verification, body style scoping, anti-skip validate-gate.sh (blocks on missing hover rules, px fontSize leaks, scroll event listeners). 3 skills, automated pipeline with anti-rationalization gates.",
-      "version": "0.2.8",
+      "description": "Clone a live website into React + Tailwind. Splash-aware dual-snapshot extraction, SVG-as-text detection, hover completeness enforcement, smooth-scroll capture, CSS value verification, body style scoping, anti-skip gates. Browser session cleanup, token-efficient eval output, trap EXIT on all scripts, configurable viewport, pipeline status accuracy. 3 skills, automated pipeline with anti-rationalization gates.",
+      "version": "0.2.9",
       "author": {
         "name": "YONGJAE LEE"
       },

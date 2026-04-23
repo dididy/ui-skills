@@ -30,6 +30,14 @@ Automated visual comparison — original vs implementation. **Zero vision tokens
 
 **HARD RULE:** Never `Read` ref/impl images for comparison. Only read DIFF images for FAIL positions. Exception: Phase E reads ref+impl pairs.
 
+## Token rule
+
+Pipe large `eval` output to a file, then `Read` only what you need:
+```bash
+agent-browser --session <s> eval "<script>" > tmp/ref/<name>.json
+```
+Never let large JSON print to stdout — it wastes tokens.
+
 ## Dependencies
 
 ```bash
@@ -52,9 +60,12 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 | `dssim-compare.sh <dir> [threshold]` | Structural similarity (catches what AE misses) |
 | `layout-diff.sh <session> <orig> <impl>` | Section bounding box comparison |
 | `computed-diff.sh <session> <orig> <impl> <sel...>` | getComputedStyle comparison |
+| `section-compare.sh <orig> <impl> <session> [dir]` | **Section-level comparison** — crops each section, AE + structure diff. Catches SVG-as-text, layout mismatches |
+| `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
 
 ## Workflow
 
+### Full-page comparison (broad sweep)
 ```
 1. Capture    batch-scroll.sh <orig> <impl> <session>
 2. AE diff    batch-compare.sh <dir>
@@ -65,6 +76,19 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 7. LLM review Read ref+impl pairs for ALL positions (Phase E)
 8. Gate       All three axes PASS → DONE
 ```
+
+### Section-level comparison (precise — preferred for post-gen verification)
+```
+1. Section compare  section-compare.sh <orig> <impl> <session>
+   → Per-section AE + structure diff (SVG-as-text, layout type, height)
+2. Transition compare  transition-compare.sh <orig> <impl> <session>
+   → Per-element idle/hover style + timing diff
+3. Fix          Targeted code change per failing section/element
+4. Re-compare   Repeat 1–2
+5. Gate         All sections PASS + all transitions PASS → DONE
+```
+
+**Use section-level for ui-reverse-engineering Step 8b/8c.** Use full-page for standalone `/visual-debug` invocations.
 
 ## Three-axis verification (ALL required)
 
@@ -94,6 +118,20 @@ AE=500 allows anti-aliasing variance. Bump to 2000 for dynamic content.
 
 - `verification.md` — Phase A/B (capture) + D (pixel-perfect gate) + auxiliary checks
 - `comparison-fix.md` — Phase C (AE+DSSIM comparison, computed-style diagnosis, Phase E LLM review, Phase H self-healing loop)
+
+## Browser cleanup (MANDATORY)
+
+**Every skill run MUST end with browser cleanup — success, failure, or interruption.**
+
+```bash
+# Always close your own session(s) by name
+agent-browser --session <session-name> close
+```
+
+- Close every `--session <name>` you opened during the comparison
+- Run cleanup **before returning control to the user**, even on error/early exit
+- Unclosed sessions spawn Chrome Helper processes (GPU + Renderer) that persist indefinitely
+- **Never use `close --all`** — other Claude sessions may have active browsers. Only close sessions you own.
 
 ## Integration
 

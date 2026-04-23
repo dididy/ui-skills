@@ -21,6 +21,14 @@ IMPL_URL="${3:?}"
 REF_DIR="${4:?}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
+
+# Cleanup browser sessions on exit (including errors/signals)
+cleanup_browsers() {
+  agent-browser close --session "${SESSION}-verify" 2>/dev/null
+}
+trap cleanup_browsers EXIT
 
 # Resolve visual-debug scripts location
 # Try: sibling skill dir, then installed skills, then fallback find
@@ -97,7 +105,7 @@ mkdir -p "$REF_DIR/static/impl" "$REF_DIR/static/diff"
 
 # Capture impl at same scroll positions as ref
 agent-browser open "$IMPL_URL" --session "${SESSION}-verify" 2>/dev/null
-agent-browser set viewport 1440 900 --session "${SESSION}-verify" 2>/dev/null
+agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-verify" 2>/dev/null
 sleep 5
 
 for pct in 0 10 20 30 40 50 60 70 80 90 100; do

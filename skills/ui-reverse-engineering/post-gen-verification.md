@@ -331,3 +331,92 @@ If the site uses `overflow: hidden` + `translate3d` wrapper:
 - Must subscribe to the scroll engine's value stream (MotionValue, event emitter, callback)
 - `getBoundingClientRect()` returns correct values (browser accounts for transforms)
 - Pattern: `scrollValue.on('change', () => requestAnimationFrame(() => { const rect = el.getBoundingClientRect(); /* visibility check */ }))`
+
+---
+
+## Loop 5: Section-Level Visual Comparison (MANDATORY)
+
+**Replaces full-page scroll screenshots.** Full-page comparisons are noisy — scroll alignment drifts cause every position to fail even when sections are correct. Section-level cropping eliminates this.
+
+### Run
+
+```bash
+SCRIPTS_DIR="$(find ~/.claude/skills -name 'section-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
+bash "$SCRIPTS_DIR/section-compare.sh" <original-url> <impl-url> <session> tmp/ref/<component>
+```
+
+### What it does
+
+1. Enumerates `<section>`, `<header>`, `<footer>`, `<main>` on both sites
+2. Matches sections by text fingerprint similarity
+3. Crops element-level screenshots per section (no scroll alignment dependency)
+4. Runs AE comparison per section
+5. Detects structural mismatches:
+   - **SVG_TEXT_MISSING**: ref has SVG text paths, impl uses HTML text (wrong rendering)
+   - **LAYOUT_MISMATCH**: ref uses grid, impl uses flex (or vice versa)
+   - **HEIGHT_MISMATCH**: section height ratio >30% off
+   - **CHILD_COUNT_MISMATCH**: significantly different DOM structure
+
+### Gate
+
+- ALL matched sections must PASS AE (threshold: 2000 per section)
+- ALL structural diffs must be resolved or documented
+- `SVG_TEXT_MISSING` is a **hard blocker** — copy the SVG outerHTML, never approximate
+
+### When it catches things visual-debug misses
+
+| Scenario | Full-page scroll | Section-level |
+|---|---|---|
+| "MORE THAN JUST GOLF" is SVG in ref, `<h2>` in impl | Fails at 60% (noisy, mixed with scroll offset) | Fails specifically on `community-section` with `SVG_TEXT_MISSING` |
+| Product grid shows text in impl, not in ref | Hidden in noise at 20% | Clear: section height + child count mismatch |
+| Footer matches perfectly | Fails at 90% due to scroll drift | PASS — compared in isolation |
+
+---
+
+## Loop 6: Transition Comparison (MANDATORY if interactions-detected.json exists)
+
+**Compares hover/transition behavior element-by-element.** Not just "does hover work?" but "does hover produce the same visual result?"
+
+### Run
+
+```bash
+SCRIPTS_DIR="$(find ~/.claude/skills -name 'transition-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
+bash "$SCRIPTS_DIR/transition-compare.sh" <original-url> <impl-url> <session> tmp/ref/<component>
+```
+
+### What it does
+
+1. Finds all elements with `transition-duration !== 0s` on both sites
+2. For each element:
+   - Captures idle state (screenshot + computedStyle)
+   - Dispatches `mouseenter`/`mouseover` to trigger hover
+   - Captures hover state (screenshot + computedStyle)
+   - Dispatches `mouseleave` to reset
+3. Compares:
+   - **Idle style**: opacity, transform, colors match at rest
+   - **Hover style**: same properties change in the same direction
+   - **Timing**: duration, easing function
+   - **Missing transitions**: property changes on hover in ref but not in impl
+
+### Output
+
+```json
+{
+  "selector": ".product-card-img",
+  "status": "FAIL",
+  "issues": [
+    "EASING_MISMATCH: ref=[cubic-bezier(0.32, 0.72, 0, 1)], impl=[ease]",
+    "HOVER_TRANSFORM_NOT_APPLIED: ref changes transform on hover, impl stays same"
+  ]
+}
+```
+
+### Gate
+
+- ALL elements with transitions in ref must have matching transitions in impl
+- `HOVER_*_NOT_APPLIED` is a **hard blocker** — the effect is missing entirely
+- `EASING_MISMATCH` and `DURATION_MISMATCH` must be fixed to match ref values
+
+### Why this catches what Loop 4 misses
+
+Loop 4 (hover verification) requires manual selector lists from `hover-deltas.json`. This loop **auto-detects** all transition elements and compares them exhaustively. No manual enumeration needed.

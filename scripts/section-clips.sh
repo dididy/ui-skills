@@ -27,6 +27,8 @@ START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.
 SESSION="${1:?Usage: section-clips.sh <session> <output-dir> <side>}"
 DIR="${2:?Usage: section-clips.sh <session> <output-dir> <side>}"
 SIDE="${3:?Usage: section-clips.sh <session> <output-dir> <side>}"
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
 
 CLIP_DIR="$DIR/clips/$SIDE"
 SECTION_DIR="$CLIP_DIR/sections"
@@ -123,7 +125,7 @@ for i, sec in enumerate(sections):
     h = min(sec['height'], 3000)  # Cap at 3000px to avoid huge screenshots
 
     # Set viewport to section height
-    subprocess.run(['agent-browser', '--session', session, 'set', 'viewport', '1440', str(h)],
+    subprocess.run(['agent-browser', '--session', session, 'set', 'viewport', '$VIEW_W', str(h)],
                    capture_output=True, timeout=10)
 
     # Scroll to section
@@ -146,7 +148,7 @@ for i, sec in enumerate(sections):
         print(f'  ❌ {i:02d}-{name}.png FAILED')
 
 # Restore viewport
-subprocess.run(['agent-browser', '--session', session, 'set', 'viewport', '1440', '900'],
+subprocess.run(['agent-browser', '--session', session, 'set', 'viewport', '$VIEW_W', '$VIEW_H'],
                capture_output=True, timeout=10)
 " 2>/dev/null
 
@@ -154,7 +156,7 @@ subprocess.run(['agent-browser', '--session', session, 'set', 'viewport', '1440'
 echo ""
 echo "Detecting key UI elements..."
 
-agent-browser --session "$SESSION" set viewport 1440 900 >/dev/null 2>&1
+agent-browser --session "$SESSION" set viewport $VIEW_W $VIEW_H >/dev/null 2>&1
 agent-browser --session "$SESSION" eval "(() => { window.scrollTo(0, 0); })()" >/dev/null 2>&1
 
 ELEMENTS_JSON=$(agent-browser --session "$SESSION" eval "(() => {

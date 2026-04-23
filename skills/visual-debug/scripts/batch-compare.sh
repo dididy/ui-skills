@@ -98,7 +98,7 @@ for REF_FILE in "$REF_DIR"/*.png; do
   if [ "$REF_SIZE" != "$IMPL_SIZE" ]; then
     W=$(echo "$REF_SIZE" | cut -dx -f1)
     H=$(echo "$REF_SIZE" | cut -dx -f2)
-    RESIZED="/tmp/batch-compare-resized-${BASENAME}"
+    RESIZED=$(mktemp /tmp/batch-compare-XXXXXX.png)
     convert "$IMPL_FILE" -resize "${W}x${H}!" "$RESIZED" 2>/dev/null
     TMPFILES+=("$RESIZED")
     COMPARE_IMPL="$RESIZED"

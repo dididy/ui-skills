@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.2.9] - 2026-04-23
+
+Browser session cleanup, token efficiency, shell script hardening, and pipeline status accuracy.
+
+### New features
+- **`hooks/hooks.json`** — hooks now auto-register on plugin install. No manual `.claude/settings.json` editing needed. PreToolUse blocks component writes before extraction completes; PostToolUse warns on premature completion signals.
+- **Dependency doctor in `run-pipeline.sh`** — blocks pipeline start if required tools are missing. Checks agent-browser, ffmpeg, jq, compare, identify.
+- **Auto pre-generate gate** — `run-pipeline.sh` now automatically runs `validate-gate.sh pre-generate` when all Phase 2 artifacts exist, before entering Phase 3. LLM can no longer skip the gate by not calling it.
+- **Browser cleanup rule** — all 3 SKILL.md files now require closing own `--session <name>` on exit. `close --all` prohibited (kills other Claude sessions' browsers).
+- **Token rule** — all 3 SKILL.md files now require piping large `eval` output to files (`> tmp/ref/<name>.json`) instead of stdout. Prevents multi-MB JSON from consuming tokens.
+- **`run-pipeline.sh`** — added status checks for Steps 2.5b (`svg-text-elements.json`), 2.6 (`animation-init-styles.json`), 5d-2b (`hover-css-rules.json`), 6c (`component-map.json`). Added Phase 1 checks for `regions.json` and `transitions/ref/`.
+
+### Fixed
+- **`run-pipeline.sh`** — removed phantom `animation-spec.json` check (artifact never produced by any step). Fixed Step 5c message pointing to wrong doc (`interaction-detection.md` → `bundle-analysis.md`). Fixed Step 6b/6c ordering to match SKILL.md pipeline.
+- **`validate-gate.sh`** — `gate_reference` now checks `regions.json` (was only checking `static/ref/`).
+- **`layout-diff.sh`** — race condition: pipe subshell wrote FAIL count to shared `/tmp/layout-diff-fail-count`. Replaced with heredoc (`<<< "$TSV_DATA"`) so FAIL increments in parent process. Added `trap cleanup_browsers EXIT`.
+- **`batch-scroll.sh`** — no browser cleanup at all (open without close). Added `trap cleanup_browsers EXIT`. Added numeric validation for page heights (prevents `bc` errors on non-numeric eval output).
+- **`auto-verify.sh`** — added `trap cleanup_browsers EXIT` for error/signal cleanup.
+- **`transition-compare.sh`** — added `trap cleanup_browsers EXIT` for error/signal cleanup.
+- **`layout-health-check.sh`** — added `trap cleanup_browsers EXIT`. Added `node` dependency check.
+- **`computed-diff.sh`** — added `python3` dependency check.
+- **`ae-compare.sh`, `batch-compare.sh`, `dssim-compare.sh`** — replaced PID/filename-based temp paths with `mktemp` (prevents collision on parallel runs).
+
+### Removed
+- **`hooks/ui-re-start-session.sh`** — marker file (`tmp/.ui-re-active`) no longer needed. Pre-generate hook auto-discovers `tmp/ref/*/` directories. Simplified `ui-re-pre-generate-check.sh` to remove Mode 1 (marker) code.
+
+### Changed
+- **Viewport hardcoding removed** — all visual-debug scripts, `auto-verify.sh`, `transition-compare.sh`, and `section-clips.sh` now use `VIEW_W`/`VIEW_H` env vars (default 1440×900). Enables `VIEW_W=375 VIEW_H=667 bash batch-scroll.sh ...` for mobile comparison.
+
 ## [0.2.8] - 2026-04-23
 
 Splash-aware extraction, hover completeness enforcement, and anti-skip gates — addresses systemic issues where extraction steps were silently skipped.

@@ -9,6 +9,20 @@
 
 set -uo pipefail
 
+# ── Dependency check ──
+DOCTOR_FAIL=0
+for cmd in agent-browser ffmpeg jq; do
+  command -v "$cmd" &>/dev/null || { echo -e "\033[0;31m✗\033[0m Missing: $cmd"; DOCTOR_FAIL=1; }
+done
+for cmd in compare identify; do
+  command -v "$cmd" &>/dev/null || { echo -e "\033[0;31m✗\033[0m Missing: $cmd (brew install imagemagick)"; DOCTOR_FAIL=1; }
+done
+command -v dssim &>/dev/null || echo -e "\033[0;33m⚠\033[0m Optional: dssim (brew install dssim)"
+if [ "$DOCTOR_FAIL" -eq 1 ]; then
+  echo "  brew install imagemagick ffmpeg dssim && npm i -g @anthropic-ai/agent-browser"
+  exit 2
+fi
+
 URL="${1:?Usage: run-pipeline.sh <url> <component-name> <session> status}"
 COMPONENT="${2:?}"
 SESSION="${3:?}"
@@ -73,6 +87,8 @@ if phase_status "static/ref/ screenshots (≥5 files)" has_files "$REF_DIR/stati
   HAS_REF=true
 fi
 phase_status "scroll-video/ref/ video" has_files "$REF_DIR/scroll-video/ref" "*.webm" 1 || true
+phase_status "transitions/ref/ videos" has_files "$REF_DIR/transitions/ref" "*.webm" 1 || true
+phase_status "regions.json" has_file "$REF_DIR/regions.json" || true
 if [ "$HAS_REF" = false ] && [ -z "$NEXT_PHASE" ]; then
   NEXT_PHASE="1"
   NEXT_STEP="Invoke /ui-capture $URL. See SKILL.md Phase 1."
@@ -89,7 +105,17 @@ phase_status "Step 1-2: structure.json + section-map.json" test -f "$REF_DIR/str
 
 # Step 2.5: Head/assets/fonts
 phase_status "Step 2.5: head.json + fonts.json" test -f "$REF_DIR/head.json" -a -f "$REF_DIR/fonts.json" || {
-  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md Step 2.5 → extract head, assets, fonts."
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read asset-extraction.md → extract head, assets, fonts."
+}
+
+# Step 2.5b: SVG-as-text detection
+phase_status "Step 2.5b: svg-text-elements.json" has_file "$REF_DIR/svg-text-elements.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md Step 2.5b → SVG-as-text detection."
+}
+
+# Step 2.6: Animation init styles
+phase_status "Step 2.6: animation-init-styles.json" has_file "$REF_DIR/animation-init-styles.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md Steps 2.6a-b → extract animation init styles."
 }
 
 # Step 3: Styles
@@ -109,24 +135,37 @@ phase_status "Step 5: interactions-detected.json" has_file "$REF_DIR/interaction
 
 # Step 5c: Bundles
 phase_status "Step 5c: bundles/ (≥3 JS files)" has_files "$REF_DIR/bundles" "*.js" 3 || {
-  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read interaction-detection.md Step 6 → download ALL JS chunks. Gate: bundle"
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read bundle-analysis.md → download ALL JS chunks, detect scroll engine. Gate: bundle"
 }
 
-# Step 5d: Spec
+# Step 5d: Spec + hover artifacts
 phase_status "Step 5d: transition-spec.json" has_file "$REF_DIR/transition-spec.json" || {
-  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read interaction-detection.md Step 6b → write transition-spec.json. Gate: spec"
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read bundle-analysis.md + transition-spec-rules.md → write transition-spec.json. Gate: spec"
 }
-
-# Step 6: Animation
-phase_status "Step 6: animation-spec.json" has_file "$REF_DIR/animation-spec.json" || {
-  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read animation-detection.md → 3 phases: idle, scroll, per-element."
+phase_status "Step 5d-2b: hover-css-rules.json" has_file "$REF_DIR/hover-css-rules.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read interaction-detection.md Step 5d-2b → extract ALL :hover CSS rules from live page."
 }
 
 # Step 6b: Assembled extraction
 phase_status "Step 6b: extracted.json (assembled)" has_file "$REF_DIR/extracted.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Assemble extracted.json from all artifacts."
 }
+
+# Step 6c: Section audit
+phase_status "Step 6c: component-map.json (section audit)" has_file "$REF_DIR/component-map.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read section-audit.md → six-stage audit → component-map.json. Gate: pre-generate"
+}
 echo ""
+
+# ── Auto-gate: run pre-generate check when entering Phase 3 ──
+if [ -z "$NEXT_PHASE" ] && [ -d "$REF_DIR" ]; then
+  echo -e "${BOLD}Pre-generate gate (auto)${NC}"
+  if ! bash "$SCRIPT_DIR/validate-gate.sh" "$REF_DIR" pre-generate; then
+    NEXT_PHASE="2"
+    NEXT_STEP="Pre-generate gate FAILED. Fix missing artifacts before code generation."
+  fi
+  echo ""
+fi
 
 # ── Phase 3: Generation ──
 echo -e "${BOLD}Phase 3 — Generation${NC}"

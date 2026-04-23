@@ -31,7 +31,7 @@ if [ "$REF_SIZE" != "$IMPL_SIZE" ]; then
   echo "WARN: Size mismatch ref=$REF_SIZE impl=$IMPL_SIZE — resizing impl to match"
   W=$(echo "$REF_SIZE" | cut -dx -f1)
   H=$(echo "$REF_SIZE" | cut -dx -f2)
-  RESIZED="/tmp/ae-compare-resized-$$.png"
+  RESIZED=$(mktemp /tmp/ae-compare-XXXXXX.png)
   trap "rm -f '$RESIZED'" EXIT
   convert "$IMPL" -resize "${W}x${H}!" "$RESIZED"
   IMPL="$RESIZED"

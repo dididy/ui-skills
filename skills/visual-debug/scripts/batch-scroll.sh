@@ -18,8 +18,17 @@ IMPL_URL="${2:?Usage: batch-scroll.sh <original-url> <impl-url> <session> [outpu
 SESSION="${3:?Usage: batch-scroll.sh <original-url> <impl-url> <session> [output-dir]}"
 DIR="${4:-tmp/ref/visual-debug}"
 
+VIEW_W="${VIEW_W:-1440}"
+VIEW_H="${VIEW_H:-900}"
+
 SESSION_REF="${SESSION}-ref"
 SESSION_IMPL="${SESSION}-impl"
+
+cleanup_browsers() {
+  agent-browser close --session "$SESSION_REF" 2>/dev/null
+  agent-browser close --session "$SESSION_IMPL" 2>/dev/null
+}
+trap cleanup_browsers EXIT
 
 mkdir -p "$DIR/static/ref" "$DIR/static/impl" "$DIR/static/diff"
 
@@ -43,8 +52,8 @@ echo "▸ Opening both sites..."
 agent-browser --session "$SESSION_REF" open "$ORIG_URL_CB" 2>&1 | head -1
 agent-browser --session "$SESSION_IMPL" open "$IMPL_URL" 2>&1 | head -1
 
-agent-browser --session "$SESSION_REF" set viewport 1440 900 2>&1 > /dev/null
-agent-browser --session "$SESSION_IMPL" set viewport 1440 900 2>&1 > /dev/null
+agent-browser --session "$SESSION_REF" set viewport $VIEW_W $VIEW_H 2>&1 > /dev/null
+agent-browser --session "$SESSION_IMPL" set viewport $VIEW_W $VIEW_H 2>&1 > /dev/null
 
 # Wait for page JS to fully initialize (GSAP sets section heights, ScrollTrigger binds).
 agent-browser --session "$SESSION_REF" wait 6000 2>&1 > /dev/null
@@ -110,6 +119,11 @@ agent-browser --session "$SESSION_IMPL" eval "$SMART_FREEZE" 2>&1 | sed 's/^/  I
 # Get total heights
 ORIG_HEIGHT=$(agent-browser --session "$SESSION_REF" eval "(() => document.documentElement.scrollHeight)()" 2>&1 | tr -d '"')
 IMPL_HEIGHT=$(agent-browser --session "$SESSION_IMPL" eval "(() => document.documentElement.scrollHeight)()" 2>&1 | tr -d '"')
+
+if ! [[ "$ORIG_HEIGHT" =~ ^[0-9]+$ ]] || ! [[ "$IMPL_HEIGHT" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: Failed to extract page heights (orig=$ORIG_HEIGHT, impl=$IMPL_HEIGHT)"
+  exit 1
+fi
 
 echo "  Ref height:  ${ORIG_HEIGHT}px"
 echo "  Impl height: ${IMPL_HEIGHT}px"

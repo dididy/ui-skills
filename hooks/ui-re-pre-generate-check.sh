@@ -20,45 +20,24 @@ case "$FILE_PATH" in
     exit 0 ;; # not a component file or path unknown — skip
 esac
 
-# ── Mode 1: Active session marker ──
-MARKER="tmp/.ui-re-active"
-if [ -f "$MARKER" ]; then
-  SESSION_INFO=$(cat "$MARKER" 2>/dev/null)
-  REF_DIR="$SESSION_INFO"
-
-  if [ -z "$REF_DIR" ] || [ ! -d "$REF_DIR" ]; then
-    cat <<HOOKJSON
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "UI Reverse Engineering: pipeline started but no extraction done yet. Complete Phase 1-2 before writing components. Run: bash run-pipeline.sh <url> <name> <session> status"
-  }
-}
-HOOKJSON
-    exit 0
-  fi
-fi
-
-# ── Mode 2: Find ref dir by most recent marker files ──
-if [ -z "$REF_DIR" ]; then
-  NEWEST_TIME=0
-  for d in tmp/ref/*/; do
-    [ -d "$d" ] || continue
-    for marker in regions.json structure.json extracted.json transition-spec.json component-map.json; do
-      if [ -f "${d}${marker}" ]; then
-        MOD_TIME=$(stat -f %m "${d}${marker}" 2>/dev/null || stat -c %Y "${d}${marker}" 2>/dev/null || echo "0")
-        if [ "$MOD_TIME" -gt "$NEWEST_TIME" ]; then
-          NEWEST_TIME="$MOD_TIME"
-          REF_DIR="$d"
-        fi
-        break
+# ── Find ref dir by most recent marker files ──
+REF_DIR=""
+NEWEST_TIME=0
+for d in tmp/ref/*/; do
+  [ -d "$d" ] || continue
+  for marker in regions.json structure.json extracted.json transition-spec.json component-map.json; do
+    if [ -f "${d}${marker}" ]; then
+      MOD_TIME=$(stat -f %m "${d}${marker}" 2>/dev/null || stat -c %Y "${d}${marker}" 2>/dev/null || echo "0")
+      if [ "$MOD_TIME" -gt "$NEWEST_TIME" ]; then
+        NEWEST_TIME="$MOD_TIME"
+        REF_DIR="$d"
       fi
-    done
+      break
+    fi
   done
-fi
+done
 
-# No ref dir and no active session — not a ui-reverse-engineering project
+# No ref dir — not a ui-reverse-engineering project
 [ -z "$REF_DIR" ] && exit 0
 
 # ── Run pre-generate gate ──

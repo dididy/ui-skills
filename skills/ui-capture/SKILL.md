@@ -11,6 +11,14 @@ Capture reference screenshots and transition videos, detect all transition types
 
 **Always use `--session <project-name>`** with every `agent-browser` command.
 
+## Token rule
+
+Pipe large `eval` output to a file, then `Read` only what you need:
+```bash
+agent-browser --session <s> eval "<script>" > tmp/ref/<name>.json
+```
+Never let large JSON print to stdout — it wastes tokens.
+
 ## When to use
 
 - **Standalone**: `/ui-capture <reference-url> [local-url]`
@@ -129,6 +137,20 @@ Retry: 3s → 5s → stop and report.
 | `report-page.md` | R | Standalone report with overlays |
 | `comparison-page.md` | 4 | Gate checklist + `compare.html` |
 | `visual-debug/verification.md` | 4A | D1 Visual Gate + D2 Numerical Diagnosis |
+
+## Browser cleanup (MANDATORY)
+
+**Every skill run MUST end with browser cleanup — success, failure, or interruption.**
+
+```bash
+# Always close your own session(s) by name
+agent-browser --session <session-name> close
+```
+
+- Close every `--session <name>` you opened during the capture/comparison
+- Run cleanup **before returning control to the user**, even on error/early exit
+- Unclosed sessions spawn Chrome Helper processes (GPU + Renderer) that persist indefinitely
+- **Never use `close --all`** — other Claude sessions may have active browsers. Only close sessions you own.
 
 ## Integration
 
