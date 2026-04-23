@@ -253,6 +253,157 @@ console.log(JSON.stringify(clustered, null, 2));
 " > tmp/ref/<component>/responsive/detected-breakpoints.json
 ```
 
+## Step 4-C2: Multi-Viewport Element Sizing Comparison (MANDATORY)
+
+⛔ **This step recovers original CSS expressions (`calc()`, `vw`, `%`) from computed px values.** `getComputedStyle` always returns resolved px — without this step, `width: calc(100vw - 64px)` becomes `width: 1376px` which breaks at every other viewport.
+
+Measure ALL key elements at exactly 3 viewport widths: **768, 1280, 1440**.
+
+```bash
+agent-browser eval "
+(() => {
+  window.__sizingMeasure = function() {
+    const selectors = [
+      // Layout containers
+      'body', 'main', 'header', 'footer', 'nav',
+      // Sections
+      ...Array.from(document.querySelectorAll('section')).map((el, i) => {
+        const cn = typeof el.className === 'string' ? el.className : '';
+        return el.id ? '#' + el.id : 'section' + (cn.trim().split(' ')[0] ? '.' + cn.trim().split(' ')[0] : ':nth-of-type(' + (i+1) + ')');
+      }),
+      // Key layout elements
+      '.container', '.wrapper', '.hero', '.grid',
+      '[class*=container]', '[class*=wrapper]', '[class*=inner]',
+    ];
+
+    const results = {};
+    const seen = new Set();
+    selectors.forEach(sel => {
+      if (seen.has(sel)) return;
+      seen.add(sel);
+      const el = document.querySelector(sel);
+      if (!el) return;
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      results[sel] = {
+        width: r.width,
+        height: r.height,
+        maxWidth: s.maxWidth,
+        minWidth: s.minWidth,
+        paddingLeft: parseFloat(s.paddingLeft) || 0,
+        paddingRight: parseFloat(s.paddingRight) || 0,
+        marginLeft: s.marginLeft,
+        marginRight: s.marginRight,
+        gap: s.gap,
+        fontSize: parseFloat(s.fontSize),
+        lineHeight: s.lineHeight,
+      };
+    });
+    return results;
+  };
+  return 'sizing measure ready';
+})()
+"
+
+# Measure at 3 viewports
+for VP in 768 1280 1440; do
+  agent-browser set viewport $VP 900
+  agent-browser wait 200
+  CHECK=$(agent-browser eval "(() => typeof window.__sizingMeasure)()")
+  if [ "$CHECK" != "function" ]; then
+    # Re-register (paste above eval)
+    agent-browser eval "(() => { window.__sizingMeasure = function() { /* ... same as above ... */ }; return 'ready'; })()"
+  fi
+  agent-browser eval "(() => JSON.stringify({ viewport: window.innerWidth, elements: window.__sizingMeasure() }, null, 2))()" \
+    > tmp/ref/<component>/responsive/sizing-$VP.json
+done
+```
+
+### Analyze sizing expressions
+
+```bash
+node -e "
+const fs = require('fs');
+const viewports = [768, 1280, 1440];
+const data = viewports.map(vp => {
+  const f = './tmp/ref/<component>/responsive/sizing-' + vp + '.json';
+  return JSON.parse(fs.readFileSync(f, 'utf8'));
+});
+
+const expressions = {};
+const allSelectors = new Set();
+data.forEach(d => Object.keys(d.elements).forEach(s => allSelectors.add(s)));
+
+for (const sel of allSelectors) {
+  const vals = data.map((d, i) => ({
+    vp: viewports[i],
+    w: d.elements[sel]?.width,
+    h: d.elements[sel]?.height,
+    pl: d.elements[sel]?.paddingLeft,
+    pr: d.elements[sel]?.paddingRight,
+    fs: d.elements[sel]?.fontSize,
+  })).filter(v => v.w != null);
+  if (vals.length < 2) continue;
+
+  const analyze = (prop) => {
+    const values = vals.map(v => ({ vp: v.vp, val: v[prop] })).filter(v => v.val != null);
+    if (values.length < 2) return null;
+
+    const allSame = values.every(v => Math.abs(v.val - values[0].val) < 1);
+    if (allSame) return { type: 'fixed-px', value: Math.round(values[0].val) + 'px' };
+
+    // Check if value = viewport - constant (calc pattern)
+    const offsets = values.map(v => v.vp - v.val);
+    const offsetSame = offsets.every(o => Math.abs(o - offsets[0]) < 3);
+    if (offsetSame) return { type: 'calc', value: 'calc(100vw - ' + Math.round(offsets[0]) + 'px)', raw: values };
+
+    // Check if value = percentage of viewport
+    const pcts = values.map(v => (v.val / v.vp) * 100);
+    const pctSame = pcts.every(p => Math.abs(p - pcts[0]) < 1.5);
+    if (pctSame) return { type: 'vw', value: Math.round(pcts[0] * 10) / 10 + 'vw', raw: values };
+
+    // Check linear relationship (slope + intercept)
+    if (values.length >= 2) {
+      const x1 = values[0].vp, y1 = values[0].val;
+      const x2 = values[values.length-1].vp, y2 = values[values.length-1].val;
+      const slope = (y2 - y1) / (x2 - x1);
+      const intercept = y1 - slope * x1;
+      const fits = values.every(v => Math.abs(v.val - (slope * v.vp + intercept)) < 3);
+      if (fits && Math.abs(slope) > 0.05) {
+        return { type: 'linear', value: 'calc(' + (Math.round(slope * 1000) / 10) + 'vw + ' + Math.round(intercept) + 'px)', raw: values };
+      }
+    }
+
+    // Breakpoint jump — values differ but no linear pattern
+    return { type: 'breakpoint-jump', values: values.map(v => ({ vp: v.vp, val: Math.round(v.val) + 'px' })) };
+  };
+
+  const result = {};
+  for (const prop of ['w', 'h', 'pl', 'pr', 'fs']) {
+    const analysis = analyze(prop);
+    if (analysis) result[prop] = analysis;
+  }
+  if (Object.keys(result).length > 0) expressions[sel] = result;
+}
+
+console.log(JSON.stringify(expressions, null, 2));
+" > tmp/ref/<component>/responsive/sizing-expressions.json
+```
+
+**Save output to** `tmp/ref/<component>/responsive/sizing-expressions.json`
+
+**How generation must use this:**
+
+| `type` | Action |
+|---|---|
+| `fixed-px` | Safe to hardcode px value |
+| `calc` | Use the `calc()` expression directly (e.g., `w-[calc(100vw-64px)]`) |
+| `vw` | Use viewport units (e.g., `w-[83.3vw]`) |
+| `linear` | Use the generated `calc()` expression |
+| `breakpoint-jump` | Use Tailwind responsive prefixes (e.g., `w-full md:w-[704px] lg:w-[1376px]`) |
+
+⛔ **Gate:** If `sizing-expressions.json` does not exist, `validate-gate.sh pre-generate` MUST fail. Generation without this file will produce hardcoded px values that break at other viewports.
+
 ## Step 4-D: Capture Per-Breakpoint Screenshots + Styles
 
 For each detected breakpoint, capture a screenshot and extract computed styles. Replace `<bp-width>` for each breakpoint found:

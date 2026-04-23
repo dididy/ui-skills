@@ -115,32 +115,34 @@ Turn this screen recording into a working component
 **Pipeline:**
 
 ```
-0.  Load existing analysis     — re-invoked? load transition-spec.json + bundle-map.json, skip re-extraction
-R.  Capture reference          — static screenshots + scroll video (60 fps)
-1.  Open & snapshot            — DOM tree, full-page screenshot
-2.  Extract structure          — HTML hierarchy, component boundaries
-2.5 Extract assets             — CSS files, fonts (incl. Typekit), images, SVGs, videos,
-                                 head metadata, CSS variables → asset-extraction.md
-2.6 Catalog init styles        — GSAP-baked inline styles → animation-init-styles.json,
-                                 state-coupled elements → state-coupling.json
-3.  Extract styles             — computed CSS, colors, typography, spacing, design tokens
-4.  Detect responsive          — 2-pass viewport sweep (coarse 40px → fine 5px) for real breakpoints
-5.  Detect interactions        — hover/click/scroll, mouse-follow, stroke animations
-5b. Capture C3 (deferred)      — interaction/transition videos using selectors from Step 5
-5c. Bundle analysis            — ALL loaded chunks, scroll engine, external SDK detection. ⛔ gate: bundle
-5d. Transition spec            — transition-spec.json + bundle-map.json. SDK scene data download.
-                                 gsap-to-css.sh auto-converts easing. ⛔ gate: spec
-5e. Capture verification       — record original, extract frames, verify spec spatial values against frames
-6.  Detect animations          — Phase A idle / B scroll / C per-element (all mandatory)
-                                 → transition extraction pipeline (Step T) for scroll-driven/canvas/WebGL
-6b. Assemble extracted.json    — combine all extraction artifacts
-6c. Pre-generation audit       — 6-stage design audit
-7.  Generate component         — CSS-First: download original CSS, use original class names.
-                                 Transitions implemented inline. ⛔ gate: pre-generate
-8.  Visual verification        — Run `auto-verify.sh` (D0 layout + Phase C scroll AE + post-implement gate).
-                                 Phase D pixel-perfect gate runs separately after auto-verify passes.
-                                 + Phase E VLM sanity check. ⛔ gate: post-implement
-9.  Interaction verification   — test each hover/click/scroll/timer on localhost
+0.   Load existing analysis     — re-invoked? load transition-spec.json + bundle-map.json
+R.   Capture reference         — static screenshots + scroll video (60 fps)
+1.   Open & snapshot           — DOM tree, full-page screenshot. Session reuse for splash sites
+2.   Extract structure         — HTML hierarchy, component boundaries, hidden elements
+2.5  Extract assets            — CSS files, fonts, images, SVGs, videos, head metadata
+2.5b SVG-as-text detection     — find headings rendered as SVG <path> not fonts → svg-text-elements.json
+2.6p Dual-snapshot (splash)    — pre/post-splash DOM state → dom-state-diff.json.
+                                 Auto-detects splash completion (no hardcoded waits)
+2.6  Catalog init styles       — GSAP-baked inline styles, state coupling
+3.   Extract styles            — computed CSS, design tokens, em-conversion (viewport-scaled).
+                                 Merge runtime-injected transitions from dual-snapshot diff
+4.   Detect responsive         — 2-pass viewport sweep + multi-viewport sizing → sizing-expressions.json
+5.   Detect interactions       — hover/click/scroll. Extract ALL :hover CSS from live stylesheets
+                                 (incl. inline <style>). data-text attribute scan. Hover video recording.
+                                 JS hover timing + child cascade
+5b.  Capture C3 (deferred)     — interaction/transition videos using selectors from Step 5
+5c.  Bundle analysis           — ALL loaded chunks, scroll engine, hover event listeners. ⛔ gate: bundle
+5d.  Transition spec           — transition-spec.json + bundle-map.json. ⛔ gate: spec
+5e.  Capture verification      — record original, extract frames, verify spec spatial values
+6.   Detect animations         — Phase A idle / B scroll (wheel events for smooth scroll) / C per-element
+6b.  Assemble extracted.json
+6c.  Pre-generation audit      — 6-stage design audit. ⛔ gate: pre-generate
+                                 (checks svg-text, hover-css-rules, hover videos, dual-snapshot, em-conversion)
+7.   Generate component        — CSS-First + body scoping + CSS value diff verification.
+                                 SVG-as-text verbatim, RAF parallax for smooth scroll
+8.   Visual verification       — auto-verify.sh. ⛔ gate: post-implement
+                                 (checks hover rule count, px fontSize leaks, scroll listeners)
+9.   Interaction verification  — dispatch mouseenter for JS hovers, verify hover-css-rules match
 ```
 
 **Automation scripts** (`scripts/`):

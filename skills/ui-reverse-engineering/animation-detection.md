@@ -225,36 +225,45 @@ Combine all 3 tiers:
 
 ### B-1: Record full scroll video
 
+**Scroll method selection:** Different scroll engines require different scroll commands. Check `scroll-engine.json` first.
+
+| `scroll-engine.json` type | Method | Why |
+|---|---|---|
+| `native` or missing | `window.scrollTo(0, pos)` | Standard scroll |
+| `lenis-native` / `@beyond/react` | `agent-browser scroll down N` (wheel events) | Lenis intercepts `scrollTo` but responds to wheel |
+| `lenis-wrapper` / `locomotive` | `lenis.scrollTo(pos)` or `container.scrollTop = pos` | Transform-based scroll, native scroll disabled |
+| `gsap-scrollsmoother` | `ScrollSmoother.scrollTo(pos)` | GSAP wrapper |
+
+⛔ **`window.scrollTo` does NOT work on many modern sites.** If `scroll-engine.json` shows any custom scroll library, use `agent-browser scroll down` (mouse wheel simulation) instead. This triggers the actual scroll engine regardless of implementation.
+
 ```bash
-# Scroll to top
-agent-browser --session <project> eval "(() => {
-  const lenis = document.querySelector('[class*=lenis], [class*=scroll]');
-  if (lenis && lenis.scrollTop !== undefined) lenis.scrollTop = 0;
-  window.scrollTo(0, 0);
-})()"
+# Scroll to top — use wheel events, not scrollTo
+agent-browser --session <project> eval "(() => { window.scrollTo(0, 0); return 'ok'; })()"
 agent-browser --session <project> wait 2000
 
 agent-browser --session <project> record start tmp/ref/<component>/scroll-capture.webm
 agent-browser --session <project> wait 500
 
-# Scroll through entire page — SLOW and CONSISTENT
-agent-browser --session <project> eval "(() => {
-  const lenis = document.querySelector('[class*=lenis], [class*=scroll]');
-  const container = lenis || document.documentElement;
-  const maxScroll = container.scrollHeight - window.innerHeight;
-  let pos = 0;
-  const speed = 80;    // px per step
-  const interval = 50; // ms between steps
-  const step = () => {
-    pos = Math.min(pos + speed, maxScroll);
-    if (lenis) lenis.scrollTop = pos; else window.scrollTo(0, pos);
-    if (pos < maxScroll) setTimeout(step, interval);
-  };
-  step();
-  return 'scrolling ' + maxScroll + 'px';
-})()"
+# Method 1 (preferred): Use agent-browser scroll (wheel events)
+# This works with ALL scroll engines including Lenis, Locomotive, ScrollSmoother
+for i in $(seq 1 30); do
+  agent-browser --session <project> scroll down 200
+  agent-browser --session <project> wait 200
+done
 
-agent-browser --session <project> wait 12000
+# Method 2 (fallback): JS scroll for native-scroll sites
+# agent-browser --session <project> eval "(() => {
+#   const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+#   let pos = 0;
+#   const step = () => {
+#     pos = Math.min(pos + 80, maxScroll);
+#     window.scrollTo(0, pos);
+#     if (pos < maxScroll) setTimeout(step, 50);
+#   };
+#   step();
+# })()"
+# agent-browser --session <project> wait 12000
+
 agent-browser --session <project> wait 1000
 agent-browser --session <project> record stop
 

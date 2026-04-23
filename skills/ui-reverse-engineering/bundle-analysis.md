@@ -101,6 +101,73 @@ grep -oE '"[.#][a-zA-Z][^"]{2,40}"[^;]{0,200}(duration|ease|stagger|yPercent|opa
 
 Build `element-animation-map.json` mapping each selector to its animation parameters.
 
+## Hover event listener extraction (MANDATORY)
+
+Most modern sites use JS-driven hover (GSAP, Framer Motion, vanilla addEventListener). CSS `:hover` inspection alone misses these entirely. Search downloaded bundles for hover event patterns:
+
+### Step 1: Find hover event registrations
+
+```bash
+# mouseenter/mouseleave/pointerenter/pointerleave event handlers
+grep -nE 'mouseenter|mouseleave|pointerenter|pointerleave|onmouseenter|onmouseleave|whileHover|hoverStart|hoverEnd' \
+  tmp/ref/<component>/bundles/*.js | head -30
+
+# GSAP hover patterns — gsap.to() near mouseenter
+grep -B3 -A10 'mouseenter' tmp/ref/<component>/bundles/*.js | \
+  grep -E 'gsap\.(to|from|fromTo)|duration|ease|stagger' | head -20
+
+# Framer Motion whileHover props
+grep -oE 'whileHover:\{[^}]+\}' tmp/ref/<component>/bundles/*.js | head -10
+```
+
+### Step 2: Map hover handlers to DOM elements
+
+```bash
+# Find selector strings near hover event registrations
+grep -B5 'mouseenter\|pointerenter' tmp/ref/<component>/bundles/*.js | \
+  grep -oE '"[.#][a-zA-Z][^"]{2,40}"' | sort -u
+
+# Find class-based hover targets
+grep -oE 'querySelectorAll?\(["\x27][^)]+["\x27]\)[^;]{0,100}(mouseenter|pointerenter)' \
+  tmp/ref/<component>/bundles/*.js | head -20
+```
+
+### Step 3: Extract hover animation parameters
+
+For each matched hover handler, extract the animation values:
+
+```bash
+# GSAP hover animations — extract duration, ease, and property values
+grep -A20 'mouseenter' tmp/ref/<component>/bundles/*.js | \
+  grep -oE '(duration|ease|stagger|opacity|scale|y|x|rotate|transformOrigin):\s*["\x27]?[^,}\s]+' | head -30
+
+# Custom easing curves
+grep -oE 'CustomEase\.create\([^)]+\)|ease:\s*"[^"]+"' tmp/ref/<component>/bundles/*.js | head -10
+```
+
+**Save results to** `tmp/ref/<component>/hover-bundle-map.json`:
+```json
+{
+  "hoverHandlers": [
+    {
+      "bundleFile": "slater-12345.js",
+      "selector": ".case__item",
+      "event": "mouseenter",
+      "animations": [
+        { "target": ".case__img-inner", "duration": 0.7, "ease": "klaassens", "scale": 1.05 },
+        { "target": ".case__hover-overlay", "duration": 0.5, "ease": "power2.out", "opacity": 1 }
+      ]
+    }
+  ]
+}
+```
+
+**Cross-reference with `hover-deltas.json`:** Every element with a visual delta from interaction-detection Step 5d-2 must have either:
+1. A CSS `transition` duration (from computed style), OR
+2. A bundle hover handler (from this step)
+
+If neither → flag as `"timingSource": "unknown"` in `interactions-detected.json`. This is a data gap that must be resolved before generation.
+
 ## Cross-component DOM manipulation detection
 
 ```bash

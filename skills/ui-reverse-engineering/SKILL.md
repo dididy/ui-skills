@@ -47,10 +47,12 @@ brew install agent-browser imagemagick dssim ffmpeg
 | **1** | R | `/ui-capture <url>` → `static/ref/`, `transitions/ref/`, `regions.json`. ⛔ Gate: all three exist. |
 | **2** | 1–2 | `dom-extraction.md` → `structure.json`, `section-map.json`, `portal-candidates.json`, `sticky-elements.json`, `hidden-elements.json`. **Must enumerate all semantic sections** (section/footer/header) AND **extract hidden/collapsed elements** (height:0, display:none). |
 | | 2.5 | `asset-extraction.md` → `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`, `visible-images.json`, CSS files, `css/variables.txt` |
+| | 2.5b | `dom-extraction.md` Step 2.5b — **SVG-as-text detection** → `svg-text-elements.json`. Headings/brand text rendered as SVG paths, not fonts. |
+| | 2.6-pre | `dom-extraction.md` Step 2.6-pre — **Dual-snapshot**: extract DOM state pre-splash AND post-splash → `dom-state-diff.json`. Splash auto-detect via polling (no hardcoded wait). ⛔ MANDATORY if site has preloader. |
 | | 2.6 | `dom-extraction.md` Steps 2.6a–b → `animation-init-styles.json`, `state-coupling.json` |
-| | 3 | `style-extraction.md` → `styles.json`, `advanced-styles.json`, `body-state.json`, `decorative-svgs.json`, `design-bundles.json` |
-| | 4 | `responsive-detection.md` → `detected-breakpoints.json`, `responsive/ref-*.png` |
-| | 5 | `interaction-detection.md` → `interactions-detected.json`, `scroll-transitions.json` |
+| | 3 | `style-extraction.md` → `styles.json`, `advanced-styles.json`, `body-state.json`, `decorative-svgs.json`, `design-bundles.json`. ⛔ Pre-step: merge runtime transitions from `dom-state-diff.json`. ⛔ If `scalingSystem !== 'px-fixed'` → `em-conversion.json` MUST exist. |
+| | 4 | `responsive-detection.md` → `detected-breakpoints.json`, `responsive/ref-*.png`. **Step 4-C2 MANDATORY:** → `sizing-expressions.json` (multi-viewport element sizing comparison at 768/1280/1440). |
+| | 5 | `interaction-detection.md` → `interactions-detected.json`, `scroll-transitions.json`, `hover-deltas.json`, `hover-timing.json`. **Step 5d-2b:** ALL `:hover` CSS from live page → `hover-css-rules.json`. **Step 5d-2c:** `data-text`/`data-label` attribute scan. **Step 5d-2d:** hover video recording. **Step 5d-3/5d-4:** JS hover timing + child cascade. |
 | | 5b | If new interactive elements found → re-run `/ui-capture` Phase 2B–2E |
 | | 5c | `bundle-analysis.md` — Download ALL JS chunks, detect scroll engine → `scroll-engine.json`, detect external SDKs → `external-sdks.json`. ⛔ Gate: `bundle` |
 | | 5d | `bundle-analysis.md` output + `transition-spec-rules.md` format → `bundle-map.json`, `transition-spec.json` (DRAFT). For SDKs: download scene data + textures. ⛔ Gate: `spec` |
@@ -60,7 +62,7 @@ brew install agent-browser imagemagick dssim ffmpeg
 | | 6c | `section-audit.md` — Six-stage audit → `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json`. Cross-checks element ownership via DOM parentElement chain. **Never skip.** ⛔ Gate: `pre-generate` |
 | **3** | 7 | Read `site-detection.md` FIRST, then `component-generation.md` + `transition-implementation.md`. Parallel worktree for 4+ sections. |
 | **4** | 8 | `auto-verify.sh <session> <orig-url> <impl-url> tmp/ref/<c>`. DO NOT skip. Phase D (pixel-perfect) runs separately after. |
-| | 9 | Test every interaction from `interactions-detected.json` on localhost. 100% ✅. |
+| | 9 | Test every interaction from `interactions-detected.json` on localhost. Verify hover effects match `hover-css-rules.json`. Dispatch `mouseenter` for JS hovers. 100% ✅. |
 
 ### Validation gates
 
@@ -73,6 +75,25 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 ```
 
 **Step 5→6 bundle checkpoint is most often skipped.** DOM inspection alone CANNOT reveal GSAP ScrollTrigger, Lenis params, Framer Motion springs, or state machine transitions. If `main.js` shows nothing, download more chunks.
+
+### Steps most likely to be skipped or done poorly
+
+| Step | What gets skipped | Consequence | Prevention |
+|---|---|---|---|
+| **2.5b** SVG-as-text | Heading rendered as SVG path mistaken for font text | Wrong font rendering, size mismatch | Check `svg-text-elements.json` before generation |
+| **2.6-pre** Dual-snapshot | Only one DOM snapshot taken | Runtime-injected transitions missed entirely | ⛔ Gate: `dom-state-diff.json` must exist for splash sites |
+| **3 pre-step** Runtime transitions | Transitions from `dom-state-diff.json` not merged | Hover effects have no animation (instant snap) | Check transition count in `globals.css` vs original |
+| **5d-2b** Hover CSS rules | Only search downloaded `.css` files | Inline `<style>` hover rules missed | Extract ALL `:hover` rules from live page stylesheets |
+| **5d-2c** Hover DOM changes | Only style delta, no DOM content check | `data-text` text swap effects missed | Check `data-*` attributes on interactive elements |
+| **5d-2d** Hover video | "No visual transition" concluded from grep alone | Complex hover effects (3D fold, text swap) missed | Record video of EVERY hoverable element |
+| **6 Phase B** Scroll capture | `window.scrollTo` used on smooth-scroll site | Blank frames, scroll effects not captured | Use `agent-browser scroll down` (wheel events) |
+| **7 Rule 13** SVG-as-text | SVG text recreated with fonts | Kerning, weight, glyph shape all wrong | Copy SVG verbatim from `svg-text-elements.json` |
+| **7 Rule 14** Smooth scroll | `useScroll`/`addEventListener('scroll')` used | Parallax and scroll effects don't update | Use RAF + `getBoundingClientRect()` |
+| **7 CSS diff** | Values copied from original CSS are wrong/incomplete | Padding, line-height, white-space mismatch | Diff every key class against original CSS file |
+| **7 Body scoping** | `body {}` styles not copied to project container | line-height, font-family wrong in embedded context | Copy body styles to `[data-project]` selector |
+| **9** Interaction test | "Hover works" concluded without actually hovering | JS-driven hover (GSAP mouseenter) not triggered | Dispatch `mouseenter` event + check `getAnimations()` |
+
+**Anti-skip rule:** If you think "this step probably won't find anything" — that is exactly when it WILL find something. Run it anyway. The steps above were identified from real failures where skipping caused user-visible bugs.
 
 ### Completion criteria
 
@@ -160,6 +181,11 @@ agent-browser eval "(() => {
 | "This plugin is paid, so I'll simplify" | Check project animation library or OSS alternatives. Only simplify if no alternative AND you document the gap. |
 | "This FAIL is just a content difference" | Run `computed-diff.sh`. Name the specific CSS property. "Content difference" is not a diagnosis. |
 | "This Canvas is just a small overlay" | Check Canvas dimensions vs viewport. If `width >= viewportWidth`, it's a full-scene renderer. |
+| "No hover transition — bundle grep returned empty" | Inline `<style>` tags are invisible to bundle grep. Extract ALL `:hover` rules from live stylesheets. |
+| "This heading is just text with a font" | Check `svg-text-elements.json`. It may be an SVG path, not a font glyph. |
+| "Scroll effects work — I used useScroll" | If `scroll-engine.json` shows smooth scroll, `useScroll` gets no events. Use RAF + `getBoundingClientRect()`. |
+| "The transition is sound-only, no visual change" | Record hover video. A CSS `:hover` in inline `<style>` may apply 3D transforms invisible to bundle search. |
+| "body CSS applies everywhere" | In embedded/monorepo projects, `body {}` doesn't reach the project container. Scope to `[data-project]`. |
 
 **Enforcement:** `validate-gate.sh` blocks without artifacts. `auto-verify.sh` blocks without passing checks. `batch-compare.sh` prints anti-rationalization warnings on FAIL.
 
@@ -225,10 +251,10 @@ agent-browser eval "(() => {
 | `dom-extraction.md` | 1–2 | DOM hierarchy, semantic section enumeration, hidden element extraction, portal detection, sticky elements |
 | `section-audit.md` | 6c | Six-stage audit: element ownership via parentElement chain, section boundaries, component-map.json |
 | `asset-extraction.md` | 2.5 | CSS files, fonts, images, SVGs, videos, head metadata, CSS variables |
-| `style-extraction.md` | 3 | Computed styles, design tokens, design bundles |
-| `responsive-detection.md` | 4 | Viewport sweep for real breakpoints |
-| `interaction-detection.md` | 5 | Interaction detection only (hover, scroll, click, drag) |
-| `bundle-analysis.md` | 5c–5d | JS bundle download, scroll engine, animation library, element mapping |
+| `style-extraction.md` | 3 | Computed styles, design tokens, design bundles, ⛔ em-conversion gate for viewport-scaled sites |
+| `responsive-detection.md` | 4 | Viewport sweep for real breakpoints, ⛔ Step 4-C2 multi-viewport element sizing → `sizing-expressions.json` |
+| `interaction-detection.md` | 5 | Interaction detection (hover, scroll, click, drag), ⛔ Step 5d-3 JS hover timing, ⛔ Step 5d-4 child cascade |
+| `bundle-analysis.md` | 5c–5d | JS bundle download, scroll engine, animation library, element mapping, hover event listener extraction |
 | `transition-spec-rules.md` | 5d–5e | spec format, capture verification, external SDK detection + reuse |
 | `element-capture.md` | T0 | Element-scope capture (hover/scroll/page-load) |
 | `measurement.md` | T-1 | 11-point multi-property measurement |

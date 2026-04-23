@@ -1,7 +1,7 @@
 {
   "name": "ui-skills",
-  "version": "0.2.6",
-  "description": "Clone a live website into React + Tailwind. CSS-First generation, zero-vision-token AE/SSIM verification, JS bundle extraction (GSAP/Framer Motion/Lenis), transition extraction pipeline (WAAPI, canvas/WebGL, scroll-driven, character stagger), bundle analysis patterns, result-aware pipeline hooks, and token-optimized SKILL.md. 3 skills, automated pipeline with anti-rationalization gates.",
+  "version": "0.2.8",
+  "description": "Clone a live website into React + Tailwind. Splash-aware dual-snapshot extraction, SVG-as-text detection, hover completeness enforcement (inline style hover rules, data-text swap, video capture), smooth-scroll-compatible scroll capture, CSS-First generation with body scoping, anti-skip gates (validate-gate.sh blocks on missing hover rules, px leaks, scroll listeners). 3 skills, automated pipeline.",
   "license": "Apache-2.0",
   "author": {
     "name": "YONGJAE LEE"

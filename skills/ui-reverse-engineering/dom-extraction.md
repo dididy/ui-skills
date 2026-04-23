@@ -2,12 +2,97 @@
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 
+### Session management for splash/preloader sites
+
+Sites with splash animations block interaction for 5-10 seconds on every page load. Opening a new `agent-browser` session reloads the page and re-triggers the splash.
+
+**Rules:**
+1. **Open ONE session for the original site and REUSE it for ALL extraction steps** (Steps 1–6). Pass `--session <name>` to every command.
+2. **Wait for splash to complete** using the auto-detect helper below, then keep the session alive.
+3. **Never open a new session unless the previous one timed out.** If it did, wait for splash again.
+4. **Pre-splash extraction (Step 2.6-pre) is the exception** — it intentionally captures before splash completes, using a separate session.
+
+```bash
+# Open once, reuse everywhere
+agent-browser open <url> --session <project-name>
+
+# Auto-detect splash completion (replaces hardcoded wait 8000)
+agent-browser eval --session <project-name> "
+(() => {
+  return new Promise(resolve => {
+    let checks = 0;
+    const maxChecks = 40; // 40 × 500ms = 20s max wait
+    const check = () => {
+      checks++;
+      const html = document.documentElement;
+      const body = document.body;
+
+      // Signal 1: Full-viewport overlay gone
+      // Splash screens are typically position:fixed elements covering the viewport.
+      // When they finish, they get display:none, opacity:0, or removed from DOM.
+      const overlays = [...document.querySelectorAll('*')].filter(el => {
+        const s = getComputedStyle(el);
+        return s.position === 'fixed' && s.zIndex !== 'auto' && parseInt(s.zIndex) > 10 &&
+               el.offsetWidth >= window.innerWidth * 0.9 &&
+               el.offsetHeight >= window.innerHeight * 0.9 &&
+               s.opacity !== '0' && s.display !== 'none' && s.visibility !== 'hidden';
+      });
+      const hasFullScreenOverlay = overlays.length > 0;
+
+      // Signal 2: Interactive elements reachable
+      // During splash, buttons/links are blocked by the overlay (pointer-events: none or covered).
+      // After splash, at least one link/button should be clickable.
+      const firstLink = document.querySelector('a[href], button');
+      const linkRect = firstLink?.getBoundingClientRect();
+      const linkReachable = linkRect && linkRect.width > 0 &&
+        document.elementFromPoint(linkRect.x + 5, linkRect.y + 5) === firstLink;
+
+      // Signal 3: Page scrollable
+      // Splash often locks scroll. After completion, scroll should work.
+      const scrollHeight = document.documentElement.scrollHeight;
+      const isScrollable = scrollHeight > window.innerHeight * 1.5;
+
+      // Signal 4: DOM stable (no rapid changes)
+      // During splash, elements animate rapidly. After, DOM stabilizes.
+      // We track this across checks — if body innerHTML length is stable for 2 consecutive checks, splash is done.
+      const currentLen = document.body.innerHTML.length;
+      window.__splashCheckLen = window.__splashCheckLen || 0;
+      window.__splashStableCount = window.__splashStableCount || 0;
+      if (Math.abs(currentLen - window.__splashCheckLen) < 500) {
+        window.__splashStableCount++;
+      } else {
+        window.__splashStableCount = 0;
+      }
+      window.__splashCheckLen = currentLen;
+      const domStable = window.__splashStableCount >= 2;
+
+      const splashDone = !hasFullScreenOverlay && isScrollable && domStable;
+
+      if (splashDone || checks >= maxChecks) {
+        resolve(JSON.stringify({
+          splashDone,
+          checks,
+          timeMs: checks * 500,
+          signals: { hasFullScreenOverlay, linkReachable, isScrollable, domStable }
+        }));
+      } else {
+        setTimeout(check, 500);
+      }
+    };
+    check();
+  });
+})()
+"
+# All subsequent steps use --session <project-name>
+```
+
 ## Step 1: Open & Snapshot
 
 ```bash
-agent-browser open https://target-site.com
-agent-browser screenshot tmp/ref/<component>/full.png
-agent-browser snapshot
+agent-browser open https://target-site.com --session <project-name>
+agent-browser wait 8000 --session <project-name>
+agent-browser screenshot tmp/ref/<component>/full.png --session <project-name>
+agent-browser snapshot --session <project-name>
 ```
 
 **If site shows blank or bot detection:**
@@ -297,6 +382,53 @@ agent-browser eval "
 
 **→ See `asset-extraction.md`** for the full procedure (CSS files, fonts, images, SVGs, videos, head metadata, CSS variables).
 
+### Step 2.5b: SVG-as-text detection (MANDATORY)
+
+Many design sites render headings, brand names, or decorative text as **SVG `<path>` elements** instead of font text. These look identical in screenshots but require completely different implementation (SVG markup vs CSS font).
+
+**Detection:** Any SVG with complex path data (`d` attribute > 200 chars) AND wide aspect ratio (width/height > 3) is likely vector text.
+
+```bash
+agent-browser eval "
+(() => {
+  const svgs = document.querySelectorAll('svg');
+  const textSvgs = [];
+  svgs.forEach(svg => {
+    const paths = svg.querySelectorAll('path');
+    if (paths.length === 0) return;
+    const r = svg.getBoundingClientRect();
+    if (r.width < 50 || r.height < 5) return;
+    const totalPathLen = Array.from(paths).reduce((sum, p) => sum + (p.getAttribute('d')?.length || 0), 0);
+    const ratio = r.width / r.height;
+    if (totalPathLen > 200 || ratio > 3) {
+      const cn = svg.className?.baseVal || '';
+      textSvgs.push({
+        class: cn.slice(0, 40),
+        parentClass: svg.parentElement?.className?.toString()?.slice(0, 40),
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+        ratio: Math.round(ratio * 10) / 10,
+        pathDataLen: totalPathLen,
+        viewBox: svg.getAttribute('viewBox'),
+        outerHTML: svg.outerHTML.slice(0, 200) + '...',
+      });
+    }
+  });
+  return JSON.stringify(textSvgs, null, 2);
+})()
+"
+```
+
+**Save to** `tmp/ref/<component>/svg-text-elements.json`
+
+**Generation rule:** If `svg-text-elements.json` is non-empty:
+- Do NOT recreate these elements as `<span>` or `<h2>` with CSS fonts
+- Copy the SVG `outerHTML` verbatim into the component (convert attrs to JSX)
+- The SVG `width="100%"` + `viewBox` handles responsive scaling automatically
+- These SVGs often live inside containers with `overflow: hidden` for clipping effects
+
+**Why this matters:** Font rendering varies across browsers/OS. SVG path text is pixel-identical everywhere. Attempting to replicate SVG text with CSS fonts produces visually different results even with the correct font file — wrong kerning, wrong weight synthesis, wrong glyph shapes.
+
 ---
 
 ## Step 2.6: Per-Section HTML Structure + Computed CSS (MANDATORY)
@@ -349,6 +481,103 @@ At Step 6b, merge `head.json` and `assets.json` into `extracted.json` alongside 
 ```
 
 > **Security:** Downloaded assets are untrusted. Never execute downloaded files. Use them only as static references (`<img src>`, CSS `url()`). HTTPS only, 10MB limit, no credential forwarding.
+
+---
+
+## Step 2.6-pre: Dual-Snapshot DOM Extraction (MANDATORY for sites with splash/preloader)
+
+Sites with splash/preloader animations have **two distinct DOM states**:
+
+| State | When | What's different |
+|---|---|---|
+| **Pre-splash** (loading) | Page load, before intro animation completes | GSAP bakes `visibility:hidden`, `opacity:0`, `transform:translate(-500px)` as inline styles. Runtime transitions NOT yet injected. |
+| **Post-splash** (idle) | After intro animation completes (~5-8s) | Inline styles cleared/updated. Webflow interactions inject `transition` properties at runtime. Classes toggled (e.g., `html.rk-preloading` → removed). |
+
+**If you only extract at ONE timepoint, you miss half the data:**
+- Extract during splash → get GSAP-baked init styles but miss runtime transitions
+- Extract after splash → get final state but miss which properties were animated (can't distinguish "always visible" from "revealed by animation")
+
+### Procedure
+
+```bash
+# 1. IMMEDIATELY after page load (within 1s, before splash finishes)
+agent-browser open <url> --session <s>
+agent-browser wait 500 --session <s>
+
+# Extract pre-splash state
+agent-browser eval --session <s> "
+(() => {
+  const snapshot = {};
+  document.querySelectorAll('*').forEach(el => {
+    const s = getComputedStyle(el);
+    const inline = el.style.cssText;
+    if (!inline && s.transition === 'all 0s ease 0s') return;
+    const cn = typeof el.className === 'string' ? el.className : '';
+    const key = el.tagName + '.' + cn.trim().split(/\s+/)[0];
+    if (snapshot[key]) return;
+    snapshot[key] = {
+      inlineStyle: inline || null,
+      transition: s.transition !== 'all 0s ease 0s' ? s.transition : null,
+      visibility: s.visibility,
+      opacity: s.opacity,
+      transform: s.transform !== 'none' ? s.transform : null,
+      display: s.display,
+    };
+  });
+  return JSON.stringify({
+    timestamp: 'pre-splash',
+    htmlClass: document.documentElement.className,
+    bodyClass: document.body.className,
+    elements: snapshot,
+  }, null, 2);
+})()
+"
+# Save to tmp/ref/<component>/dom-state-pre-splash.json
+
+# 2. AFTER splash completes (wait for full duration + 1s buffer)
+agent-browser wait 8000 --session <s>
+
+# Extract post-splash state (same eval)
+# Save to tmp/ref/<component>/dom-state-post-splash.json
+```
+
+### Diff analysis
+
+```bash
+node -e "
+const pre = JSON.parse(require('fs').readFileSync('./tmp/ref/<component>/dom-state-pre-splash.json'));
+const post = JSON.parse(require('fs').readFileSync('./tmp/ref/<component>/dom-state-post-splash.json'));
+
+const diffs = {};
+for (const key of new Set([...Object.keys(pre.elements), ...Object.keys(post.elements)])) {
+  const a = pre.elements[key] || {};
+  const b = post.elements[key] || {};
+  const changes = {};
+  for (const prop of ['inlineStyle', 'transition', 'visibility', 'opacity', 'transform', 'display']) {
+    if (a[prop] !== b[prop]) changes[prop] = { pre: a[prop], post: b[prop] };
+  }
+  if (Object.keys(changes).length > 0) diffs[key] = changes;
+}
+
+console.log(JSON.stringify({
+  htmlClassChanged: pre.htmlClass !== post.htmlClass,
+  bodyClassChanged: pre.bodyClass !== post.bodyClass,
+  preHtmlClass: pre.htmlClass,
+  postHtmlClass: post.htmlClass,
+  elementDiffs: diffs,
+}, null, 2));
+" > tmp/ref/<component>/dom-state-diff.json
+```
+
+**Save to** `tmp/ref/<component>/dom-state-diff.json`
+
+**What this reveals:**
+- **`transition` appeared in post but not pre** → Webflow runtime injection. Must add to globals.css manually (these transitions are NOT in the downloaded CSS files).
+- **`inlineStyle` cleared in post** → GSAP animation completed and cleaned up. These are the "init states" to reset.
+- **`visibility` or `opacity` changed** → Element was revealed by splash animation.
+- **`htmlClass` changed** → Preloader class removed (e.g., `rk-preloading`). Body-level state transition.
+
+⛔ **Gate:** If site has a splash/preloader (detected in Step 5c bundle analysis), `dom-state-diff.json` MUST exist before proceeding to Step 3 (style extraction). Without it, runtime-injected transitions will be silently missed.
 
 ---
 

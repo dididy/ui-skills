@@ -26,12 +26,20 @@ Optional: keyframes or `extracted.json` from transition extraction pipeline (Ste
 
 1. **Never write a value that isn't in extracted data.** If you are, stop and go extract it.
 2. **Never invent interactions or effects.** If extracted data shows no hover transform, don't add one "because it seems like it should have one." Only implement what was observed.
-3. **Never approximate font sizes — check `typography.json` first.** If `scalingSystem` is `viewport-scaled` or `em-based`, do NOT use computed px values. Reproduce the body font-size expression (`vw`/`clamp`) in `globals.css` and use `em` units from `typographyVars`. Only use px values if `scalingSystem` is `px-fixed`. Font-size mismatch is the #1 source of user corrections.
+3. **Never approximate font sizes — check `typography.json` + `em-conversion.json` first.** If `scalingSystem` is `viewport-scaled` or `em-based`, do NOT use computed px values. This is the #1 source of user corrections.
+   - ⛔ **HARD BLOCK**: If `em-conversion.json` exists, you MUST use it. For every text element, look up the `computedPx` → use the `emValue` from the conversion table.
+   - In `globals.css`: `body { font-size: <bodyFontSizeRaw>; }` — copy the raw expression (e.g., `0.83vw`, `clamp(12px, 0.83vw, 16px)`)
+   - For all text: use `em` values, e.g., `text-[2.5em]` or `fontSize: '2.5em'` — NEVER `text-[26.67px]`
+   - If no exact match in table (±0.5px), compute manually: `em = computedPx / bodyFontSizeComputed`
+   - Only use px values if `scalingSystem` is `px-fixed` AND `em-conversion.json` does not exist
 4. **Never round extracted values.** `15.84px` is a computed value from the site's token system, not a mistake. Rounding breaks typographic scale.
-5. **Recover responsive expressions from per-breakpoint styles.** `getComputedStyle` returns pixel values for the current viewport only. Compare `styles.json` (1440px) with `styles-<bp>.json` to recover the original CSS expression:
-   - Same pixel value at all breakpoints → safe to use the pixel value
-   - Value scales linearly with viewport → use `calc()` or viewport units (e.g., `1376px` at 1440 + `704px` at 768 → `calc(100vw - 64px)`)
-   - Value jumps at a breakpoint → use Tailwind responsive prefix (e.g., `w-full md:w-[704px]`)
+5. **Recover responsive expressions from `sizing-expressions.json` (MANDATORY).** `getComputedStyle` returns pixel values for the current viewport only. Step 4-C2 compares elements at 3 viewports and produces `sizing-expressions.json` with recovered CSS expressions.
+   - ⛔ **HARD BLOCK**: If `sizing-expressions.json` exists, you MUST use it for width/height/padding/font-size. Look up each element's selector → use the `value` field directly.
+   - `fixed-px` → safe to hardcode the px value
+   - `calc` → use the `calc()` expression (e.g., `w-[calc(100vw-64px)]`)
+   - `vw` → use viewport units (e.g., `w-[83.3vw]`)
+   - `linear` → use the generated `calc()` expression
+   - `breakpoint-jump` → use Tailwind responsive prefixes (e.g., `w-full md:w-[704px] lg:w-[1376px]`)
    - When in doubt, download the original CSS stylesheet and grep for the selector to find the raw expression (see `js-animation-extraction.md` Step 5)
 6. **Never recreate SVGs from visual appearance.** Use `outerHTML` from `inline-svgs.json` verbatim; convert HTML attributes to JSX (`stroke-width` → `strokeWidth`, `class` → `className`, `fill-rule` → `fillRule`).
 7. **Transitions are part of generation, not a later pass.** A component without its transitions is incomplete. Read `transition-spec.json` entries for the component + implement inline. See `transition-implementation.md`.
@@ -40,6 +48,27 @@ Optional: keyframes or `extracted.json` from transition extraction pipeline (Ste
 10. **Auto-timers must respect splash phase.** See SKILL.md rule 13b — delay auto-rotate by `splashDuration + 1s`.
 11. **Reset GSAP-baked inline styles.** See `animation-init-styles.json` from dom-extraction.md Step 2.6a.
 12. **Verify DOM structure before implementing interaction.** See SKILL.md rule 12b — use `agent-browser eval` on the live ref, never assume from HTML alone.
+
+13. **SVG-as-text: never recreate with fonts.** Check `svg-text-elements.json` from dom-extraction Step 2.5b. If a heading/brand text is rendered as SVG `<path>`, copy the SVG verbatim — do NOT recreate with `<span>` + CSS font. SVG path text is pixel-identical; font rendering varies across browsers/OS.
+14. **Smooth scroll breaks `addEventListener('scroll')`.** When `scroll-engine.json` shows Lenis/Locomotive/custom scroll, any scroll-driven effect (parallax, progress tracking) that uses `window.addEventListener('scroll')` or framework `useScroll()` hooks will NOT receive events. Use `requestAnimationFrame` loop + `getBoundingClientRect()` instead:
+    ```tsx
+    useEffect(() => {
+      let raf: number
+      let cancelled = false
+      const update = () => {
+        if (cancelled) return
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (rect) {
+          const progress = Math.max(0, Math.min(1, (vh - rect.top) / (vh + rect.height)))
+          // apply transform based on progress
+        }
+        raf = requestAnimationFrame(update)
+      }
+      raf = requestAnimationFrame(update)
+      return () => { cancelled = true; cancelAnimationFrame(raf) }
+    }, [])
+    ```
+    This works with ANY scroll implementation because `getBoundingClientRect()` always reflects the visual position.
 
 **Post-generation transition coverage gate:** Every entry in `transition-spec.json` must have a corresponding implementation. Missing any = incomplete, don't proceed to verification.
 
@@ -90,6 +119,59 @@ agent-browser eval "(() => {
 ```
 
 Verify after implementation: compare font sizes on ≥5 text elements between ref + impl. >1px difference = fix immediately.
+
+### Post-generation CSS value diff (MANDATORY)
+
+Compare ALL CSS rules in `globals.css` against the downloaded original CSS. This catches values that were changed or properties that were dropped during the copy process.
+
+```bash
+# For each major class, diff the original vs globals.css
+for CLASS in ".intro_inner" ".heading-stretch_text" ".footer_bottom" ".cases__list" ".slider__wrapper"; do
+  echo "=== $CLASS ==="
+  ORIG=$(grep -oE "${CLASS//./\\.}[^{]*\\{[^}]+\\}" tmp/ref/<component>/css/app.css 2>/dev/null | head -1)
+  IMPL=$(grep -oE "${CLASS//./\\.}[^{]*\\{[^}]+\\}" src/projects/<component>/styles/globals.css 2>/dev/null | head -1)
+  echo "ORIG: $ORIG"
+  echo "IMPL: $IMPL"
+  echo ""
+done
+```
+
+**Any property in ORIG but not in IMPL = bug.** Common silently-dropped properties:
+- `white-space: nowrap` → text wraps, causes overflow
+- `line-height` → inherits wrong value from body/container
+- `overflow: hidden` → content spills
+- `padding-top/bottom` values changed → section height wrong
+
+⛔ **Gate:** Fix all diffs before proceeding to visual verification.
+
+### Post-generation body-scope audit (MANDATORY for embedded projects)
+
+If the project runs inside another app (monorepo, showcase), verify body-level styles are scoped:
+
+```bash
+# Check if body styles are also on the project container
+grep -A10 'body {' src/projects/<component>/styles/globals.css | grep -E 'font-family|line-height|letter-spacing'
+grep -A10 '\[data-project' src/projects/<component>/styles/globals.css | grep -E 'font-family|line-height|letter-spacing'
+```
+
+If body has `line-height` but `[data-project]` doesn't → all text will have wrong line-height. Copy body-level properties to the scoping selector. See `css-first-generation.md` Step 6.
+
+### Post-generation font unit audit (MANDATORY when viewport-scaled)
+
+After generating all components, verify NO hardcoded px font sizes leaked through:
+
+```bash
+# Scan generated components for px font sizes (FAIL if any found when viewport-scaled)
+grep -rnE 'text-\[[0-9]+(\.[0-9]+)?px\]|fontSize:\s*["\x27][0-9]+(\.[0-9]+)?px["\x27]' \
+  src/components/ src/app/ | grep -v '// px-override-ok'
+```
+
+If any matches found AND `typography.json` shows `scalingSystem !== 'px-fixed'`:
+1. Look up the px value in `em-conversion.json`
+2. Replace with the `emValue` from the conversion table
+3. Re-run the scan until clean
+
+**Exception:** `// px-override-ok` comment on the same line opts out (for borders, shadows, spacing — NOT font sizes).
 
 ## CSS-First generation
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.2.8] - 2026-04-23
+
+Splash-aware extraction, hover completeness enforcement, and anti-skip gates — addresses systemic issues where extraction steps were silently skipped.
+
+### New features
+- **`dom-extraction.md` Step 2.5b** — SVG-as-text detection. Finds headings/brand text rendered as SVG `<path>` (not fonts). Saves `svg-text-elements.json`. Gate enforced.
+- **`dom-extraction.md` Step 2.6-pre** — Dual-snapshot extraction. Captures DOM state pre-splash AND post-splash, diffs runtime-injected transitions. Splash completion auto-detected via 4 universal signals (full-screen overlay, interactive reachability, scrollability, DOM stability) — no hardcoded wait or class name patterns.
+- **`dom-extraction.md` Session management** — Single session reuse rule for splash sites. One `agent-browser` session opened once, reused for all Steps 1–6.
+- **`interaction-detection.md` Step 5d-2b** — Extracts ALL `:hover` CSS rules from live page stylesheets (including inline `<style>` tags invisible to CSS file download). Saves `hover-css-rules.json`. Gate enforced.
+- **`interaction-detection.md` Step 5d-2c** — Scans for `data-text`/`data-label` attributes that drive text-swap hover effects via `::after { content: attr(data-text) }`.
+- **`interaction-detection.md` Step 5d-2d** — Hover video recording for every hoverable element. Captures exact visual effect regardless of DOM inspection limitations.
+- **`style-extraction.md` Pre-step** — Merges runtime-injected transitions from `dom-state-diff.json` into `globals.css`. Warns that these transitions are NOT in downloaded CSS files.
+- **`animation-detection.md` Phase B** — Scroll method selection table. Defaults to `agent-browser scroll down` (wheel events) for smooth-scroll sites instead of `window.scrollTo`.
+
+### Changed
+- **`component-generation.md`** — Rule 13: SVG-as-text must not be recreated with fonts. Rule 14: smooth scroll requires RAF + `getBoundingClientRect()`, not `addEventListener('scroll')`.
+- **`css-first-generation.md`** — Step 5: CSS value accuracy verification (diff original vs globals.css). Step 6: Body style scoping for embedded/monorepo projects.
+- **`validate-gate.sh` `pre-generate`** — Now checks: `svg-text-elements.json`, `hover-css-rules.json`, hover video existence, `dom-state-diff.json` (if preloader). Blocks on missing artifacts.
+- **`validate-gate.sh` `post-implement`** — Now checks: hover rule count (impl >= original), px fontSize leaks (viewport-scaled sites), `addEventListener('scroll')` usage (smooth-scroll sites). Framework-agnostic file detection (tsx/jsx/vue/svelte).
+- **`SKILL.md`** — Pipeline table: added Steps 2.5b, 2.6-pre splash auto-detect, 5d-2b/2c/2d. "Steps most likely to be skipped" table (12 items). "No Judgment" table extended (6 new anti-rationalization patterns). Step 9 updated for hover verification.
+
+### Fixed
+- Gate scripts use `git rev-parse --show-toplevel` for project root instead of hardcoded relative paths.
+
+## [0.2.7] - 2026-04-23
+
+Viewport-scaled font handling, multi-viewport sizing recovery, and JS hover timing extraction — closes the three biggest sources of "looks different" bugs.
+
+### New features
+- **`style-extraction.md`** — ⛔ Viewport-scaled font em-conversion gate. When `scalingSystem !== 'px-fixed'`, extracts full em conversion table (`em-conversion.json`) with every unique font size mapped to `emValue`/`remValue`. Blocks progression without it.
+- **`responsive-detection.md`** — Step 4-C2: multi-viewport element sizing comparison at 768/1280/1440. Recovers original CSS expressions (`calc()`, `vw`, `%`, breakpoint-jump) from computed px values → `sizing-expressions.json`. ⛔ Gate: `pre-generate` fails without this file.
+- **`interaction-detection.md`** — Step 5d-3: JS-driven hover timing extraction. Detects elements with visual deltas but `transitionDuration: 0s` (GSAP/Framer/vanilla JS). Measures via `getAnimations()` WAAPI; falls back to bundle grep → `hover-timing.json`. ⛔ Gate: `timingSource: unknown` blocks generation.
+- **`interaction-detection.md`** — Step 5d-4: hover child cascade detection. Measures all children before/after hover to catch cascading effects (card hover → image scale + overlay fade + title shift). Extends `hover-deltas.json`.
+- **`bundle-analysis.md`** — Hover event listener extraction (MANDATORY section). Greps downloaded bundles for `mouseenter`/`pointerenter`/`whileHover` patterns, maps to DOM selectors, extracts animation parameters → `hover-bundle-map.json`. Cross-references with `hover-deltas.json` to flag timing gaps.
+
+### Changed
+- **`component-generation.md`** — Rule 3 strengthened: `em-conversion.json` is now a HARD BLOCK; every text element must use `emValue` from the conversion table. Rule 5 rewritten: must use `sizing-expressions.json` instead of manual per-breakpoint comparison. Post-generation px font audit added (grep scan for leaked px font sizes).
+- **`validate-gate.sh`** — `gate_extraction`: checks `em-conversion.json` when `typography.json` has viewport-scaled/em-based scaling. `gate_pre_generate`: checks `sizing-expressions.json`, re-checks em-conversion, validates hover timing (flags `timingSource: unknown` count).
+- **`SKILL.md`** — Pipeline table Steps 3/4/5 updated with new mandatory outputs and gates. Reference files table updated with new gate descriptions.
+- **`.claude-plugin/plugin.json`** — version 0.2.7, description updated
+- **`.claude-plugin/marketplace.json`** — version 0.2.7 (was 0.2.5), description updated, 5 keywords added
+
+### New extraction artifacts
+| File | Produced by | Used by |
+|---|---|---|
+| `em-conversion.json` | `style-extraction.md` Step 3 | `component-generation.md` Rule 3 |
+| `sizing-expressions.json` | `responsive-detection.md` Step 4-C2 | `component-generation.md` Rule 5 |
+| `hover-timing.json` | `interaction-detection.md` Step 5d-3 | `component-generation.md` transitions |
+| `hover-bundle-map.json` | `bundle-analysis.md` | `interaction-detection.md` cross-ref |
+
 ## [0.2.6] - 2026-04-22
 
 Split oversized files, added hidden element extraction and external SDK reuse pipeline, then absorbed transition-reverse-engineering into ui-reverse-engineering — 4 skills → 3 skills.

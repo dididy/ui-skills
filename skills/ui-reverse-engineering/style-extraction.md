@@ -2,6 +2,36 @@
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 
+### Pre-step: Merge runtime-injected transitions (MANDATORY)
+
+If `dom-state-diff.json` exists (from Step 2.6-pre), extract runtime-injected transitions and add them to `globals.css`:
+
+```bash
+node -e "
+const diff = JSON.parse(require('fs').readFileSync('./tmp/ref/<component>/dom-state-diff.json'));
+const injected = [];
+for (const [sel, changes] of Object.entries(diff.elementDiffs || {})) {
+  if (changes.transition && changes.transition.post && !changes.transition.pre) {
+    injected.push({ selector: sel, transition: changes.transition.post });
+  }
+}
+if (injected.length > 0) {
+  console.log('Runtime-injected transitions (add to globals.css):');
+  injected.forEach(i => console.log('.' + i.selector.split('.')[1] + ' { transition: ' + i.transition.slice(0, 120) + '; }'));
+} else {
+  console.log('No runtime-injected transitions found.');
+}
+"
+```
+
+⛔ **These transitions are NOT in the downloaded CSS files.** They must be added manually to `globals.css`. Without them, hover effects will have no animation (instant snap instead of smooth transition).
+
+**Common Webflow runtime-injected transitions:**
+- Button hover: `transform 0.45s linear(...)` — spring bounce
+- Text hover: `clip-path 0.4s, scale 0.3s` — text clip reveal
+- Background: `background 0.3s, font-size 0.3s` — Webflow global body transition
+- Card links: `background 0.3s` — subtle hover feedback
+
 ## Step 3: Extract Computed Styles
 
 ### Key element styles
@@ -136,6 +166,67 @@ agent-browser eval "
 | `px-fixed` | Hardcoded px values are safe. But always check at 2+ viewport widths. |
 
 **Common mistake this prevents:** Extracting `fontSize: 26.67px` (computed at 1280px) and hardcoding `fontSize: 30px` (guessing the "design" value). The actual value is `2.5em` relative to a `0.83vw` body font. At 1440px it's 30px, at 1280px it's 26.67px, at 768px it's 16px — one px value cannot represent this.
+
+### ⛔ Viewport-scaled font em-conversion gate (MANDATORY)
+
+If `scalingSystem` is `viewport-scaled` or `em-based`, you MUST compute the em conversion table before proceeding. This is a **blocking gate** — do NOT move to Step 4 or generation without `em-conversion.json`.
+
+```bash
+agent-browser eval "
+(() => {
+  const typo = JSON.parse(document.querySelector('#__typography_json')?.textContent || 'null');
+  // Re-extract inline if not embedded
+  const body = getComputedStyle(document.body);
+  const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const bodyFontSize = parseFloat(body.fontSize);
+
+  // Collect all unique font sizes on the page
+  const textEls = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,a,span,button,li,th,td,label,div')]
+    .filter(el => el.offsetHeight > 0 && el.textContent?.trim().length > 0 && el.children.length <= 3);
+
+  const sizeMap = {};
+  textEls.forEach(el => {
+    const s = getComputedStyle(el);
+    const px = parseFloat(s.fontSize);
+    if (px === 0 || isNaN(px)) return;
+    const em = Math.round((px / bodyFontSize) * 1000) / 1000;
+    const key = px.toFixed(2);
+    if (!sizeMap[key]) {
+      const cn = typeof el.className === 'string' ? el.className : '';
+      sizeMap[key] = {
+        computedPx: px,
+        emValue: em + 'em',
+        remValue: Math.round((px / rootFontSize) * 1000) / 1000 + 'rem',
+        sampleSelector: el.tagName.toLowerCase() + (cn.trim().split(' ')[0] ? '.' + cn.trim().split(' ')[0] : ''),
+        sampleText: el.textContent?.trim().slice(0, 30),
+        fontWeight: s.fontWeight,
+        fontFamily: s.fontFamily?.split(',')[0]?.trim(),
+        lineHeight: s.lineHeight,
+        letterSpacing: s.letterSpacing,
+      };
+    }
+  });
+
+  return JSON.stringify({
+    bodyFontSizeComputed: bodyFontSize + 'px',
+    rootFontSize: rootFontSize + 'px',
+    viewportWidth: window.innerWidth,
+    conversionTable: Object.values(sizeMap).sort((a, b) => b.computedPx - a.computedPx),
+    generationRule: 'USE emValue for all font-size declarations. NEVER use computedPx directly.',
+  }, null, 2);
+})()
+"
+```
+
+**Save output to** `tmp/ref/<component>/em-conversion.json`
+
+**Gate check:** `validate-gate.sh` must verify this file exists when `typography.json` shows `scalingSystem !== 'px-fixed'`.
+
+**How generation must use this:**
+1. In `globals.css`: `body { font-size: <bodyFontSizeRaw from typography.json>; }` (e.g., `0.83vw`, `clamp(12px, 0.83vw, 16px)`)
+2. For every text element: look up its `computedPx` in the conversion table → use the `emValue`
+3. **NEVER write `text-[26.67px]` or `fontSize: '26.67px'`** when scaling system is viewport-scaled
+4. If an exact match isn't in the table (±0.5px), compute: `em = computedPx / bodyFontSizeComputed`
 
 ### Extract advanced visual properties (MANDATORY)
 

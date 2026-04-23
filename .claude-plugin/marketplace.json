@@ -7,8 +7,8 @@
     {
       "name": "ui-skills",
       "source": "./",
-      "description": "Clone a live website into React + Tailwind. CSS-First generation (original stylesheets + class names), zero-vision-token AE/SSIM verification, real JS bundle extraction (GSAP/Framer Motion/Lenis), GSAP-baked style handling, state coupling verification, bundle analysis patterns (Canvas renderer, disc/carousel, Lottie asset mapping, state machine, auto-timer), result-aware pipeline hooks with multi-state extraction checks, and token-optimized SKILL.md (~6.8K tokens total). Automated pipeline with anti-rationalization gates.",
-      "version": "0.2.5",
+      "description": "Clone a live website into React + Tailwind. Splash-aware dual-snapshot extraction (auto-detect completion, no hardcoded waits), SVG-as-text detection, hover completeness enforcement (inline style rules, data-text swap, video capture), smooth-scroll scroll capture (wheel events), CSS value accuracy verification, body style scoping, anti-skip validate-gate.sh (blocks on missing hover rules, px fontSize leaks, scroll event listeners). 3 skills, automated pipeline with anti-rationalization gates.",
+      "version": "0.2.8",
       "author": {
         "name": "YONGJAE LEE"
       },
@@ -37,7 +37,19 @@
         "anti-rationalization",
         "bundle-verification",
         "layout-health-check",
-        "token-optimized"
+        "token-optimized",
+        "em-conversion",
+        "viewport-scaled-fonts",
+        "sizing-expressions",
+        "hover-timing",
+        "hover-cascade",
+        "splash-detection",
+        "dual-snapshot",
+        "svg-as-text",
+        "hover-video",
+        "smooth-scroll",
+        "body-scoping",
+        "anti-skip-gates"
       ]
     }
   ]

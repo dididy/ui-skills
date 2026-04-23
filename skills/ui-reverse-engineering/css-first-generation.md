@@ -67,6 +67,88 @@ Use Tailwind/inline styles ONLY for:
 - Responsive adjustments not in original CSS
 - Layout differences caused by framework structure (Next.js App Router vs Shopify Liquid)
 
+## Step 5: CSS value accuracy verification (MANDATORY)
+
+After copying CSS rules to `globals.css`, verify ALL values match the downloaded original. **This step catches the most common bug: values silently changed or properties dropped during copy.**
+
+```bash
+# Extract all CSS rules from original app.css for key classes
+node -e "
+const fs = require('fs');
+const css = fs.readFileSync('./tmp/ref/<component>/css/app.css', 'utf8');
+
+// Parse target class rules
+const classes = process.argv.slice(1);
+for (const cls of classes) {
+  // Find all rules for this class (escaped dot for regex)
+  const escaped = cls.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+  const regex = new RegExp(escaped + '[^{]*\\\\{([^}]+)\\\\}', 'g');
+  let match;
+  while ((match = regex.exec(css)) !== null) {
+    const props = match[1].split(';').map(p => p.trim()).filter(Boolean);
+    console.log(cls + ' {');
+    props.forEach(p => console.log('  ' + p + ';'));
+    console.log('}');
+    console.log('');
+  }
+}
+" .intro_inner .heading-stretch_text .footer_bottom .cases__list > /tmp/orig-rules.txt
+
+# Compare with globals.css rules
+# For each class: diff property counts, diff values
+```
+
+**Manual verification checklist (for each major class):**
+
+| Check | How |
+|---|---|
+| Property count matches | Count `;` in original vs globals.css for same selector |
+| All padding/margin values match | Compare `padding-top`, `padding-bottom`, etc. |
+| line-height present | Original has `line-height`? → globals.css must too |
+| white-space present | Original has `white-space: nowrap`? → must copy |
+| overflow present | Original has `overflow: hidden`? → must copy |
+
+**Common missed properties that cause visual bugs:**
+- `white-space: nowrap` — text wraps when it shouldn't, causing massive overflow
+- `line-height` — inherits body line-height instead of element-specific value
+- `overflow: hidden` — content spills outside containers
+- `text-overflow: ellipsis` — long text doesn't truncate
+- `will-change` — may affect compositing/rendering
+- `contain` — layout containment differences
+
+⛔ **Gate:** If `globals.css` has fewer properties than the original for any key class, STOP and add the missing properties. Do NOT proceed to verification.
+
+## Step 6: Body style scoping (MANDATORY for embedded/monorepo projects)
+
+When the implementation runs inside another app (showcase, monorepo, embedded iframe), `body` CSS rules from the original site **will not apply** because:
+1. The host app's body styles take precedence
+2. CSS specificity: host `body {}` overrides project `body {}`
+3. The project renders inside a `<div>`, not `<body>`
+
+**Fix:** Copy body-level styles to the project's scoping selector:
+
+```css
+/* ❌ WRONG — body styles won't apply in embedded context */
+body {
+  font-family: var(--fonts--paragraph);
+  line-height: 1.3em;
+  letter-spacing: -0.04em;
+}
+
+/* ✅ RIGHT — scoped to project container */
+[data-project="<name>"] {
+  font-size: calc(clamp(992px, 100dvw, 2240px) / (1920 / 16));
+  font-family: var(--fonts--paragraph);
+  line-height: 1.3em;
+  letter-spacing: -0.04em;
+  -webkit-font-smoothing: antialiased;
+}
+```
+
+**Properties to always scope:** `font-family`, `font-size`, `line-height`, `font-weight`, `letter-spacing`, `color`, `background-color`, `-webkit-font-smoothing`, `-moz-osx-font-smoothing`.
+
+This is NOT optional. If body styles are only on `body {}` and the project is embedded, ALL text will have wrong line-height, font-family, and spacing.
+
 ## When to fall back to extracted values
 
 Site CSS is obfuscated (CSS-in-JS, Tailwind with hashed classes) → use the extract-values approach with the fallback prompt below. For readable class names (Shopify, WordPress, static sites), always prefer CSS-First.
