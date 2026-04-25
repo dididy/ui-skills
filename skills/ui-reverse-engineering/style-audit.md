@@ -161,6 +161,23 @@ For each selector present in both files, compare all properties. Report mismatch
 
 > In Tailwind v3, custom fonts are registered via `theme.extend.fontFamily` in `tailwind.config` and do not exhibit this issue.
 
+**Additional failure mode (embedded/monorepo):** Even with correct `@theme` syntax, the custom font registration is **silently ignored** if the project's CSS file is separate from the host app's Tailwind entry point (`@import "tailwindcss"`). Tailwind v4 only processes `@theme` in the same file as its import directive. Detection: `--font-sans` resolves to `ui-sans-serif, system-ui...` (Tailwind default) instead of the custom font. Fix: use plain CSS custom properties on `[data-project]` selector and override `.font-serif`/`.font-sans` within that scope. See `css-first-generation.md` Step 6.
+
+---
+
+## Step A3.6: Multi-viewport audit
+
+Run A1–A3 at **multiple viewport widths** (at minimum: 1280px, 1440px, 1920px). Many sites use viewport-relative sizing — computed styles change with viewport width.
+
+**Detection:** If any element's `fontSize`, `padding`, `width`, or `height` changes between viewports in the ref, the site uses responsive scaling. Common patterns:
+- Framer sites: grid columns scale with viewport, content scales proportionally
+- `clamp()` / `vw` based font sizes
+- Container queries (`cqw`)
+
+**Fix:** If ref values scale proportionally, use `aspect-ratio` on containers and relative units (`em`, `%`, `vw`) for spacing/fonts. If ref values are fixed at all viewports, px is fine.
+
+**Grid cells specifically:** Never use fixed `height: 'Npx'` on grid cells in responsive layouts. Use `aspectRatio` — e.g., a 425×425 cell at 1280px = `aspectRatio: '1/1'`, a 1276×1135 cell = `aspectRatio: '1276/1135'`. This ensures proportional scaling at any viewport.
+
 ---
 
 ## Step A4: Apply fixes

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.10] - 2026-04-25
+
+Expanded failure-mode coverage, multi-viewport verification, and new section/transition comparison scripts.
+
+### New features
+- **`section-compare.sh`** — new visual-debug script that compares original vs implementation by semantic section. Matches sections by text fingerprint, crops element-level screenshots, runs AE diff per section, and diffs computed styles + DOM structure. Eliminates scroll-alignment noise from full-page comparisons.
+- **`transition-compare.sh`** — new visual-debug script that compares hover/transition behavior between original and implementation. Detects elements with CSS transitions, captures idle/hover states, diffs computedStyle changes, and validates transition timing (duration, easing, delay).
+- **Multi-viewport audit (Step A3.6)** in `style-audit.md` — runs style audit at 1280px, 1440px, and 1920px minimum. Catches font-size, padding, and grid height differences invisible at single viewport width.
+- **Post-implementation height verification (Stage 7)** in `section-audit.md` — re-measures implementation section heights against original after component generation. Catches hardcoded height drift, grid ratio mismatches, and accumulated font metric differences before visual diff. Thresholds: >15% or >80px = warning, >30% = fail.
+
+### Fixed
+- **`@theme` Tailwind v4 scoping** — documented silent failure in monorepo/embedded projects where `@theme` in separate CSS files is ignored. Fix: use plain CSS custom properties on `[data-project]` selector instead. Added to `SKILL.md` anti-skip table, `css-first-generation.md`, and `style-audit.md`.
+- **Line-height extraction** — Tailwind default `leading-normal` (1.5) applied when explicit `lineHeight` not extracted. Added to `generation-pitfalls.md` failure table and `SKILL.md` anti-skip rules.
+- **Color opacity loss** — text colors extracted without alpha channel (`rgb` instead of `rgba`). Subtitles/labels often use 20–40% opacity. Added to `generation-pitfalls.md`.
+- **Grid height responsiveness** — fixed `height: Npx` on grid cells breaks at wider viewports. Fix: use `aspectRatio` instead. Added to `generation-pitfalls.md` and `style-audit.md`.
+- **Hover-OUT snap** — hover transition works but reverse (mouse-leave) snaps. Cause: missing initial values in idle state CSS. Fix: declare initial values for all animated properties. Added to `generation-pitfalls.md` and `post-gen-verification.md`.
+- **Wrapper div recursion** — `section-audit.md` and `layout-health-check.sh` now recurse through single-child wrapper divs (e.g., `main > div.home > sections`) instead of stopping at the first `<main>`. Fixes false section counts on sites like eBay.
+- **`layout-health-check.sh` thresholds tightened** — added intermediate `⛔ FAIL` band (1.3x–2x, was only warning). Added absolute pixel diff display. Ratio precision increased to 2 decimal places.
+
 ## [0.2.9] - 2026-04-23
 
 Browser session cleanup, token efficiency, shell script hardening, and pipeline status accuracy.
@@ -18,7 +37,7 @@ Browser session cleanup, token efficiency, shell script hardening, and pipeline 
 - **`layout-diff.sh`** — race condition: pipe subshell wrote FAIL count to shared `/tmp/layout-diff-fail-count`. Replaced with heredoc (`<<< "$TSV_DATA"`) so FAIL increments in parent process. Added `trap cleanup_browsers EXIT`.
 - **`batch-scroll.sh`** — no browser cleanup at all (open without close). Added `trap cleanup_browsers EXIT`. Added numeric validation for page heights (prevents `bc` errors on non-numeric eval output).
 - **`auto-verify.sh`** — added `trap cleanup_browsers EXIT` for error/signal cleanup.
-- **`transition-compare.sh`** — added `trap cleanup_browsers EXIT` for error/signal cleanup.
+- **`transition-compare.sh`** (initial version) — added `trap cleanup_browsers EXIT` for error/signal cleanup. Rewritten in 0.2.10 with idle/hover state capture and computedStyle diffing.
 - **`layout-health-check.sh`** — added `trap cleanup_browsers EXIT`. Added `node` dependency check.
 - **`computed-diff.sh`** — added `python3` dependency check.
 - **`ae-compare.sh`, `batch-compare.sh`, `dssim-compare.sh`** — replaced PID/filename-based temp paths with `mktemp` (prevents collision on parallel runs).

@@ -33,7 +33,11 @@ EXTRACT_JS='(() => {
   const viewportHeight = window.innerHeight;
 
   // Get all direct children of main/body that are visible sections
-  const main = document.querySelector("main") || body;
+  // Recurse through single-child wrapper divs (e.g., eBay has main > div.home > sections)
+  let main = document.querySelector("main") || body;
+  while (main.children.length === 1 && main.children[0].tagName === "DIV" && main.children[0].offsetHeight > main.offsetHeight * 0.8) {
+    main = main.children[0];
+  }
   const sections = [...main.children].filter(c => {
     return c.offsetHeight > 0 && !["SCRIPT","STYLE","LINK","META"].includes(c.tagName);
   });
@@ -158,9 +162,11 @@ for (let i = 0; i < maxSections; i++) {
     continue;
   }
   const sRatio = m.height / o.height;
+  const absDiff = Math.abs(m.height - o.height);
   let status = '✅';
-  if (sRatio > 2 || sRatio < 0.3) { status = '⛔ ' + sRatio.toFixed(1) + 'x'; issues++; }
-  else if (sRatio > 1.5 || sRatio < 0.5) { status = '⚠️ ' + sRatio.toFixed(1) + 'x'; }
+  if (sRatio > 2 || sRatio < 0.3) { status = '⛔ ' + sRatio.toFixed(2) + 'x'; issues++; }
+  else if (sRatio > 1.3 || sRatio < 0.7) { status = '⛔ ' + sRatio.toFixed(2) + 'x (' + absDiff + 'px)'; issues++; }
+  else if (sRatio > 1.15 || sRatio < 0.85 || absDiff > 80) { status = '⚠️ ' + sRatio.toFixed(2) + 'x (' + absDiff + 'px)'; }
   console.log('| ' + i + ' | ' + o.height + 'px | ' + m.height + 'px | ' + sRatio.toFixed(2) + ' | ' + status + ' |');
 }
 

@@ -26,7 +26,7 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 |---|---|
 | **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component. Includes transition extraction (WAAPI, canvas/WebGL, Three.js, scroll-driven JS). |
 | **`ui-capture`** | Baseline screenshots + transition capture + comparison page. Auto-detects custom scroll (Lenis, Locomotive). Classifies effects by trigger type. |
-| **`visual-debug`** | All visual comparison in one skill. Quick mode (AE/SSIM batch) and full verification (Phase A→E with self-healing loop). |
+| **`visual-debug`** | All visual comparison in one skill. Quick mode (AE/SSIM batch), full verification (Phase A→E with self-healing loop), section-level comparison, and transition behavior diff. |
 
 ## Requirements
 
@@ -137,6 +137,8 @@ R.   Capture reference         — static screenshots + scroll video (60 fps)
 | `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |
 | `dssim-compare.sh` | Structural visual similarity (DSSIM) — catches layout issues AE misses |
 | `computed-diff.sh` | Per-selector `getComputedStyle` comparison between two URLs |
+| `section-compare.sh` | Section-level visual + structural comparison (text fingerprint matching, per-section AE diff, DOM structure diff) |
+| `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation) |
 
 All visual-debug scripts support `VIEW_W`/`VIEW_H` env vars (default 1440×900) for custom viewport sizes. All scripts that open `agent-browser` sessions have `trap EXIT` cleanup.
 

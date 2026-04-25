@@ -149,6 +149,8 @@ body {
 
 This is NOT optional. If body styles are only on `body {}` and the project is embedded, ALL text will have wrong line-height, font-family, and spacing.
 
+**`@theme` scoping also fails here.** If the project's `globals.css` contains `@theme { --font-sans: ... }` but the host app's `globals.css` has its own `@import "tailwindcss"`, the project's `@theme` is silently ignored. Tailwind v4 only processes `@theme` in the same file as `@import "tailwindcss"`. The fix is the same — use plain CSS custom properties on `[data-project]` and override `.font-serif` / `.font-sans` classes within that scope.
+
 ## When to fall back to extracted values
 
 Site CSS is obfuscated (CSS-in-JS, Tailwind with hashed classes) → use the extract-values approach with the fallback prompt below. For readable class names (Shopify, WordPress, static sites), always prefer CSS-First.
@@ -195,6 +197,14 @@ Rules:
     the utility is silently not generated. Instead:
       @theme { --font-my-custom: "Custom Font", "Fallback", sans-serif; }
     Then use `font-my-custom` (not `font-[var(--font-my-custom)]`).
+    ⚠️ EMBEDDED PROJECT EXCEPTION: `@theme` only works in the file that has
+    `@import "tailwindcss"`. In monorepo/embedded projects where the project's
+    globals.css is a SEPARATE file from the host app's main CSS, `@theme` will
+    be SILENTLY IGNORED — `--font-sans`/`--font-serif` stay as Tailwind defaults.
+    Fix: use plain CSS variables on the scoping selector instead:
+      [data-project="<name>"] { --font-serif: "Custom Serif", serif; }
+      [data-project="<name>"] .font-serif { font-family: var(--font-serif); }
+      [data-project="<name>"] { font-family: "Custom Sans", sans-serif; }
 - Font size → vw conversion: back-calculate vw = extractedPx / viewportWidth * 100.
     Use clamp(minRem, Xvw, maxPx). Never guess vw — compute from extracted px.
 - Hover: Tailwind group/peer or CSS variables

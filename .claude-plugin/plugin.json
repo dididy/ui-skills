@@ -1,6 +1,6 @@
 {
   "name": "ui-skills",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Clone a live website into React + Tailwind. Auto-registered hooks (no manual setup), dependency doctor, auto pre-generate gate, browser session cleanup, token-efficient eval, configurable viewport, trap EXIT on all scripts. 3 skills, automated pipeline with anti-rationalization gates.",
   "license": "Apache-2.0",
   "author": {

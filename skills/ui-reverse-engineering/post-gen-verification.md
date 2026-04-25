@@ -258,6 +258,7 @@ For each property in the delta:
 | Image zooms differently | Original uses GSAP `scale: 1.05` with custom ease, impl uses CSS `hover:scale-105` with default ease |
 | Text split-hover broken | Original uses GSAP SplitText per-character stagger on hover, impl does whole-block transition |
 | Hover doesn't revert smoothly | `mouseleave` transition missing — GSAP has separate `leave` tween |
+| Hover-OUT snaps instead of animating | CSS animated properties (`clip-path`, `scale`, `transform`) have no initial value in idle state — browser can't interpolate from `none` to `inset(...)`. Fix: add explicit initial values. Check `::after` pseudo-elements too |
 
 ### Step 4: Fix and re-verify
 

@@ -48,7 +48,12 @@ agent-browser eval "
     });
   }
 
-  collectSections(document.body);
+  // Start from main or body, but recurse through single-child wrapper divs
+  let root = document.querySelector('main, [role=main]') || document.body;
+  while (root.children.length === 1 && root.children[0].tagName === 'DIV' && root.children[0].offsetHeight > root.offsetHeight * 0.8) {
+    root = root.children[0];
+  }
+  collectSections(root);
 
   const unique = containers.filter((el, i) => !containers.some((other, j) => j !== i && other.contains(el)));
   unique.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
@@ -90,8 +95,11 @@ For every significant text element on the page, verify which section it belongs 
 ```bash
 agent-browser eval "
 (() => {
-  // Find the semantic containers
-  const wrapper = document.querySelector('main, [role=main]') || document.body;
+  // Find the semantic containers — recurse through single-child wrapper divs
+  let wrapper = document.querySelector('main, [role=main]') || document.body;
+  while (wrapper.children.length === 1 && wrapper.children[0].tagName === 'DIV' && wrapper.children[0].offsetHeight > wrapper.offsetHeight * 0.8) {
+    wrapper = wrapper.children[0];
+  }
   const sections = Array.from(wrapper.querySelectorAll(':scope > section, :scope > footer, :scope > header'));
 
   // Collect all visible text elements
@@ -154,7 +162,10 @@ Compare actual section heights from the DOM with the reference screenshots.
 ```bash
 agent-browser eval "
 (() => {
-  const wrapper = document.querySelector('main, [role=main]') || document.body;
+  let wrapper = document.querySelector('main, [role=main]') || document.body;
+  while (wrapper.children.length === 1 && wrapper.children[0].tagName === 'DIV' && wrapper.children[0].offsetHeight > wrapper.offsetHeight * 0.8) {
+    wrapper = wrapper.children[0];
+  }
   const sections = Array.from(wrapper.querySelectorAll(':scope > section, :scope > footer, :scope > header'));
 
   const heights = sections.map((s, i) => ({
@@ -186,7 +197,10 @@ For each section, document the key layout decisions from the extracted data:
 ```bash
 agent-browser eval "
 (() => {
-  const wrapper = document.querySelector('main, [role=main]') || document.body;
+  let wrapper = document.querySelector('main, [role=main]') || document.body;
+  while (wrapper.children.length === 1 && wrapper.children[0].tagName === 'DIV' && wrapper.children[0].offsetHeight > wrapper.offsetHeight * 0.8) {
+    wrapper = wrapper.children[0];
+  }
   const sections = Array.from(wrapper.querySelectorAll(':scope > section, :scope > footer, :scope > header'));
 
   return JSON.stringify(sections.map((section, i) => {
@@ -291,6 +305,75 @@ Run the gate:
 ```bash
 bash validate-gate.sh tmp/ref/<component> pre-generate
 ```
+
+## Stage 7: Post-implementation height verification
+
+**When:** After generating components and confirming they render, run this stage to catch height drift before visual diff.
+
+This step re-measures the implementation's section heights and compares them with the original measurements from Stage 3. This catches:
+- Hardcoded heights that don't match the original (e.g., `height: 900px` when original is `800px`)
+- Grid ratio mismatches that change section height (e.g., `330px + 1fr` vs original `1fr 2fr`)
+- Missing or extra margin/padding between sections
+- Font metric differences that accumulate across sections
+
+```bash
+# 1. Open both URLs and measure
+agent-browser --session ref open "<ORIGINAL_URL>" 2>/dev/null
+agent-browser --session ref set viewport 1440 900 2>/dev/null
+agent-browser --session ref wait 3000 2>/dev/null
+
+agent-browser --session impl open "<IMPL_URL>" 2>/dev/null
+agent-browser --session impl set viewport 1440 900 2>/dev/null
+agent-browser --session impl wait 3000 2>/dev/null
+
+# 2. Extract from both — use main > * and recurse into wrapper divs
+MEASURE_JS='(() => {
+  const main = document.querySelector("main") || document.body;
+  // Recurse: if main has a single child div wrapper, use its children instead
+  let root = main;
+  while (root.children.length === 1 && root.children[0].tagName === "DIV" && root.children[0].offsetHeight > root.offsetHeight * 0.8) {
+    root = root.children[0];
+  }
+  const kids = Array.from(root.children).filter(c => c.offsetHeight > 0 && !["SCRIPT","STYLE","LINK","META"].includes(c.tagName));
+  return JSON.stringify({
+    totalHeight: document.documentElement.scrollHeight,
+    rootTag: root.tagName,
+    rootClass: (root.className || "").toString().slice(0,60),
+    sections: kids.map((el, i) => {
+      const cs = getComputedStyle(el);
+      return {
+        i, tag: el.tagName, cls: (el.className || "").toString().slice(0,60),
+        h: el.offsetHeight,
+        mt: cs.marginTop, mb: cs.marginBottom,
+        pt: cs.paddingTop, pb: cs.paddingBottom,
+        text: el.textContent.trim().slice(0,50)
+      };
+    })
+  });
+})()'
+
+REF_DATA=$(agent-browser --session ref eval "$MEASURE_JS" 2>/dev/null)
+IMPL_DATA=$(agent-browser --session impl eval "$MEASURE_JS" 2>/dev/null)
+
+# 3. Compare — pipe to file for token efficiency
+echo "$REF_DATA" > tmp/ref/post-impl-ref.json
+echo "$IMPL_DATA" > tmp/ref/post-impl-clone.json
+```
+
+**Thresholds (per-section):**
+- `|ratio - 1| > 0.15` (>15% off) OR `|absDiff| > 80px` → **⚠️ WARNING** — investigate
+- `|ratio - 1| > 0.30` (>30% off) → **⛔ FAIL** — must fix before proceeding
+
+**Thresholds (total page height):**
+- `|ratio - 1| > 0.10` (>10% off) → **⚠️ WARNING**
+- `|ratio - 1| > 0.30` (>30% off) → **⛔ FAIL**
+
+**Action on warning:** Read the per-section table. For each section with >15% or >80px difference:
+1. Measure the original section's key dimensions (grid template, padding, hardcoded heights)
+2. Compare with implementation's values
+3. Fix the root cause (don't adjust padding to compensate)
+
+**Do not proceed to pixel-diff (visual-debug) until all sections are within threshold.**
 
 ## Common mistakes this step prevents
 

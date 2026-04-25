@@ -98,9 +98,14 @@ bash "$PLUGIN_ROOT/scripts/validate-gate.sh" tmp/ref/<c> all            # run al
 | **7 Rule 14** Smooth scroll | `useScroll`/`addEventListener('scroll')` used | Parallax and scroll effects don't update | Use RAF + `getBoundingClientRect()` |
 | **7 CSS diff** | Values copied from original CSS are wrong/incomplete | Padding, line-height, white-space mismatch | Diff every key class against original CSS file |
 | **7 Body scoping** | `body {}` styles not copied to project container | line-height, font-family wrong in embedded context | Copy body styles to `[data-project]` selector |
+| **7 @theme scoping** | `@theme { --font-sans: ... }` in separate CSS file | Custom fonts silently ignored, Tailwind defaults used | In monorepo/embedded: use plain CSS vars on `[data-project]` + override `.font-serif` |
 | **8b** Section compare | "Full-page comparison already ran" | Section-level mismatches hidden in scroll noise | Run `section-compare.sh` — it catches SVG-as-text, layout type, height ratio |
 | **8c** Transition compare | "Hover looks right to me" | Wrong easing, missing hover effect, timing mismatch | Run `transition-compare.sh` — auto-detects ALL transition elements |
 | **9** Interaction test | "Hover works" concluded without actually hovering | JS-driven hover (GSAP mouseenter) not triggered | Dispatch `mouseenter` event + check `getAnimations()` |
+| **7 lineHeight** | Explicit `lineHeight` not set on text elements | Tailwind default `leading-normal` (1.5×) applied — text spacing wrong everywhere | Extract exact `lineHeight` from ref for ALL text. Never rely on Tailwind `leading-*` — use `style={{ lineHeight: '16.8px' }}` |
+| **7 color opacity** | Text color extracted without alpha channel | Muted/semi-transparent labels rendered at full opacity | Always check ref for `rgba()` — subtitles, event names often use 20-40% opacity |
+| **7 grid height** | Grid cell heights hardcoded in px | Layout breaks at wider viewports — images overflow or empty space appears | Use `aspectRatio` on grid cells instead of fixed `height`. Heights scale proportionally with column width |
+| **8 multi-viewport** | Only verified at 1280px | Layout/font/spacing issues at 1440px, 1920px go undetected | Run style audit at 2+ viewport widths. Compare computed values at each. Check if ref uses `vw`/`clamp()`/`calc()` |
 
 **Anti-skip rule:** If you think "this step probably won't find anything" — that is exactly when it WILL find something. Run it anyway. The steps above were identified from real failures where skipping caused user-visible bugs.
 
@@ -197,6 +202,7 @@ agent-browser eval "(() => {
 | "Scroll effects work — I used useScroll" | If `scroll-engine.json` shows smooth scroll, `useScroll` gets no events. Use RAF + `getBoundingClientRect()`. |
 | "The transition is sound-only, no visual change" | Record hover video. A CSS `:hover` in inline `<style>` may apply 3D transforms invisible to bundle search. |
 | "body CSS applies everywhere" | In embedded/monorepo projects, `body {}` doesn't reach the project container. Scope to `[data-project]`. |
+| "@theme sets my custom fonts" | `@theme` only works in the file with `@import "tailwindcss"`. In monorepo separate CSS files, it's silently ignored. Use plain CSS vars on `[data-project]`. |
 
 **Enforcement:** `validate-gate.sh` blocks without artifacts. `auto-verify.sh` blocks without passing checks. `batch-compare.sh` prints anti-rationalization warnings on FAIL.
 
