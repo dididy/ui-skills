@@ -28,6 +28,7 @@
 set -euo pipefail
 
 DIR="${1:?Usage: compare-sections.sh <extraction-dir>}"
+trap '' EXIT
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

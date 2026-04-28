@@ -102,6 +102,8 @@ A position is PASS only when **all three agree** (or LLM explicitly approves a k
 
 ### Phase E: LLM Review (MANDATORY)
 
+NOTE: Quick comparison (Phases A-D) uses zero vision tokens via AE/SSIM diff. Phase E (LLM verification) is mandatory for full verification workflow and DOES use vision tokens for the final review.
+
 After AE + DSSIM, read every position's ref+impl pair. Judge PASS / PARTIAL / FAIL. Not optional — automated metrics can silently pass wrong results. ~44K tokens.
 
 ## Thresholds

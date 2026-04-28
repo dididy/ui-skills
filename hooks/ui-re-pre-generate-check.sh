@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Pre-generation check hook for ui-reverse-engineering
 # Blocks Write/Edit on component files when extraction pipeline is incomplete
 # Enhanced: also checks for multi-state extraction completeness
@@ -53,11 +54,12 @@ for search_dir in "${SEARCH_DIRS[@]}"; do
 done
 [ -z "$GATE_SCRIPT" ] && exit 0
 
-bash "$GATE_SCRIPT" "$REF_DIR" pre-generate > /tmp/ui-re-gate-result.txt 2>&1
-GATE_EXIT=$?
+RESULT_FILE=$(mktemp -t ui-re-gate-result.XXXXXX)
+trap 'rm -f "$RESULT_FILE"' EXIT
+GATE_EXIT=0; bash "$GATE_SCRIPT" "$REF_DIR" pre-generate > "$RESULT_FILE" 2>&1 || GATE_EXIT=$?
 
 if [ "$GATE_EXIT" -ne 0 ]; then
-  STRIPPED=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/ui-re-gate-result.txt)
+  STRIPPED=$(sed 's/\x1b\[[0-9;]*m//g' "$RESULT_FILE")
   MISSING_COUNT=$(echo "$STRIPPED" | grep -c 'MISSING' 2>/dev/null || echo "0")
   MISSING_COUNT=$(echo "$MISSING_COUNT" | tr -d '[:space:]')
 

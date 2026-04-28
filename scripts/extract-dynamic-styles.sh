@@ -11,6 +11,7 @@
 set -euo pipefail
 
 SESSION="${1:?Usage: extract-dynamic-styles.sh <session> <output-dir>}"
+trap 'agent-browser close "$SESSION" 2>/dev/null || true' EXIT
 DIR="${2:?Usage: extract-dynamic-styles.sh <session> <output-dir>}"
 
 mkdir -p "$DIR"
@@ -49,12 +50,8 @@ RESULT=$(agent-browser --session "$SESSION" eval "(() => {
           /\d+(svh|vh|vw|px|rem|em|%)/.test(val)) {
         layout[prop] = val;
       }
-      // Animation properties (REMOVE — will be re-set by JS)
+      // Animation properties (REMOVE — will be re-set by JS; translate|rotate|scale are GSAP shorthand, already covered here)
       else if (/^(transform|opacity|visibility|translate|rotate|scale)$/.test(prop)) {
-        animation[prop] = val;
-      }
-      // GSAP shorthand properties (REMOVE)
-      else if (/^(translate|rotate|scale)$/.test(prop) && val !== 'none') {
         animation[prop] = val;
       }
       // transform-origin is usually layout (KEEP)

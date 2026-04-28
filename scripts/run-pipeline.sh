@@ -7,7 +7,7 @@
 # and reports exactly which phase/step to execute next. The LLM should follow
 # its output instead of guessing where it is in the pipeline.
 
-set -uo pipefail
+set -euo pipefail
 
 # ── Dependency check ──
 DOCTOR_FAIL=0
@@ -16,6 +16,9 @@ for cmd in agent-browser ffmpeg jq; do
 done
 for cmd in compare identify; do
   command -v "$cmd" &>/dev/null || { echo -e "\033[0;31m✗\033[0m Missing: $cmd (brew install imagemagick)"; DOCTOR_FAIL=1; }
+done
+for cmd in python3 curl bc; do
+  command -v "$cmd" &>/dev/null || { echo -e "\033[0;31m✗\033[0m Missing: $cmd (brew install $cmd)"; DOCTOR_FAIL=1; }
 done
 command -v dssim &>/dev/null || echo -e "\033[0;33m⚠\033[0m Optional: dssim (brew install dssim)"
 if [ "$DOCTOR_FAIL" -eq 1 ]; then
@@ -101,59 +104,71 @@ echo -e "${BOLD}Phase 2 — Extraction${NC}"
 # Step 1-2: DOM + section enumeration
 phase_status "Step 1-2: structure.json + section-map.json" test -f "$REF_DIR/structure.json" -a -f "$REF_DIR/section-map.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md → run Step 2 (structure) + semantic section enumeration (section-map)."
+  true
 }
 
 # Step 2.5: Head/assets/fonts
 phase_status "Step 2.5: head.json + fonts.json" test -f "$REF_DIR/head.json" -a -f "$REF_DIR/fonts.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read asset-extraction.md → extract head, assets, fonts."
+  true
 }
 
 # Step 2.5b: SVG-as-text detection
 phase_status "Step 2.5b: svg-text-elements.json" has_file "$REF_DIR/svg-text-elements.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md Step 2.5b → SVG-as-text detection."
+  true
 }
 
 # Step 2.6: Animation init styles
 phase_status "Step 2.6: animation-init-styles.json" has_file "$REF_DIR/animation-init-styles.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read dom-extraction.md Steps 2.6a-b → extract animation init styles."
+  true
 }
 
 # Step 3: Styles
 phase_status "Step 3: styles.json + design-bundles" test -f "$REF_DIR/styles.json" -a -f "$REF_DIR/design-bundles.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read style-extraction.md → extract computed styles."
+  true
 }
 
 # Step 4: Responsive
 phase_status "Step 4: detected-breakpoints.json" has_file "$REF_DIR/detected-breakpoints.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read responsive-detection.md → sweep viewports."
+  true
 }
 
 # Step 5: Interactions
 phase_status "Step 5: interactions-detected.json" has_file "$REF_DIR/interactions-detected.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read interaction-detection.md → detect interactions."
+  true
 }
 
 # Step 5c: Bundles
 phase_status "Step 5c: bundles/ (≥3 JS files)" has_files "$REF_DIR/bundles" "*.js" 3 || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read bundle-analysis.md → download ALL JS chunks, detect scroll engine. Gate: bundle"
+  true
 }
 
 # Step 5d: Spec + hover artifacts
 phase_status "Step 5d: transition-spec.json" has_file "$REF_DIR/transition-spec.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read bundle-analysis.md + transition-spec-rules.md → write transition-spec.json. Gate: spec"
+  true
 }
 phase_status "Step 5d-2b: hover-css-rules.json" has_file "$REF_DIR/hover-css-rules.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read interaction-detection.md Step 5d-2b → extract ALL :hover CSS rules from live page."
+  true
 }
 
 # Step 6b: Assembled extraction
 phase_status "Step 6b: extracted.json (assembled)" has_file "$REF_DIR/extracted.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Assemble extracted.json from all artifacts."
+  true
 }
 
 # Step 6c: Section audit
 phase_status "Step 6c: component-map.json (section audit)" has_file "$REF_DIR/component-map.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read section-audit.md → six-stage audit → component-map.json. Gate: pre-generate"
+  true
 }
 echo ""
 
@@ -178,9 +193,10 @@ for d in apps/*/src/components; do
   fi
 done
 if [ -n "$APP_DIR" ]; then
-  COMP_COUNT=$(find "$APP_DIR/src/components" -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ')
+  COMP_COUNT=$(find "$APP_DIR/src/components" -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
   phase_status "Components generated ($COMP_COUNT .tsx files)" test "$COMP_COUNT" -ge 5 || {
     [ -z "$NEXT_PHASE" ] && NEXT_PHASE="3" && NEXT_STEP="Read component-generation.md → generate from extracted.json. Gate: pre-generate"
+    true
   }
 else
   echo -e "  ${YELLOW}○${NC} No app directory found"

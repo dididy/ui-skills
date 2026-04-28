@@ -23,6 +23,7 @@ set -euo pipefail
 START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
 
 SESSION="${1:?Usage: extract-section-html.sh <session> <output-dir>}"
+trap 'agent-browser close "$SESSION" 2>/dev/null || true' EXIT
 DIR="${2:?Usage: extract-section-html.sh <session> <output-dir>}"
 
 mkdir -p "$DIR/html"

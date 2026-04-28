@@ -13,7 +13,7 @@
 # DO NOT run individual checks selectively. This script exists to prevent
 # cherry-picking passing checks while ignoring failures.
 
-set -uo pipefail
+set -euo pipefail
 
 SESSION="${1:?Usage: auto-verify.sh <session> <orig-url> <impl-url> <ref-dir>}"
 ORIG_URL="${2:?}"
@@ -42,7 +42,7 @@ for candidate in \
   fi
 done
 if [ -z "$VISUAL_DEBUG_SCRIPTS" ]; then
-  VISUAL_DEBUG_SCRIPTS="$(find "$HOME/.claude/skills" -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
+  VISUAL_DEBUG_SCRIPTS="$(find "$HOME/.claude/skills" -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1 || true)"
 fi
 if [ -z "$VISUAL_DEBUG_SCRIPTS" ]; then
   echo "ERROR: visual-debug scripts not found (ae-compare.sh, batch-compare.sh)"
@@ -104,17 +104,17 @@ echo -e "\n${BOLD}Capturing implementation screenshots...${NC}"
 mkdir -p "$REF_DIR/static/impl" "$REF_DIR/static/diff"
 
 # Capture impl at same scroll positions as ref
-agent-browser open "$IMPL_URL" --session "${SESSION}-verify" 2>/dev/null
-agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-verify" 2>/dev/null
+agent-browser open "$IMPL_URL" --session "${SESSION}-verify" 2>/dev/null || true
+agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-verify" 2>/dev/null || true
 sleep 5
 
 for pct in 0 10 20 30 40 50 60 70 80 90 100; do
-  agent-browser eval "(()=>{const h=document.documentElement.scrollHeight-window.innerHeight;window.scrollTo(0,h*$pct/100);return $pct})()" --session "${SESSION}-verify" 2>/dev/null
+  agent-browser eval "(()=>{const h=document.documentElement.scrollHeight-window.innerHeight;window.scrollTo(0,h*$pct/100);return $pct})()" --session "${SESSION}-verify" 2>/dev/null || true
   sleep 1
-  agent-browser screenshot "$REF_DIR/static/impl/${pct}pct.png" --session "${SESSION}-verify" 2>/dev/null
+  agent-browser screenshot "$REF_DIR/static/impl/${pct}pct.png" --session "${SESSION}-verify" 2>/dev/null || true
 done
 
-agent-browser close --session "${SESSION}-verify" 2>/dev/null
+agent-browser close --session "${SESSION}-verify" 2>/dev/null || true
 
 # Run batch comparison
 if [ -f "$VISUAL_DEBUG_SCRIPTS/batch-compare.sh" ]; then

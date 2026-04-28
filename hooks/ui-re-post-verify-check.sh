@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Post-verification check hook for ui-reverse-engineering
 # Enhanced: checks actual PASS/FAIL results, not just file existence
 
@@ -32,7 +33,7 @@ fi
 [ "$IS_COMPLETION" = false ] && exit 0
 
 # ── Check 1: Verification has been run ──
-DIFF_COUNT=$(find "$REF_DIR/static/diff" -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
+DIFF_COUNT=$(find "$REF_DIR/static/diff" -name "*.png" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
 HEALTH_FILE="$REF_DIR/layout-health.json"
 
 if [ "$DIFF_COUNT" -lt 3 ] && [ ! -f "$HEALTH_FILE" ]; then
@@ -79,7 +80,7 @@ if [ -f "$INTERACTIONS_FILE" ]; then
   
   if [ "$STATE_CHANGING" -gt 0 ]; then
     # Check if any alternate state was captured
-    ALT_STATE_CAPTURES=$(find "$REF_DIR" -name "*search*" -o -name "*active*" -o -name "*result*" -o -name "*click*" 2>/dev/null | wc -l | tr -d ' ')
+    ALT_STATE_CAPTURES=$(find "$REF_DIR" -name "*search*" -o -name "*active*" -o -name "*result*" -o -name "*click*" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
     
     if [ "$ALT_STATE_CAPTURES" -eq 0 ]; then
       echo ""

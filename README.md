@@ -67,6 +67,29 @@ Hooks skip automatically when no `tmp/ref/` directory exists, so they won't inte
 
 ---
 
+## Quickstart
+
+After installing (see [Installation](#installation)), give Claude a URL and a target:
+
+```
+Clone the hero section from https://stripe.com/payments into React + Tailwind. Output to ./out/
+```
+
+The pipeline runs automatically. `scripts/run-pipeline.sh` detects the current phase and prints the next action; you don't invoke phases manually.
+
+**What happens:**
+
+1. Reference capture → `tmp/ref/payments-hero/{full,desktop,tablet,mobile}.png` + scroll video
+2. DOM/CSS/JS extraction → `tmp/ref/payments-hero/{structure,styles,assets}.json` + `transition-spec.json`
+3. Component generation → `./out/PaymentsHero.tsx` (CSS-first, original class names)
+4. Visual verification → `scripts/auto-verify.sh` → D0 layout health + AE/SSIM diff
+
+If verification fails, the pipeline iterates up to 3 rounds (Phase H self-healing loop) before asking for human review.
+
+**Hooks are already registered** on install via `hooks/hooks.json` — they block premature writes and warn on unverified completion signals automatically.
+
+---
+
 ## `ui-reverse-engineering` — Website → React Component
 
 Turns any live website into a React + Tailwind component. For URL input, extracts real values. Screenshot and video inputs fall back to Claude Vision approximation.
@@ -210,8 +233,8 @@ The single source of truth for "is it done?" — covers automated AE/SSIM diff, 
 
 **Two modes:**
 
-- **Quick comparison** — `auto-verify.sh` runs D0 layout health check → batch-scroll capture → AE comparison → post-implement gate in one command. Zero vision tokens.
-- **Full verification** — `verification.md` with Phase A/B capture → Phase C comparison → Phase D0 layout health → Phase D pixel-perfect gate → Phase H self-healing loop → Phase E VLM sanity check.
+- **Quick comparison** — `auto-verify.sh` runs D0 layout health check → batch-scroll capture → AE comparison → post-implement gate in one command. Zero vision tokens (AE/SSIM only, no LLM screenshot reads).
+- **Full verification** — `verification.md` with Phase A/B capture → Phase C comparison → Phase D0 layout health → Phase D pixel-perfect gate → Phase H self-healing loop → Phase E LLM review. Phase E reads a single diff image when something fails, so full verification does use vision tokens.
 
 **Phase D — pixel-perfect gate:**
 

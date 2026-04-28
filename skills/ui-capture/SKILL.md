@@ -47,7 +47,7 @@ Phase 2B–2E: Capture per type   — capture-transitions.md
 
 local-url provided?
 ├── YES → Phase 3: Impl capture (identical sequences on localhost)
-│         Phase 4A: Pixel-perfect diff (visual-debug/verification.md Phase D)
+│         Phase 4A: Pixel-perfect diff (../visual-debug/verification.md Phase D)
 │         Phase 4B: compare.html (comparison-page.md)
 │         Phase 5:  Completion gate
 └── NO  → Phase R: report.html (report-page.md)
@@ -94,7 +94,7 @@ ffmpeg -y -i full-scroll-raw.webm -ss 0.3 -t <activeDuration> -c:v libvpx-vp9 -b
 
 **Phase 3** (requires local-url): Identical capture sequences on `<local-url>` — same regions, trigger types, scroll speeds, wait times, hover durations, mouse patterns as Phase 1/2.
 
-**Phase 4A** (mandatory): `visual-debug/verification.md` Phase D → `pixel-perfect-diff.json`. Proceed only when D1 pass AND D2 mismatches = 0.
+**Phase 4A** (mandatory): `../visual-debug/verification.md` Phase D → `pixel-perfect-diff.json`. Proceed only when D1 pass AND D2 mismatches = 0.
 
 **Phase 4B:** `comparison-page.md` → `compare.html` with diff table + side-by-side.
 
@@ -136,7 +136,7 @@ Retry: 3s → 5s → stop and report.
 | `capture-transitions.md` | 2B–2E | Per-trigger capture sequences |
 | `report-page.md` | R | Standalone report with overlays |
 | `comparison-page.md` | 4 | Gate checklist + `compare.html` |
-| `visual-debug/verification.md` | 4A | D1 Visual Gate + D2 Numerical Diagnosis |
+| `../visual-debug/verification.md` | 4A | D1 Visual Gate + D2 Numerical Diagnosis |
 
 ## Browser cleanup (MANDATORY)
 

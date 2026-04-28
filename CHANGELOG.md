@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.3.0] - 2026-04-28
+
+Quality and reliability hardening. No new skills or features — all changes are backwards-compatible bug fixes, documentation improvements, and operational hardening.
+
+### Fixed
+
+#### High-severity bugs
+- **6 broken cross-references** — `ui-capture/SKILL.md` and `ui-reverse-engineering/SKILL.md` linked to `visual-debug/...` instead of `../visual-debug/...`. Audit found 8 occurrences total. All now resolve correctly.
+- **Install-command drift** — `ui-reverse-engineering/SKILL.md` had `brew install agent-browser` but README uses `npm i -g agent-browser`. Aligned to README's npm + brew split form.
+- **Unsafe `/tmp` race in pre-generate hook** — `hooks/ui-re-pre-generate-check.sh` wrote to fixed path `/tmp/ui-re-gate-result.txt` (race + symlink risk). Now uses `mktemp -t ui-re-gate-result.XXXXXX` + `trap 'rm -f' EXIT`.
+- **`claude-pre-push.sh` silent bypass on `main`-branch repos** — hardcoded `origin/master` silently skipped on repos using other default branches. Now uses three-level upstream detection chain (`@{upstream}` → `origin/<HEAD>` → `origin/master`) with explicit warning instead of silent bypass.
+- **Missing strict mode in hooks** — both hook scripts now run with `set -euo pipefail` plus `|| echo "0"` fallbacks for find pipelines on missing dirs.
+
+#### Script hardening
+- **`set -e` enabled** on `validate-gate.sh`, `run-pipeline.sh`, `auto-verify.sh`. Required `true` sentinel appended to 13 `|| { ... }` blocks in `run-pipeline.sh` to prevent premature exit when phase already determined.
+- **`trap EXIT` cleanup added** to 6 browser scripts: `extract-assets.sh`, `extract-section-html.sh`, `section-clips.sh`, `freeze-animations.sh`, `extract-dynamic-styles.sh` close their `agent-browser` session on exit. `compare-sections.sh` gets `trap '' EXIT` for consistency.
+- **Dependency doctor extended** in `run-pipeline.sh` — now also checks `python3`, `curl`, `bc` (used by downstream scripts but previously unchecked).
+- **Dead code removed** in `extract-dynamic-styles.sh` — unreachable `else if /^(translate|rotate|scale)$/` branch (already caught by preceding `transform|opacity|visibility|translate|rotate|scale` matcher) deleted.
+- **Pipeline safety** — `|| echo "0"` added to `verify_frames`, `px_leaks`, `scroll_listeners` pipelines in `validate-gate.sh`. `|| true` added to all `agent-browser` calls in `auto-verify.sh` screenshot loop.
+
+#### Documentation
+- **Terminology clarification** — "Zero vision tokens" now scoped to the comparison phase only (AE/SSIM diff). Phase E (LLM review) is mandatory for full verification and does use vision tokens. Updated in both `visual-debug/SKILL.md` and `README.md`.
+- **README quickstart added** — concrete worked example using real script paths and artifact locations. Bridges install → first invocation.
+- **Korean typo fixed** in `CHANGELOG.md:767` (`no치t` → `not`).
+
+### Operational
+- **Plugin/marketplace version sync** — `plugin.json` (0.2.10) and `marketplace.json` (0.2.9) were out of sync. Both now at `0.3.0`.
+- **Version-sync enforcement** in `claude-pre-push.sh` — push is blocked if `plugin.json` and `marketplace.json` versions don't match, preventing future drift.
+- **Pre-push security gate** — new `scripts/pre-push-security.sh` runs Snyk/Socket-class checks (secret scan, bash eval, insecure /tmp, reverse-shell patterns, JSON validity, bash syntax, shellcheck errors, cross-ref resolution, version sync) on every push. Blocks push on any blocker. Run manually anytime with `bash scripts/pre-push-security.sh`.
+
+### Notes
+Fully backwards-compatible with v0.2.10. No skill triggers, file paths, or invocation patterns changed. Deferred to v0.4.0: token compression of large skill docs, phase naming normalization across skills, CHANGELOG archival.
+
 ## [0.2.10] - 2026-04-25
 
 Expanded failure-mode coverage, multi-viewport verification, and new section/transition comparison scripts.
@@ -764,7 +797,7 @@ Docs restructuring and metadata cleanup. No runtime behavior changes — all pip
 - **`ui-reverse-engineering`**: component-generation.md prerequisites now block generation if artifacts are missing
 
 ### Fixed
-- README.md: typo fix (`no치t` → `not`)
+- README.md: typo fix (`not` → `not`)
 - **`transition-reverse-engineering`**: css-extraction.md — added missing HTTPS validation for stylesheet download (consistent with other download commands)
 - **`transition-reverse-engineering`**: SKILL.md — added selector validation guidance for `window.__scrub.setup()`
 

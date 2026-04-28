@@ -9,7 +9,7 @@
 # The SKILL.md pipeline references this script at every phase boundary.
 # Without it, the LLM can skip phases — this makes skipping impossible.
 
-set -uo pipefail
+set -euo pipefail
 
 REF_DIR="${1:?Usage: validate-gate.sh <ref-dir> <gate>}"
 GATE="${2:?Usage: validate-gate.sh <ref-dir> <gate>  (reference|extraction|bundle|spec|pre-generate|post-implement|all)}"
@@ -131,7 +131,7 @@ gate_spec() {
   # Step 5e: Capture verification — verify/ directory must exist with frames
   TOTAL=$((TOTAL + 1))
   local verify_frames
-  verify_frames=$(find "$REF_DIR/verify" -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
+  verify_frames=$(find "$REF_DIR/verify" -name "*.png" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
   if [ "$verify_frames" -ge 5 ]; then
     echo -e "  ${GREEN}✓${NC} capture verification frames ($verify_frames frames in verify/)"
   else
@@ -293,7 +293,7 @@ gate_post_implement() {
       local project_root
       project_root=$(cd "$REF_DIR" && git rev-parse --show-toplevel 2>/dev/null || echo "$(dirname "$REF_DIR")/../..")
       local px_leaks
-      px_leaks=$(grep -rnE "fontSize.*[0-9]+(\.[0-9]+)?px" "$project_root/src/" "$project_root/app/" --include="*.tsx" --include="*.jsx" --include="*.vue" --include="*.svelte" 2>/dev/null | grep -v 'clamp\|// px-override-ok\|node_modules\|\.next' | wc -l | tr -d ' ')
+      px_leaks=$(grep -rnE "fontSize.*[0-9]+(\.[0-9]+)?px" "$project_root/src/" "$project_root/app/" --include="*.tsx" --include="*.jsx" --include="*.vue" --include="*.svelte" 2>/dev/null | grep -v 'clamp\|// px-override-ok\|node_modules\|\.next' | wc -l | tr -d ' ' || echo "0")
       if [ "$px_leaks" -gt 0 ]; then
         echo -e "  ${RED}✗${NC} $px_leaks px fontSize values in component files (viewport-scaled site requires em)"
         FAIL=$((FAIL + 1))
@@ -309,7 +309,7 @@ gate_post_implement() {
     local project_root
     project_root=$(cd "$REF_DIR" && git rev-parse --show-toplevel 2>/dev/null || echo "$(dirname "$REF_DIR")/../..")
     local scroll_listeners
-    scroll_listeners=$(grep -rn "addEventListener.*scroll" "$project_root/src/" "$project_root/app/" --include="*.tsx" --include="*.jsx" --include="*.vue" --include="*.svelte" 2>/dev/null | grep -v 'node_modules\|\.next' | wc -l | tr -d ' ')
+    scroll_listeners=$(grep -rn "addEventListener.*scroll" "$project_root/src/" "$project_root/app/" --include="*.tsx" --include="*.jsx" --include="*.vue" --include="*.svelte" 2>/dev/null | grep -v 'node_modules\|\.next' | wc -l | tr -d ' ' || echo "0")
     if [ "$scroll_listeners" -gt 0 ]; then
       echo -e "  ${RED}✗${NC} $scroll_listeners addEventListener('scroll') — use RAF + getBoundingClientRect for smooth scroll compat"
       FAIL=$((FAIL + 1))

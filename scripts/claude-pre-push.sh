@@ -1,12 +1,42 @@
 #!/bin/bash
-# Block git push if skills/ changed without docs/config update
+# Block git push if:
+# 1. skills/ changed without docs/config update,
+# 2. plugin.json and marketplace.json versions are out of sync, or
+# 3. pre-push-security.sh finds blockers (secrets, eval, insecure /tmp, etc).
 
 input=$(cat)
 echo "$input" | grep -qE '"command":"[^"]*git\s+push' || exit 0
 
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
-base=$(git rev-parse origin/master 2>/dev/null) || exit 0
+# Security gate (Snyk/Socket-class checks - secrets, eval, /tmp, manifests)
+if [ -f scripts/pre-push-security.sh ]; then
+  if ! bash scripts/pre-push-security.sh --quiet; then
+    echo "decision: block" >&2
+    echo "Run 'bash scripts/pre-push-security.sh' (no --quiet) to see details." >&2
+    exit 2
+  fi
+fi
+
+# Version sync check: plugin.json and marketplace.json must match
+plugin_v=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])" 2>/dev/null || echo "")
+market_v=$(python3 -c "import json; print(json.load(open('.claude-plugin/marketplace.json'))['plugins'][0]['version'])" 2>/dev/null || echo "")
+if [ -n "$plugin_v" ] && [ -n "$market_v" ] && [ "$plugin_v" != "$market_v" ]; then
+  echo "⚠️ Version mismatch: plugin.json=$plugin_v vs marketplace.json=$market_v" >&2
+  echo "Both must be bumped together. decision: block" >&2
+  exit 2
+fi
+
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null) || upstream=""
+if [ -z "$upstream" ]; then
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || current_branch=""
+  [ -n "$current_branch" ] && upstream="origin/$current_branch"
+fi
+[ -z "$upstream" ] && upstream="origin/master"
+base=$(git rev-parse "$upstream" 2>/dev/null) || {
+  echo "⚠️  Cannot resolve upstream ref ($upstream) — skipping push check" >&2
+  exit 0
+}
 [ "$base" = "$(git rev-parse HEAD)" ] && exit 0
 
 changed=$(git diff --name-only "$base" HEAD)
