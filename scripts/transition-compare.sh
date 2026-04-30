@@ -45,8 +45,8 @@ VIEW_H="${VIEW_H:-900}"
 
 # Cleanup browser sessions on exit (including errors/signals)
 cleanup_browsers() {
-  agent-browser close --session "${SESSION}-orig" 2>/dev/null
-  agent-browser close --session "${SESSION}-impl" 2>/dev/null
+  agent-browser --session "${SESSION}-orig" close 2>/dev/null
+  agent-browser --session "${SESSION}-impl" close 2>/dev/null
 }
 trap cleanup_browsers EXIT
 
@@ -127,7 +127,7 @@ else
 fi
 
 agent-browser record stop --session "${SESSION}-orig" 2>&1 | head -1
-agent-browser close --session "${SESSION}-orig" 2>/dev/null
+agent-browser --session "${SESSION}-orig" close 2>/dev/null
 
 echo "  ✓ Original recorded"
 
@@ -149,7 +149,7 @@ else
 fi
 
 agent-browser record stop --session "${SESSION}-impl" 2>&1 | head -1
-agent-browser close --session "${SESSION}-impl" 2>/dev/null
+agent-browser --session "${SESSION}-impl" close 2>/dev/null
 
 echo "  ✓ Implementation recorded"
 

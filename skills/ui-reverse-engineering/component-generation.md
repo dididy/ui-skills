@@ -20,6 +20,42 @@ Optional: keyframes or `extracted.json` from transition extraction pipeline (Ste
 
 **HARD BLOCK on interaction captures.** Every hover/click interaction must have idle + active screenshots. Run `validate-gate.sh pre-generate` to check. See SKILL.md rule 12 for why guessing layout is always wrong.
 
+## Screenshot-first rule (diagnosis improvement C + E)
+
+**Before writing code for any section, you MUST view the reference screenshot for that section.**
+
+```bash
+# Take a content-anchored screenshot of each section BEFORE coding it
+# Anchor to content, not y-coordinate — ref and impl may have different heights
+agent-browser --session <s> eval "
+  document.querySelector('.<section-class>').scrollIntoView({ block: 'start' });
+" && agent-browser --session <s> screenshot tmp/ref/<c>/sections/ref-<section-name>.png
+```
+
+**Why:** JSON values like `fontSize: 42` or `padding: 24` are meaningless without seeing the rendered context. Generating code without looking at the screenshot produces "data-correct but visually wrong" output — values match but proportions, spacing, and composition don't.
+
+**Rule:** For each section in `component-map.json`, open and Read the corresponding ref screenshot BEFORE writing any JSX for that section. This is not optional — it is the difference between "I copied the values" and "I reproduced the design."
+
+### Guessed implementations — mandatory verification
+
+If ANY part of your implementation was determined by reasoning (not directly extracted from DOM/CSS/bundle), you MUST verify it with screenshots before moving on:
+
+```bash
+# For guessed behavior (e.g. header scroll trigger, slider state, hover threshold):
+# 1. Screenshot the ref at the exact trigger point
+agent-browser --session cake-day scroll down 200
+agent-browser --session cake-day screenshot tmp/ref/<c>/verify-ref-scroll200.png
+
+# 2. Screenshot the impl at the same trigger point
+agent-browser --session cake-impl scroll down 200
+agent-browser --session cake-impl screenshot tmp/ref/<c>/verify-impl-scroll200.png
+
+# 3. Read and compare both screenshots visually
+# If they differ → grep the bundle for the real value, fix, re-verify
+```
+
+**Do not move to the next section until guessed behavior is visually confirmed.**
+
 ## Core rules
 
 > **See "No Judgment — Data Only" in SKILL.md.** Every decision below must be backed by extracted data, not reasoning. If you catch yourself thinking "probably", "should be", or "close enough" — stop and measure.

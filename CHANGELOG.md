@@ -1,5 +1,142 @@
 # Changelog
 
+## [0.3.1] - 2026-04-30
+
+Full-audit hardening — browser session correctness, validation gate reliability, lazy-content fingerprinting, skill invocation UX, hook system fixes, Webflow IX2 extraction, transition coverage audit, and incremental pipeline improvements from active clone sessions (Naver, cake.day).
+
+### Fixed
+
+#### `agent-browser close` arg order — systemic bug (9 scripts)
+
+All affected scripts used `agent-browser close --session NAME` or `agent-browser close "$SESSION"`. Wrong order silently closed the default session instead of the named one, leaking Chrome Helper GPU + Renderer processes indefinitely. Correct form: `agent-browser --session NAME close`.
+
+- `scripts/auto-verify.sh` — 2 occurrences
+- `scripts/transition-compare.sh` — 4 occurrences (trap + inline after record stop)
+- `scripts/freeze-animations.sh`, `extract-assets.sh`, `extract-section-html.sh`, `section-clips.sh`, `extract-dynamic-styles.sh` — trap EXIT calls
+- `skills/visual-debug/scripts/layout-diff.sh` — 4 occurrences (trap + inline)
+- `skills/visual-debug/scripts/layout-health-check.sh` — 4 occurrences (trap + inline)
+
+#### `validate-gate.sh` — project root detection + bundle gate
+
+`project_root` fallback used `$(dirname "$REF_DIR")/../..`, which resolved incorrectly for non-git nested repos. Replaced with: (1) `git rev-parse --show-toplevel` when available, (2) walk-up loop that ascends from `$REF_DIR` until a directory containing `tmp/ref/` is found.
+
+Bundle gate previously required ≥3 JS files, blocking valid 2-file micro-sites. Changed to require ≥1 file (hard block) with advisory warning for <3.
+
+#### `run-pipeline.sh` — app directory detection + COMP_COUNT
+
+Phase 3 app-dir detection picked the first alphabetical monorepo match. Now prioritizes `apps/$COMPONENT/src/components`, `apps/$COMPONENT/src`, `apps/$COMPONENT/app` before generic search.
+
+`COMP_COUNT` only searched `src/components`, missing Next.js App Router pages. Now searches `src/components + src/app + app` in parallel.
+
+#### `skills/visual-debug/scripts/section-compare.sh` — lazy content + mid-animation screenshots
+
+Two independent bugs fixed:
+
+1. **Lazy-loaded sections had empty `innerText`** — fingerprint = `""` → `MATCH_COUNT=0` → every section fell back to positional matching. Fix: pre-scroll both sessions through the full page before fingerprint extraction to trigger IntersectionObserver lazy loading.
+
+2. **Scroll-triggered CSS transitions mid-animation at screenshot time** — `window.scrollTo()` triggers GSAP ScrollTrigger / enter-reveal animations; fixed 0.3s wait wasn't sufficient. Fix: re-inject `PAUSE_ANIMATIONS` CSS after each section scroll inside the Python capture loop.
+
+#### `hooks/ui-re-section-compare-gate.sh` — section name regex
+
+`grep -oE '^\| [a-zA-Z0-9_-]+ \|'` missed section names with dots (`section.active`), slashes, or spaces. Replaced with `sed -n 's/^| \([^|]*\) |.*/\1/p'`.
+
+#### Hook system reliability
+
+- **Stop hook fired on unrelated responses**: Now guarded by `.ui-re-active` WIP marker in `tmp/ref/<session>/`.
+- **PostToolUse hook non-functional**: Read from `TOOL_INPUT` env var (never set by Claude Code). Fixed to read JSON from stdin + `tool_input.command` via Python.
+- **Path resolution broken in all 3 gate scripts**: `find ~/.claude/skills` returned empty when skills installed elsewhere. Fixed to use `$(dirname "$0")`-relative paths.
+- **Content injection: paths printed instead of content**: `validate-gate.sh`, `section-compare.sh`, `computed-diff.sh` now print actual `diagnosis.md` Root Cause sections inline on failure.
+
+#### `computed-diff.sh` — reliability
+
+- `jq` pipe on bash arrays failed with `Parse error: Extra data` for selectors with special characters. Replaced with `python3 -c "import json,sys; print(json.dumps(sys.argv[1:]))"`.
+- Missing `wait` between open and eval caused stale style extraction. Added parallel open + `wait $WAIT_MS` (default 4000ms).
+- `2>&1 > /dev/null` redirect order wrong. Fixed to `>/dev/null 2>&1`.
+- Single session reuse caused browser history interference. Now uses `<session>-orig` + `<session>-impl` parallel sessions.
+
+### Added
+
+- **`skills/ui-reverse-engineering/webflow-ix2.md`** (new) — Step W: mandatory Webflow IX2 extraction. Detects IX2 via `<meta name=generator>`, extracts hide-rule selector list, downloads IX2 timeline JSON, maps `actionTypeId` values to React hooks. Gate enforces 3 JSON artifacts before any other extraction on Webflow sites.
+
+- **`skills/ui-reverse-engineering/transition-coverage.md`** (new) — Step 6d: multi-position scroll measurement → `transition-coverage.json`. Samples 10 scroll positions, decodes every CSS transform matrix, classifies scroll-driven / enter-reveal / static, builds per-element curve table. Pre-generate gate now requires `animatedElements.length > 0`.
+
+- **`skills/ui-reverse-engineering/diagnosis.md`** (new) — Root Cause A–E with diagnosis commands + fix patterns. Printed inline by `section-compare.sh` and `computed-diff.sh` on failure.
+
+- **`skills/ui-reverse-engineering/skip-zones.md`** (new) — 5 responsibility zones replacing the flat 50-row "steps most likely skipped" table. Each zone has a gate check command; printed inline by `validate-gate.sh` on failure.
+
+- **`skills/ui-reverse-engineering/no-judgment.md`** (new) — Group A–E decision tables: Measurement vs Assumption, Library Choice, Visual Semantics, CSS Cascade, Verification & Data Trust.
+
+- **`skills/visual-debug/common-selectors.md`** (new) — Ready-to-use selector sets: CSS reset canaries, Tailwind preflight known resets, Naver.com specific, general e-commerce. `IGNORE_FONT_SIZE=1` guide for macOS 105% text-scaling false positives.
+
+- **`computed-diff.sh` — `IGNORE_FONT_SIZE=1` env var** — skips fontSize/lineHeight/width/height diffs from OS-level text scaling. Fix hints printed on mismatch (Tailwind preflight fontWeight reset, display:block on img, height:auto on img).
+
+- **`component-generation.md` — Screenshot-first rule** — before writing code for any section, reference screenshot MUST be Read. Mandatory guessed-implementation verification block added (screenshot ref + impl at same trigger point).
+
+- **`generation-pitfalls.md` — new failure patterns** (Naver + cake.day sessions):
+  - 3rd-party library replaced with custom impl (Swiper/Splide → `useState` slider)
+  - JS scroll threshold guessed (`scrollY > 10` hardcoded without bundle grep)
+  - `!important` as first resort (valid only for CSS you can't modify)
+  - CSS top/left hardcoded in JS parallax (breaks responsive)
+  - Off-screen DOM elements not implemented (`mo-nav`)
+  - CSS animation classes never triggered (`effect-flip`)
+  - `dangerouslySetInnerHTML` for nav messages
+  - `<br>` in JSX fragments
+
+- **SKILL.md — URL prompt instruction** (`ui-reverse-engineering`, `ui-capture`): When invoked without `<url>`, Claude stops and asks for the URL instead of proceeding.
+
+### Changed
+
+- **`ui-reverse-engineering/SKILL.md`** slimmed from 688 lines → ~210 lines. "Steps most likely skipped" moved to `skip-zones.md`. "No Judgment" moved to `no-judgment.md`. WIP marker instruction added. Webflow IX2 (Step W) and transition coverage (Step 6d) added to pipeline table.
+
+- **`visual-debug/SKILL.md`** — `computed-diff` promoted to Step 0 (before AE/SSIM capture).
+
+- **`hooks/hooks.json`** — `ui-re-section-compare-gate.sh` Stop hook entry added (was created but never registered).
+
+---
+
+### Fixed
+
+#### `computed-diff.sh` — critical bug fixes
+- **`jq` pipe broke on bash arrays** — `printf '%s\n' "${SELECTORS[@]}" | jq -R . | jq -s .` failed with `Parse error: Extra data` when selectors contained special characters or attribute selectors (`[class*=foo]`). Root cause: bash array expansion inside command substitution is unreliable across shells. **Fix:** replaced with `python3 -c "import json,sys; print(json.dumps(sys.argv[1:]))" "${SELECTORS[@]}"` — deterministic, no shell expansion issues.
+- **Missing `wait` between open and eval** — `agent-browser eval` ran before page JS settled, returning stale/empty styles. **Fix:** added parallel open + `wait $WAIT_MS` (default 4000ms) for both sessions before extracting.
+- **`2>&1 > /dev/null` stderr redirect order wrong** — stderr mixed into stdout before redirect, polluting captured output. **Fix:** corrected to `>/dev/null 2>&1` throughout.
+- **Single session reuse** — opening orig then impl in the same session caused browser history interference. **Fix:** uses `<session>-orig` and `<session>-impl` parallel sessions with `trap EXIT` cleanup.
+- **No error output on empty response** — silent failure when agent-browser returned empty string. **Fix:** explicit check + `exit 2` with actionable message.
+
+#### `computed-diff.sh` — new features
+- **`IGNORE_FONT_SIZE=1` env var** — skips fontSize/lineHeight/width/height diffs caused by macOS OS-level text scaling (105% system setting produces 14.7px vs 14px, which is not a real bug). Documented in output and `common-selectors.md`.
+- **Fix hints in output** — when mismatches found, prints prioritized fix list (Tailwind preflight fontWeight reset, display:block on img, height:auto on img).
+- **Better parse error messages** — shows raw output snippet to aid debugging.
+
+### Added
+
+- **`skills/ui-reverse-engineering/webflow-ix2.md`** (new) — Step W: mandatory Webflow IX2 extraction procedure. Detects IX2 via `<meta name=generator>`, extracts hide-rule selector list from inline `<style>`, downloads IX2 timeline JSON, runs multi-position scroll measurement (wheel-event aware for Lenis), and maps IX2 `actionTypeId` values to React hooks (`useScroll+useTransform`, `useScrollTrigger`, state toggles). Gate enforces `webflow-detection.json`, `webflow-hide-rule.json`, `webflow-ix2.json` before any other extraction on Webflow sites. Prevents silent loss of scroll-driven rotations, parallax, 3D folds, opacity fades, width-draw animations, and section enter-reveals.
+
+- **`skills/ui-reverse-engineering/transition-coverage.md`** (new) — Step 6d: multi-position scroll measurement audit → `transition-coverage.json`. Builds candidate element list, samples at 10 scroll positions, decodes every CSS transform matrix, classifies each element as scroll-driven / enter-reveal / static, and produces a per-element curve table. Pre-generate gate now requires `transition-coverage.json` with `animatedElements.length > 0`. Prevents decorative shapes shipping as static, folder icons staying 2D, headlines never revealing, line-draws staying at width:0.
+
+- **`scripts/validate-gate.sh` Webflow + transition-coverage checks** — `pre-generate` gate now validates: Webflow IX2 artifacts (if `webflow-detection.json` indicates Webflow), `transition-coverage.json` existence, `animatedElements.length > 0`, and animated count plausibility vs `data-w-id` count.
+
+- **`hooks/ui-re-section-compare-gate.sh`** (new) — Stop hook that blocks Claude from finishing if `section-compare.sh` hasn't been run or has failures. Reads `$REF_DIR/sections/result.txt` — blocks on missing file, `❌` FAIL lines, or `MISSING impl:` lines. Prevents self-reporting "done" without running visual verification.
+
+- **`skills/visual-debug/common-selectors.md`** — reference document with ready-to-use selector sets:
+  - CSS framework reset canaries (h1–h6, img, button — the elements most commonly broken by Tailwind/CSS-reset)
+  - Tailwind preflight known resets table (fontWeight, display, height, color, text-decoration) with symptoms and fixes
+  - Naver.com specific selectors (from real clone work)
+  - General e-commerce/portal selectors
+  - OS font-scaling artifact detection guide
+
+### Changed
+
+- **`visual-debug/SKILL.md` workflow** — `computed-diff` promoted to **Step 0** (before AE/SSIM capture). Rationale: computed-diff finds root causes directly; AE only shows that something is wrong. Running computed-diff first eliminates the hunt-through-diff-images cycle for CSS property mismatches.
+- **Scripts table** — `computed-diff.sh` moved to first row with "Run first" label. `common-selectors.md` reference added below table.
+- **`skills/visual-debug/scripts/section-compare.sh`** — auto-saves results to `$DIR/sections/result.txt` after AE comparison. Previously required manual `tee`; now always written so the Stop gate works reliably.
+- **`skills/ui-reverse-engineering/generation-pitfalls.md`** — 5 new failure patterns from Naver clone session: CSS top/left hardcoded in JS (parallax responsive), off-screen DOM elements not implemented (mo-nav), CSS animation classes never triggered (effect-flip), `dangerouslySetInnerHTML` for nav messages, `<br>` in JSX fragments.
+
+### Fixed (docs/config)
+
+- **`hooks/hooks.json`** — `ui-re-section-compare-gate.sh` was added in this release but never registered. Added `Stop` hook entry so the gate actually fires.
+- **`README.md` hooks table** — `ui-re-section-compare-gate.sh` was missing from the hooks table. Added.
+
 ## [0.3.0] - 2026-04-28
 
 Quality and reliability hardening. No new skills or features — all changes are backwards-compatible bug fixes, documentation improvements, and operational hardening.

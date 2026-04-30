@@ -22,8 +22,8 @@ ORIG="${2:?}"
 IMPL="${3:?}"
 
 cleanup_browsers() {
-  agent-browser close --session "${SESSION}-layout-orig" 2>/dev/null
-  agent-browser close --session "${SESSION}-layout-impl" 2>/dev/null
+  agent-browser --session "${SESSION}-layout-orig" close 2>/dev/null
+  agent-browser --session "${SESSION}-layout-impl" close 2>/dev/null
 }
 trap cleanup_browsers EXIT
 
@@ -59,14 +59,14 @@ agent-browser open "$ORIG" --session "${SESSION}-layout-orig" 2>/dev/null
 agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-layout-orig" 2>/dev/null
 agent-browser wait 5000 --session "${SESSION}-layout-orig" 2>/dev/null
 ORIG_LAYOUT=$(agent-browser eval "$EXTRACT_SCRIPT" --session "${SESSION}-layout-orig" 2>/dev/null | tail -1)
-agent-browser close --session "${SESSION}-layout-orig" 2>/dev/null
+agent-browser --session "${SESSION}-layout-orig" close 2>/dev/null
 
 # Extract from implementation
 agent-browser open "$IMPL" --session "${SESSION}-layout-impl" 2>/dev/null
 agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-layout-impl" 2>/dev/null
 agent-browser wait 5000 --session "${SESSION}-layout-impl" 2>/dev/null
 IMPL_LAYOUT=$(agent-browser eval "$EXTRACT_SCRIPT" --session "${SESSION}-layout-impl" 2>/dev/null | tail -1)
-agent-browser close --session "${SESSION}-layout-impl" 2>/dev/null
+agent-browser --session "${SESSION}-layout-impl" close 2>/dev/null
 
 # Parse and compare — single jq call merges both arrays and produces TSV
 echo "| # | Tag | Landmark | Orig H | Impl H | Ratio | Status |"

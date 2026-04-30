@@ -22,6 +22,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ui-re-section-compare-gate.sh\""
+          }
+        ]
+      }
     ]
   }
 }

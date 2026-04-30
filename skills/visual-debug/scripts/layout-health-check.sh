@@ -20,8 +20,8 @@ VIEW_W="${VIEW_W:-1440}"
 VIEW_H="${VIEW_H:-900}"
 
 cleanup_browsers() {
-  agent-browser close --session "${SESSION}-ref" 2>/dev/null
-  agent-browser close --session "${SESSION}-impl" 2>/dev/null
+  agent-browser --session "${SESSION}-ref" close 2>/dev/null
+  agent-browser --session "${SESSION}-impl" close 2>/dev/null
 }
 trap cleanup_browsers EXIT
 

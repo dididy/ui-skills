@@ -70,7 +70,17 @@ PASS=0
 FAIL=0
 TOTAL=0
 
-for REF_FILE in "$REF_DIR"/*.png; do
+# Guard: no ref images
+shopt -s nullglob
+_ref_check=("$REF_DIR"/*.png)
+shopt -u nullglob
+if [ ${#_ref_check[@]} -eq 0 ]; then
+  echo "ERROR: No PNG files found in $REF_DIR"
+  echo "  Run batch-scroll.sh first to capture screenshots."
+  exit 1
+fi
+
+for REF_FILE in "${_ref_check[@]}"; do
   BASENAME=$(basename "$REF_FILE")
   IMPL_FILE="$IMPL_DIR/$BASENAME"
   DIFF_FILE="$DIFF_DIR/$BASENAME"
@@ -155,10 +165,11 @@ if [ "$FAIL" -gt 0 ]; then
   echo ""
   echo "Investigate FAIL positions by reading diff images:"
   echo "\`\`\`"
+  shopt -s nullglob
   for DIFF_FILE in "$DIFF_DIR"/*.png; do
-    BASENAME=$(basename "$DIFF_FILE")
     echo "Read $DIFF_FILE   # only if ❌ above"
   done
+  shopt -u nullglob
   echo "\`\`\`"
 
   echo ""

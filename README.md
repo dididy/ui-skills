@@ -24,14 +24,14 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 
 | Skill | Purpose |
 |---|---|
-| **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component. Includes transition extraction (WAAPI, canvas/WebGL, Three.js, scroll-driven JS). |
+| **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component. Includes Webflow IX2 detection (Step W), transition coverage audit (Step 6d), WAAPI/canvas/WebGL/Three.js extraction. |
 | **`ui-capture`** | Baseline screenshots + transition capture + comparison page. Auto-detects custom scroll (Lenis, Locomotive). Classifies effects by trigger type. |
 | **`visual-debug`** | All visual comparison in one skill. Quick mode (AE/SSIM batch), full verification (Phase A→E with self-healing loop), section-level comparison, and transition behavior diff. |
 
 ## Requirements
 
 ```bash
-npm i -g agent-browser       # browser automation for AI agents
+npm i -g agent-browser       # browser automation for AI agents (github.com/anthropics/agent-browser)
 brew install imagemagick     # AE pixel comparison (apt: imagemagick, choco: imagemagick)
 brew install dssim           # structural visual similarity (cargo install dssim)
 brew install ffmpeg          # video capture + frame extraction (apt: ffmpeg, choco: ffmpeg)
@@ -62,6 +62,7 @@ Hooks register automatically via `hooks/hooks.json` on plugin install — no man
 |------|-------|---------|
 | `ui-re-pre-generate-check.sh` | `PreToolUse` (Write/Edit) | Blocks component writes until extraction completes |
 | `ui-re-post-verify-check.sh` | `PostToolUse` (Bash) | Warns on completion signals if verification hasn't run |
+| `ui-re-section-compare-gate.sh` | `Stop` | Blocks finishing if `section-compare.sh` hasn't passed |
 
 Hooks skip automatically when no `tmp/ref/` directory exists, so they won't interfere with non-ui-re projects.
 
@@ -109,6 +110,9 @@ Turn this screen recording into a working component
 0.   Load existing analysis     — re-invoked? load transition-spec.json + bundle-map.json
 R.   Capture reference         — static screenshots + scroll video (60 fps)
 1.   Open & snapshot           — DOM tree, full-page screenshot. Session reuse for splash sites
+W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "Webflow".
+                                 Extract hide-rule selector list + IX2 timeline JSON.
+                                 ⛔ gate: webflow-detection.json, webflow-hide-rule.json, webflow-ix2.json
 2.   Extract structure         — HTML hierarchy, component boundaries, hidden elements
 2.5  Extract assets            — CSS files, fonts, images, SVGs, videos, head metadata
 2.5b SVG-as-text detection     — find headings rendered as SVG <path> not fonts → svg-text-elements.json
@@ -127,12 +131,18 @@ R.   Capture reference         — static screenshots + scroll video (60 fps)
 5e.  Capture verification      — record original, extract frames, verify spec spatial values
 6.   Detect animations         — Phase A idle / B scroll (wheel events for smooth scroll) / C per-element
 6b.  Assemble extracted.json
-6c.  Pre-generation audit      — 6-stage design audit. ⛔ gate: pre-generate
-                                 (checks svg-text, hover-css-rules, hover videos, dual-snapshot, em-conversion)
+6c.  Pre-generation audit      — 6-stage design audit
+6d.  Transition coverage       — multi-position scroll measurement → transition-coverage.json.
+                                 Samples 10 scroll positions, decodes every transform matrix,
+                                 classifies scroll-driven vs enter-reveal vs static. ⛔ gate: pre-generate
+                                 (requires transition-coverage.json with animatedElements.length > 0)
 7.   Generate component        — CSS-First + body scoping + CSS value diff verification.
                                  SVG-as-text verbatim, RAF parallax for smooth scroll
 8.   Visual verification       — auto-verify.sh. ⛔ gate: post-implement
                                  (checks hover rule count, px fontSize leaks, scroll listeners)
+8b.  Section comparison        — section-compare.sh crops each section independently → AE + structure diff.
+                                 MANDATORY — replaces noisy full-page scroll comparison
+8c.  Transition comparison     — transition-compare.sh idle/hover state + timing + computedStyle diff
 9.   Interaction verification  — dispatch mouseenter for JS hovers, verify hover-css-rules match
 ```
 
@@ -155,12 +165,12 @@ R.   Capture reference         — static screenshots + scroll video (60 fps)
 
 | Script | Purpose |
 |---|---|
+| `computed-diff.sh` | **Run first** — per-selector `getComputedStyle` diff. Finds fontWeight/display/height root causes before pixel diff. `IGNORE_FONT_SIZE=1` skips fontSize/lineHeight/width/height (use on macOS with 105% system text scaling) |
 | `layout-health-check.sh` | D0: section height/total height comparison before pixel-level diff |
 | `layout-diff.sh` | Structural section bounding-box comparison between two URLs |
 | `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |
 | `dssim-compare.sh` | Structural visual similarity (DSSIM) — catches layout issues AE misses |
-| `computed-diff.sh` | Per-selector `getComputedStyle` comparison between two URLs |
-| `section-compare.sh` | Section-level visual + structural comparison (text fingerprint matching, per-section AE diff, DOM structure diff) |
+| `section-compare.sh` | Section-level visual + structural comparison (lazy pre-scroll for IntersectionObserver content, text fingerprint matching, per-section AE diff, DOM structure diff) |
 | `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation) |
 
 All visual-debug scripts support `VIEW_W`/`VIEW_H` env vars (default 1440×900) for custom viewport sizes. All scripts that open `agent-browser` sessions have `trap EXIT` cleanup.

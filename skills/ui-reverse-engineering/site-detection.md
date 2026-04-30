@@ -157,6 +157,21 @@ bash "$PLUGIN_ROOT/scripts/extract-dynamic-styles.sh" <session> tmp/ref/<compone
 4. Use original class names in JSX
 5. Override only for React-specific needs (sticky, scroll-driven transforms)
 
+**⚠️ CSS-First compound selector trap** — Before generating any JSX, scan the CSS for compound selectors:
+```bash
+grep -o '\.[a-z][a-z-]*\.[a-z][a-z-]*' site.css | sort -u | head -30
+```
+If the CSS uses `.parentClass.childClass .target { ... }`, BOTH classes must be on the SAME element in JSX.
+Example: `.navercorp.main .header__logo` requires `<div className="navercorp main">`, NOT `<div className="navercorp"><main>`.
+Missing the second class silently breaks ALL rules scoped under that compound selector.
+
+**⚠️ CSS-First scroll-state class trap** — CSS-First sites often use body/wrapper class toggling for scroll states:
+```bash
+grep -o '\(is-scroll-down\|is-scroll-up\|is-scrolled\|is-fixed\|is-show\)[^{]*{[^}]*}' site.css | head -10
+```
+These classes must be added to the correct DOM element via a JS scroll listener.
+Never assume `header.is-scrolled` — check which element the CSS selector targets. Often it's the page ROOT wrapper (`.navercorp.main.is-scroll-down`), not the header.
+
 ## Extract-Values (obfuscated/Tailwind)
 
 1. Extract computed styles via `getComputedStyle` for every element

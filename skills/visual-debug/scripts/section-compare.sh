@@ -24,8 +24,31 @@ ORIG_URL="${1:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output
 IMPL_URL="${2:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 SESSION="${3:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 DIR="${4:-tmp/ref/visual-debug}"
+# ⚠️  IMPORTANT: Always pass $4 = absolute path to tmp/ref/<component-name>.
+# The default (tmp/ref/visual-debug) is for standalone runs only.
+# The Stop gate looks for sections/result.txt in the ACTIVE REF_DIR (which is absolute).
+# If you use the default, the Stop gate will NEVER clear because result.txt is in the wrong place.
+#
+# Correct usage:
+#   bash section-compare.sh <orig> <impl> <session> "$(pwd)/tmp/ref/<component>"
+if [ "$DIR" = "tmp/ref/visual-debug" ]; then
+  echo "⚠️  WARNING: Using default output-dir 'tmp/ref/visual-debug'." >&2
+  echo "   The Stop gate hook won't find this result. Pass the component ref dir as \$4:" >&2
+  echo "   bash section-compare.sh <orig> <impl> <session> \"\$(pwd)/tmp/ref/<component>\"" >&2
+fi
+# Convert to absolute path (if relative, resolve from PWD)
+if [[ "$DIR" != /* ]]; then
+  DIR="$(pwd)/$DIR"
+fi
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Guard: spaces in DIR path break Python one-liners that embed $DIR in string literals
+if [[ "$DIR" == *" "* ]]; then
+  echo "ERROR: output-dir path contains spaces: '$DIR'" >&2
+  echo "       Rename the directory to remove spaces before running section-compare.sh." >&2
+  exit 1
+fi
 
 SESSION_REF="${SESSION}-sc-ref"
 SESSION_IMPL="${SESSION}-sc-impl"
@@ -72,7 +95,68 @@ DISMISS_OVERLAYS='(() => {
 agent-browser --session "$SESSION_REF" eval "$DISMISS_OVERLAYS" 2>&1 > /dev/null
 agent-browser --session "$SESSION_IMPL" eval "$DISMISS_OVERLAYS" 2>&1 > /dev/null
 
+# Pause carousels/sliders/auto-advancing animations to get a stable frame for comparison.
+# This freezes CSS animations and stops Swiper/Splide autoplay — does NOT affect layout.
+# Set SKIP_PAUSE_ANIMATIONS=1 to disable if your site relies on animation-based initial layout.
+PAUSE_ANIMATIONS='(() => {
+  // Freeze all CSS animations and transitions
+  const style = document.createElement("style");
+  style.id = "__sc-pause__";
+  style.textContent = `
+    *, *::before, *::after {
+      animation-play-state: paused !important;
+      transition-duration: 0s !important;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Stop Swiper autoplay
+  if (window.Swiper) {
+    document.querySelectorAll(".swiper").forEach(el => {
+      if (el.swiper) el.swiper.autoplay.stop();
+    });
+  }
+  // Stop Splide autoplay
+  if (window.Splide) {
+    document.querySelectorAll(".splide").forEach(el => {
+      if (el.splide) el.splide.Components.Autoplay.pause();
+    });
+  }
+  // Stop any setInterval-based sliders (common pattern: stash interval IDs in data attributes)
+  // We cannot enumerate all intervals, but freezing CSS transitions catches visual state.
+  return "animations paused";
+})()'
+
+if [ "${SKIP_PAUSE_ANIMATIONS:-0}" != "1" ]; then
+  agent-browser --session "$SESSION_REF" eval "$PAUSE_ANIMATIONS" 2>&1 > /dev/null
+  agent-browser --session "$SESSION_IMPL" eval "$PAUSE_ANIMATIONS" 2>&1 > /dev/null
+fi
+
 sleep 1
+
+# ── Pre-scroll: trigger lazy-loaded content before fingerprint extraction ──
+# Sites with IntersectionObserver-based lazy loading will have empty innerText
+# for off-screen sections at load time. Scrolling through the full page forces
+# all lazy content to load before we build section fingerprints.
+# This prevents MATCH_COUNT=0 on sites with aggressive lazy loading.
+echo "▸ Pre-scrolling to trigger lazy content..."
+PRE_SCROLL_JS='(() => {
+  const total = document.documentElement.scrollHeight;
+  const step = Math.max(window.innerHeight * 0.8, 400);
+  let y = 0;
+  const timer = setInterval(() => {
+    window.scrollTo(0, y);
+    y += step;
+    if (y >= total) { clearInterval(timer); window.scrollTo(0, 0); }
+  }, 120);
+  return total;
+})()'
+agent-browser --session "$SESSION_REF" eval "$PRE_SCROLL_JS" > /dev/null 2>&1
+agent-browser --session "$SESSION_IMPL" eval "$PRE_SCROLL_JS" > /dev/null 2>&1
+sleep 2  # Wait for lazy content to load and render after scroll
+agent-browser --session "$SESSION_REF" eval "window.scrollTo(0,0)" > /dev/null 2>&1
+agent-browser --session "$SESSION_IMPL" eval "window.scrollTo(0,0)" > /dev/null 2>&1
+sleep 0.5
 
 # ── Step 1: Enumerate sections on both sites ──
 echo "▸ Enumerating sections..."
@@ -173,14 +257,36 @@ ENUMERATE_SECTIONS='(() => {
 agent-browser --session "$SESSION_REF" eval "$ENUMERATE_SECTIONS" > "$DIR/sections/ref-sections.json" 2>&1
 agent-browser --session "$SESSION_IMPL" eval "$ENUMERATE_SECTIONS" > "$DIR/sections/impl-sections.json" 2>&1
 
-REF_COUNT=$(python3 -c "import json; d=json.loads(open('$DIR/sections/ref-sections.json').read()); print(len(d))" 2>/dev/null || echo "0")
-IMPL_COUNT=$(python3 -c "import json; d=json.loads(open('$DIR/sections/impl-sections.json').read()); print(len(d))" 2>/dev/null || echo "0")
+_parse_section_count() {
+  local f="$1"
+  # Check for JS error (agent-browser eval failure) before parsing JSON
+  local first
+  first=$(head -1 "$f" 2>/dev/null || echo "")
+  if echo "$first" | grep -qE '^(SyntaxError|TypeError|ReferenceError|Error:|Uncaught|\[object)'; then
+    echo "JS_ERROR: $first" >&2
+    echo "0"
+    return
+  fi
+  python3 -c "
+import json, sys
+try:
+    d = json.loads(open('$f').read())
+    print(len(d) if isinstance(d, list) else 0)
+except Exception as e:
+    print(0, file=sys.stderr)
+    print(0)
+" 2>/dev/null || echo "0"
+}
+REF_COUNT=$(_parse_section_count "$DIR/sections/ref-sections.json")
+IMPL_COUNT=$(_parse_section_count "$DIR/sections/impl-sections.json")
 
 echo "  Ref:  $REF_COUNT sections"
 echo "  Impl: $IMPL_COUNT sections"
 
 if [ "$REF_COUNT" = "0" ] || [ "$IMPL_COUNT" = "0" ]; then
-  echo "ERROR: Failed to enumerate sections"
+  echo "ERROR: Failed to enumerate sections — check if pages loaded correctly"
+  echo "  Ref JSON head: $(head -3 "$DIR/sections/ref-sections.json" 2>/dev/null || echo "(missing)")"
+  echo "  Impl JSON head: $(head -3 "$DIR/sections/impl-sections.json" 2>/dev/null || echo "(missing)")"
   exit 1
 fi
 
@@ -206,6 +312,26 @@ def similarity(a, b):
 
 matches = []
 used_impl = set()
+used_names = set()  # dedup: prevent multiple sections mapping to same filename
+
+def make_name(item, fallback_prefix):
+    raw = item.get('id') or ''
+    if not raw and item.get('className'):
+        raw = item['className'].split()[0]
+    if not raw:
+        raw = f'{fallback_prefix}-{item[\"index\"]}'
+    return raw.replace('/', '-').replace(' ', '-')[:40]
+
+def dedup_name(base, used):
+    if base not in used:
+        used.add(base)
+        return base
+    i = 2
+    while f'{base}-{i}' in used:
+        i += 1
+    n = f'{base}-{i}'
+    used.add(n)
+    return n
 
 for r in ref:
     best_score = 0
@@ -223,8 +349,7 @@ for r in ref:
 
     if best_impl and best_score > 0.05:
         used_impl.add(best_impl['index'])
-        name = r['id'] or r['className'].split()[0] if r['className'] else f'section-{r[\"index\"]}'
-        name = name.replace('/', '-').replace(' ', '-')[:40]
+        name = dedup_name(make_name(r, 'section'), used_names)
         matches.append({
             'name': name,
             'score': round(best_score, 3),
@@ -232,8 +357,7 @@ for r in ref:
             'impl': best_impl,
         })
     else:
-        name = r['id'] or r['className'].split()[0] if r['className'] else f'section-{r[\"index\"]}'
-        name = name.replace('/', '-').replace(' ', '-')[:40]
+        name = dedup_name(make_name(r, 'section'), used_names)
         matches.append({
             'name': name,
             'score': 0,
@@ -245,8 +369,7 @@ for r in ref:
 # Unmatched impl sections
 for im in impl:
     if im['index'] not in used_impl:
-        name = im['id'] or im['className'].split()[0] if im['className'] else f'impl-section-{im[\"index\"]}'
-        name = name.replace('/', '-').replace(' ', '-')[:40]
+        name = dedup_name(make_name(im, 'impl-section'), used_names)
         matches.append({
             'name': name,
             'score': 0,
@@ -262,8 +385,36 @@ print(f'  {len([m for m in matches if m.get(\"impl\")])} matched, {len([m for m 
 # ── Step 3: Crop element screenshots per matched section ──
 echo "▸ Capturing section screenshots..."
 
-MATCHES=$(cat "$DIR/sections/matches.json")
-MATCH_COUNT=$(python3 -c "import json; print(len([m for m in json.loads('''$MATCHES''') if m.get('ref') and m.get('impl')]))" 2>/dev/null || echo "0")
+MATCH_COUNT=$(python3 -c "import json; m=json.load(open('$DIR/sections/matches.json')); print(len([x for x in m if x.get('ref') and x.get('impl')]))" 2>/dev/null || echo "0")
+
+# EC-SC-3: Zero matches means fingerprint extraction failed on one side (wrong URL, JS error,
+# CSP-blocked eval). Continuing would compare stale screenshots from a previous run —
+# a false-pass risk. Exit early with a clear diagnostic.
+if [ "$MATCH_COUNT" -eq 0 ]; then
+  echo ""
+  echo "ERROR: 0 sections matched between ref and impl."
+  echo "  Possible causes:"
+  echo "    1. Wrong URL passed (orig vs impl swapped?)"
+  echo "    2. JS eval blocked by CSP on one page"
+  echo "    3. Page not fully loaded — try adding a delay or scrolling to trigger lazy-load"
+  echo "    4. Single-section site — fingerprint matching needs ≥2 sections"
+  echo ""
+  echo "  Debug: check $DIR/sections/matches.json"
+  echo "  Expected: entries with both 'ref' and 'impl' populated"
+  # Write a FAIL result.txt so the Stop gate gives a useful message instead of "not run"
+  mkdir -p "$DIR/sections"
+  {
+    echo "| Section | AE | Threshold | Status |"
+    echo "|---------|-----|-----------|--------|"
+    echo "| (none) | — | — | ❌ |"
+    echo ""
+    echo "**Result: 0 PASS, 1 FAIL, 0 SKIP**"
+    echo ""
+    echo "FAILURE REASON: 0 sections matched — fingerprint extraction failed."
+    echo "Re-run section-compare.sh after fixing the URL or page load issue."
+  } > "$DIR/sections/result.txt"
+  exit 1
+fi
 
 python3 -c "
 import json, subprocess, sys
@@ -275,6 +426,11 @@ for m in matches:
     ref = m.get('ref')
     impl = m.get('impl')
 
+    # Re-apply animation pause after each scroll — scroll-triggered CSS transitions
+    # (enter-reveal, GSAP ScrollTrigger) reset on scroll and can be mid-animation
+    # at the screenshot moment if we only pause once at page load.
+    pause_js = r'(() => { const s = document.getElementById(\"__sc-pause__\"); if (!s) { const ns = document.createElement(\"style\"); ns.id = \"__sc-pause__\"; ns.textContent = \"*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }\"; document.head.appendChild(ns); } return \"paused\"; })()'
+
     if ref:
         r = ref['rect']
         # Scroll to section and screenshot with clip
@@ -282,7 +438,11 @@ for m in matches:
         clip_top = r['top'] - scroll_y
         cmd_scroll = f'agent-browser --session $SESSION_REF eval \"(() => {{ window.scrollTo(0, {scroll_y}); return {scroll_y}; }})()\"'
         subprocess.run(cmd_scroll, shell=True, capture_output=True)
-        import time; time.sleep(0.3)
+        import time; time.sleep(0.1)
+        # Re-apply pause to catch any scroll-triggered transitions that fired after scroll
+        cmd_pause = f'agent-browser --session $SESSION_REF eval \"{pause_js}\"'
+        subprocess.run(cmd_pause, shell=True, capture_output=True)
+        time.sleep(0.2)
         cmd_ss = f'agent-browser --session $SESSION_REF screenshot $DIR/sections/ref/{name}.png'
         subprocess.run(cmd_ss, shell=True, capture_output=True)
         # Crop to section bounds
@@ -296,7 +456,10 @@ for m in matches:
         clip_top = r['top'] - scroll_y
         cmd_scroll = f'agent-browser --session $SESSION_IMPL eval \"(() => {{ window.scrollTo(0, {scroll_y}); return {scroll_y}; }})()\"'
         subprocess.run(cmd_scroll, shell=True, capture_output=True)
-        import time; time.sleep(0.3)
+        import time; time.sleep(0.1)
+        cmd_pause = f'agent-browser --session $SESSION_IMPL eval \"{pause_js}\"'
+        subprocess.run(cmd_pause, shell=True, capture_output=True)
+        time.sleep(0.2)
         cmd_ss = f'agent-browser --session $SESSION_IMPL screenshot $DIR/sections/impl/{name}.png'
         subprocess.run(cmd_ss, shell=True, capture_output=True)
         crop_h = min(r['height'], 1800)
@@ -316,7 +479,16 @@ PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
 
-for REF_IMG in "$DIR/sections/ref/"*.png; do
+# Guard: nullglob — if no ref PNGs were captured, the glob expands to a literal string
+shopt -s nullglob
+REF_IMGS=("$DIR/sections/ref/"*.png)
+shopt -u nullglob
+if [ ${#REF_IMGS[@]} -eq 0 ]; then
+  echo "ERROR: No ref section images captured in $DIR/sections/ref/ — check Step 3 output above"
+  exit 1
+fi
+
+for REF_IMG in "${REF_IMGS[@]}"; do
   NAME=$(basename "$REF_IMG" .png)
   IMPL_IMG="$DIR/sections/impl/${NAME}.png"
 
@@ -344,7 +516,7 @@ for REF_IMG in "$DIR/sections/ref/"*.png; do
     continue
   fi
 
-  THRESHOLD=2000  # Per-section threshold (more lenient than per-pixel)
+  THRESHOLD="${SECTION_THRESHOLD:-2000}"  # Override: SECTION_THRESHOLD=50000 for dynamic-content sites
   if [ "$AE" -le "$THRESHOLD" ]; then
     STATUS="✅"
     PASS_COUNT=$((PASS_COUNT + 1))
@@ -362,6 +534,16 @@ echo "|---------|-----|-----------|--------|"
 echo -e "$RESULTS"
 echo ""
 echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
+
+# ── Auto-save result for Stop gate hook ──
+mkdir -p "$DIR/sections"
+{
+  echo "| Section | AE | Threshold | Status |"
+  echo "|---------|-----|-----------|--------|"
+  echo -e "$RESULTS"
+  echo ""
+  echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
+} > "$DIR/sections/result.txt"
 
 # ── Step 5: Structure diff per section ──
 echo ""
@@ -433,12 +615,70 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
   echo ""
   echo "⛔ ${FAIL_COUNT} section(s) FAILED visual comparison."
   echo "For each FAIL, read the diff image:"
-  for REF_IMG in "$DIR/sections/ref/"*.png; do
+  for REF_IMG in "${REF_IMGS[@]}"; do
     NAME=$(basename "$REF_IMG" .png)
     DIFF_IMG="$DIR/sections/diff/${NAME}.png"
     if [ -f "$DIFF_IMG" ]; then
       echo "  Read $DIFF_IMG"
     fi
   done
+
+  # ── Context injection: Root Cause guidance ──
+  SKILL_DIR="$(cd "$(dirname "$0")/../../ui-reverse-engineering" && pwd 2>/dev/null || echo "")"
+  DIAGNOSIS="$SKILL_DIR/diagnosis.md"
+  SKIP_ZONES="$SKILL_DIR/skip-zones.md"
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "▶ DIAGNOSIS GUIDE — pick the matching root cause:"
+  echo ""
+  echo "  Layout/structure wrong?    → Root Cause A (DOM Mismatch)"
+  echo "  Color/font/weight wrong?   → Root Cause B (CSS Cascade Conflict)"
+  echo "  Spacing/shadow wrong?      → Root Cause C (Missing Wrapper)"
+  echo "  Element type wrong?        → Root Cause D (Wrong Element Type)"
+  echo "  Animation doesn't animate? → Root Cause E (Animation)"
+  echo ""
+  if [ -f "$SKIP_ZONES" ]; then
+    echo "▶ ZONE 5 VERIFICATION RULES (what was skipped):"
+    awk '/^## ZONE 5:/,/^---/' "$SKIP_ZONES" | head -25
+    echo ""
+  fi
+  if [ -f "$DIAGNOSIS" ]; then
+    echo "▶ ROOT CAUSE DIAGNOSIS COMMANDS:"
+    awk '/^## Root Cause/,/^---/' "$DIAGNOSIS" | head -50
+  fi
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
   exit 1
+fi
+
+# ── All sections passed: clear WIP marker so Stop hook no longer blocks ──
+# Only clear when FAIL=0 AND SKIP=0.
+# SKIP means an impl section is missing — that is a real gap, not a pass.
+#
+# IMPORTANT: Only remove the marker for THIS specific DIR, not all markers under tmp/ref/.
+# Multiple concurrent sessions each have their own .ui-re-active marker;
+# removing all markers when one session passes would unblock other in-progress sessions.
+if [ "$FAIL_COUNT" -eq 0 ] && [ "$SKIP_COUNT" -eq 0 ]; then
+  # Resolve the canonical absolute path of DIR to find its specific marker
+  ABS_DIR=$(cd "$DIR" 2>/dev/null && pwd || echo "$DIR")
+  SPECIFIC_MARKER="${ABS_DIR}/.ui-re-active"
+  if [ -f "$SPECIFIC_MARKER" ]; then
+    rm -f "$SPECIFIC_MARKER" 2>/dev/null || true
+    echo "  ✓ Section-compare passed — WIP marker cleared ($SPECIFIC_MARKER)"
+  else
+    # Marker may be at parent path; walk up one level (tmp/ref/<name>/ → marker at tmp/ref/<name>/.ui-re-active)
+    # The pre-generate hook writes marker as ${REF_DIR}.ui-re-active where REF_DIR ends with /
+    # so it is actually <dir>/.ui-re-active inside the dir. Check both locations.
+    PARENT_MARKER="$(dirname "$ABS_DIR")/.ui-re-active"
+    if [ -f "$PARENT_MARKER" ]; then
+      rm -f "$PARENT_MARKER" 2>/dev/null || true
+      echo "  ✓ Section-compare passed — WIP marker cleared ($PARENT_MARKER)"
+    else
+      echo "  ✓ Section-compare passed (no WIP marker found at $SPECIFIC_MARKER)"
+    fi
+  fi
+elif [ "$SKIP_COUNT" -gt 0 ]; then
+  echo "  ⚠  WIP marker NOT cleared — $SKIP_COUNT section(s) missing from impl."
+  echo "    Implement missing sections and re-run section-compare.sh."
 fi

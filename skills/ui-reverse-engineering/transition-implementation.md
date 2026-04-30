@@ -339,3 +339,82 @@ When `transition-spec.json` contains entries referencing GSAP premium plugins, a
 ```
 
 This ensures the generation step uses the correct alternative without re-discovering it.
+
+---
+
+## Card stack (page-stack) pattern
+
+Used on navercorp.com for stacked cards that collapse as user scrolls (`.page-stack`, `.sticky`, `.point-items`).
+
+### CSS structure
+
+```css
+.page-stack { height: 375lvh; }  /* or 300lvh — scroll travel space */
+.page-stack .sticky { position: sticky; top: 0; height: 100lvh; }
+.page-stack .point-items {
+  overflow: hidden;
+  transition: height 1.06s cubic-bezier(0.28, 0, 0.15, 1);
+}
+.page-stack .point-items.hide {
+  height: var(--stack-item-hide-height) !important;  /* typically 56-64px */
+}
+```
+
+### Implementation (React)
+
+**Critical: fix heights BEFORE toggling hide class.**
+
+`height: auto` cannot be CSS-transitioned. The original JS measures each card's natural height and sets it as an inline `px` value. Without this, toggling `hide` snaps instead of animating.
+
+```tsx
+useEffect(() => {
+  const pageStack = pageStackRef.current;
+  if (!pageStack) return;
+  const sticky = pageStack.querySelector<HTMLElement>('.sticky');
+  const items = Array.from(pageStack.querySelectorAll<HTMLElement>('.point-items'));
+  if (!sticky || items.length === 0) return;
+
+  // Step 1: Fix heights so CSS transition works (auto → px is not animatable)
+  items.forEach(item => {
+    if (!item.style.height) item.style.height = item.offsetHeight + 'px';
+  });
+
+  const n = items.length;
+  const hiddenState = new Array(n).fill(false);
+
+  // Step 2: Scroll event (NOT RAF) — only toggle on state change to allow transition to complete
+  const onScroll = () => {
+    const stackRect = pageStack.getBoundingClientRect();
+    const scrolled = Math.max(0, -stackRect.top);
+    const scrollable = pageStack.offsetHeight - sticky.offsetHeight;
+    const progress = Math.min(1, scrolled / scrollable);
+    const activeIdx = Math.min(n - 1, Math.floor(progress * n));
+
+    items.forEach((item, i) => {
+      const shouldHide = i < activeIdx;
+      if (shouldHide !== hiddenState[i]) {
+        hiddenState[i] = shouldHide;
+        if (shouldHide) item.classList.add('hide');
+        else item.classList.remove('hide');
+      }
+    });
+
+    if (progress >= 1) pageStack.classList.add('end');
+    else pageStack.classList.remove('end');
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll(); // initial state
+  return () => window.removeEventListener('scroll', onScroll);
+}, []);
+```
+
+**Why NOT RAF:** calling `classList.add/remove` every frame resets the CSS transition on each tick — it never completes. The `hiddenState` diff guard ensures the class is toggled exactly once per state change, letting the 1.06s transition run uninterrupted.
+
+### Checklist before implementing
+
+- [ ] Verify item count on reference: `document.querySelectorAll('.point-items').length`
+- [ ] Extract `--stack-item-hide-height` CSS variable value (typically 56px or 64px)
+- [ ] Check `height` CSS on `.page-stack` (300lvh, 375lvh, etc.)
+- [ ] Confirm images exist for ALL cards (including cards added after initial release)
+- [ ] Add `'use client'` directive — requires `useEffect` + `useRef`

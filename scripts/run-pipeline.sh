@@ -31,7 +31,24 @@ COMPONENT="${2:?}"
 SESSION="${3:?}"
 ACTION="${4:-status}"
 
-REF_DIR="tmp/ref/$COMPONENT"
+# Resolve project root (same priority as hooks: CLAUDE_PROJECT_DIR → git → walk-up → PWD)
+_find_project_root() {
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
+    echo "$CLAUDE_PROJECT_DIR"; return
+  fi
+  local git_root
+  git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$git_root" ]; then echo "$git_root"; return; fi
+  local dir="$PWD" best=""
+  while [ "$dir" != "/" ]; do
+    [ -d "$dir/tmp/ref" ] && best="$dir"
+    dir=$(dirname "$dir")
+  done
+  [ -n "$best" ] && echo "$best" && return
+  echo "$PWD"
+}
+PROJECT_ROOT=$(_find_project_root)
+REF_DIR="$PROJECT_ROOT/tmp/ref/$COMPONENT"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 GREEN='\033[0;32m'
@@ -71,6 +88,38 @@ echo ""
 NEXT_PHASE=""
 NEXT_STEP=""
 
+# ── Phase 0A: Render type detection (runs once, saves canvas-webgl-detection.json) ──
+# Detecting Canvas/WebGL early prevents hours of CSS-based replication attempts on invisible sources.
+echo -e "${BOLD}Phase 0A — Render Type Detection${NC}"
+CANVAS_DETECT="$REF_DIR/canvas-webgl-detection.json"
+if [ -f "$CANVAS_DETECT" ]; then
+  # Use env var to pass path — avoids single-quote breakage in python inline string
+  CANVAS_TYPE=$(DETECT_PATH="$CANVAS_DETECT" python3 -c "import json,os; d=json.load(open(os.environ['DETECT_PATH'])); print(d.get('primaryRenderType','unknown'))" 2>/dev/null || echo "unknown")
+  HAS_CANVAS=$(DETECT_PATH="$CANVAS_DETECT" python3 -c "import json,os; d=json.load(open(os.environ['DETECT_PATH'])); print(d.get('hasCanvas', False))" 2>/dev/null || echo "False")
+  HAS_WEBGL=$(DETECT_PATH="$CANVAS_DETECT" python3 -c "import json,os; d=json.load(open(os.environ['DETECT_PATH'])); print(d.get('hasWebGL', False))" 2>/dev/null || echo "False")
+  echo -e "  ${GREEN}✓${NC} Render type: $CANVAS_TYPE (canvas=$HAS_CANVAS, webgl=$HAS_WEBGL)"
+  if [ "$HAS_CANVAS" = "True" ] || [ "$HAS_WEBGL" = "True" ]; then
+    echo -e "  ${YELLOW}⚠${NC}  Canvas/WebGL detected — CSS replication will be APPROXIMATE."
+    echo -e "       Read canvas-webgl-extraction.md before Phase 2 extraction."
+    echo -e "       Add NEXT_PUBLIC_SPLASH_TEST=true / animation debug panel for iterating."
+  fi
+else
+  echo -e "  ${YELLOW}○${NC} canvas-webgl-detection.json missing — run detection FIRST (prevents wasted CSS work on Canvas sites):"
+  echo -e "     agent-browser --session $SESSION open $URL"
+  echo -e "     agent-browser --session $SESSION eval \\"
+  echo -e "       \"(() => ({ hasCanvas: !!document.querySelector('canvas'),"
+  echo -e "         hasWebGL: (() => { try { return !!document.createElement('canvas').getContext('webgl'); } catch(e) { return false; } })(),"
+  echo -e "         canvasCount: document.querySelectorAll('canvas').length,"
+  echo -e "         primaryRenderType: document.querySelector('canvas') ? 'canvas' : 'dom' }))()\" \\"
+  echo -e "     > $CANVAS_DETECT"
+  # Set NEXT_PHASE only if REF_DIR doesn't exist yet (brand-new session)
+  # If ref dir already has data, canvas detection was merely skipped — warn but don't block.
+  if [ ! -d "$REF_DIR" ]; then
+    [ -z "$NEXT_PHASE" ] && NEXT_PHASE="0A" && NEXT_STEP="Run canvas/WebGL detection above, then re-run status."
+  fi
+fi
+echo ""
+
 # ── Phase 0: Prior data ──
 echo -e "${BOLD}Phase 0 — Prior Data${NC}"
 if [ -f "$REF_DIR/transition-spec.json" ]; then
@@ -99,6 +148,14 @@ fi
 echo ""
 
 # ── Phase 2: Extraction ──
+# Skip phase 2 checks entirely if Phase 1 isn't done — avoids misleading "Phase 2 next" message
+# when screenshots haven't even been captured yet.
+if [ "$HAS_REF" = false ]; then
+  echo -e "${BOLD}Phase 2 — Extraction${NC}"
+  echo -e "  ${YELLOW}○${NC} (skipped — complete Phase 1 first)"
+  echo ""
+  # Jump to next action output
+else
 echo -e "${BOLD}Phase 2 — Extraction${NC}"
 
 # Step 1-2: DOM + section enumeration
@@ -136,6 +193,10 @@ phase_status "Step 4: detected-breakpoints.json" has_file "$REF_DIR/detected-bre
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read responsive-detection.md → sweep viewports."
   true
 }
+phase_status "Step 4-C2: sizing-expressions.json" has_file "$REF_DIR/responsive/sizing-expressions.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read responsive-detection.md Step 4-C2 → multi-viewport element sizing comparison."
+  true
+}
 
 # Step 5: Interactions
 phase_status "Step 5: interactions-detected.json" has_file "$REF_DIR/interactions-detected.json" || {
@@ -146,6 +207,10 @@ phase_status "Step 5: interactions-detected.json" has_file "$REF_DIR/interaction
 # Step 5c: Bundles
 phase_status "Step 5c: bundles/ (≥3 JS files)" has_files "$REF_DIR/bundles" "*.js" 3 || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read bundle-analysis.md → download ALL JS chunks, detect scroll engine. Gate: bundle"
+  true
+}
+phase_status "Step 5c: external-sdks.json" has_file "$REF_DIR/external-sdks.json" || {
+  [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read bundle-analysis.md → detect external SDKs (GSAP/Lenis/Framer). Write external-sdks.json ({} if none)."
   true
 }
 
@@ -165,12 +230,33 @@ phase_status "Step 6b: extracted.json (assembled)" has_file "$REF_DIR/extracted.
   true
 }
 
+# ── Staleness quick-check (runs inline, not just at pre-generate gate) ──
+# If any parent artifact is newer than extracted.json, warn early so the LLM
+# doesn't waste time generating code against stale data.
+if [ -f "$REF_DIR/extracted.json" ]; then
+  EXTRACTED_MTIME=$(stat -f %m "$REF_DIR/extracted.json" 2>/dev/null || stat -c %Y "$REF_DIR/extracted.json" 2>/dev/null || echo "0")
+  STALE_PARENTS=""
+  for _p in structure.json styles.json component-map.json interactions-detected.json hover-css-rules.json transition-coverage.json; do
+    if [ -f "$REF_DIR/$_p" ]; then
+      _PMTIME=$(stat -f %m "$REF_DIR/$_p" 2>/dev/null || stat -c %Y "$REF_DIR/$_p" 2>/dev/null || echo "0")
+      if [ "$_PMTIME" -gt "$EXTRACTED_MTIME" ]; then
+        STALE_PARENTS="${STALE_PARENTS} $_p"
+      fi
+    fi
+  done
+  if [ -n "$STALE_PARENTS" ]; then
+    echo -e "  ${YELLOW}⚠${NC}  extracted.json is STALE — newer than:${STALE_PARENTS}"
+    echo -e "     Re-run Step 6b (assemble) before generating code."
+  fi
+fi
+
 # Step 6c: Section audit
 phase_status "Step 6c: component-map.json (section audit)" has_file "$REF_DIR/component-map.json" || {
   [ -z "$NEXT_PHASE" ] && NEXT_PHASE="2" && NEXT_STEP="Read section-audit.md → six-stage audit → component-map.json. Gate: pre-generate"
   true
 }
 echo ""
+fi  # end: HAS_REF guard
 
 # ── Auto-gate: run pre-generate check when entering Phase 3 ──
 if [ -z "$NEXT_PHASE" ] && [ -d "$REF_DIR" ]; then
@@ -184,16 +270,40 @@ fi
 
 # ── Phase 3: Generation ──
 echo -e "${BOLD}Phase 3 — Generation${NC}"
-# Check for component files in the app directory
+# Check for component files in the app directory (search from project root)
+# Prefer component name match to avoid picking wrong workspace in monorepos.
 APP_DIR=""
-for d in apps/*/src/components; do
+# Priority 1: component-name-specific app dir (monorepo)
+for d in \
+  "$PROJECT_ROOT/apps/$COMPONENT/src/components" \
+  "$PROJECT_ROOT/apps/$COMPONENT/src" \
+  "$PROJECT_ROOT/apps/$COMPONENT/app"; do
   if [ -d "$d" ]; then
-    APP_DIR="$(dirname "$(dirname "$d")")"
+    APP_DIR="$(cd "$d/../.." 2>/dev/null && pwd || dirname "$(dirname "$d")")"
     break
   fi
 done
+# Priority 2: flat project layout
+if [ -z "$APP_DIR" ]; then
+  for d in "$PROJECT_ROOT/src/components" "$PROJECT_ROOT/app" "$PROJECT_ROOT/src"; do
+    if [ -d "$d" ]; then
+      APP_DIR="$(cd "$d/.." 2>/dev/null && pwd || dirname "$d")"
+      break
+    fi
+  done
+fi
+# Priority 3: first match in monorepo (fallback — may be wrong workspace)
+if [ -z "$APP_DIR" ]; then
+  for d in "$PROJECT_ROOT/apps/"*/src/components; do
+    if [ -d "$d" ]; then
+      APP_DIR="$(dirname "$(dirname "$d")")"
+      echo -e "  ${YELLOW}⚠${NC}  Monorepo: using first app dir found. Set CLAUDE_PROJECT_DIR to target workspace."
+      break
+    fi
+  done
+fi
 if [ -n "$APP_DIR" ]; then
-  COMP_COUNT=$(find "$APP_DIR/src/components" -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+  COMP_COUNT=$(find "$APP_DIR/src/components" "$APP_DIR/src/app" "$APP_DIR/app" -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
   phase_status "Components generated ($COMP_COUNT .tsx files)" test "$COMP_COUNT" -ge 5 || {
     [ -z "$NEXT_PHASE" ] && NEXT_PHASE="3" && NEXT_STEP="Read component-generation.md → generate from extracted.json. Gate: pre-generate"
     true

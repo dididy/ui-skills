@@ -25,6 +25,18 @@ Never let large JSON print to stdout — it wastes tokens.
 - **From ui-reverse-engineering**: Phase A (reference), Phase 4 (verification)
 - **From ralph**: when SPEC.md has `reference_url`
 
+**If the user invoked this skill without providing `<reference-url>`:** stop immediately and reply with exactly:
+
+```
+URL이 필요합니다. 다음 형식으로 입력해 주세요:
+
+/ui-capture <reference-url> [local-url]
+
+예시: /ui-capture https://www.naver.com http://localhost:3000
+```
+
+Do NOT proceed to any capture phase until `<reference-url>` is provided.
+
 ## Dependencies
 
 ```bash

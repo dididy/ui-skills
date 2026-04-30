@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SESSION="${1:?Usage: extract-dynamic-styles.sh <session> <output-dir>}"
-trap 'agent-browser close "$SESSION" 2>/dev/null || true' EXIT
+trap 'agent-browser --session "$SESSION" close 2>/dev/null || true' EXIT
 DIR="${2:?Usage: extract-dynamic-styles.sh <session> <output-dir>}"
 
 mkdir -p "$DIR"

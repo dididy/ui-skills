@@ -54,37 +54,62 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 
 | Script | Purpose |
 |---|---|
+| `computed-diff.sh <session> <orig> <impl> <sel...>` | **Run first** — getComputedStyle comparison. Catches fontWeight/display/height root causes before pixel diff |
 | `batch-scroll.sh <orig> <impl> <session> [dir]` | Captures both at 0–100% scroll positions |
 | `ae-compare.sh <ref.png> <impl.png> [diff.png]` | AE comparison → `AE=<n> STATUS=PASS|FAIL` |
 | `batch-compare.sh <dir> [threshold]` | Compare all pairs. Supports dynamic thresholds |
 | `dssim-compare.sh <dir> [threshold]` | Structural similarity (catches what AE misses) |
 | `layout-diff.sh <session> <orig> <impl>` | Section bounding box comparison |
-| `computed-diff.sh <session> <orig> <impl> <sel...>` | getComputedStyle comparison |
 | `section-compare.sh <orig> <impl> <session> [dir]` | **Section-level comparison** — crops each section, AE + structure diff. Catches SVG-as-text, layout mismatches |
 | `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
 
+**Reference selectors:** `common-selectors.md` — ready-to-use selector sets (typography, CSS reset canaries, Tailwind preflight issues, Naver.com specific, general e-commerce)
+
 ## Workflow
+
+### Step 0: computed-diff FIRST (before AE)
+
+**Always run computed-diff before pixel comparison.** AE catches *that* something is wrong; computed-diff catches *why* — and fixes the root cause immediately without hunting through diff images.
+
+```bash
+SCRIPTS="$HOME/Documents/ui-skills/skills/visual-debug/scripts"
+
+# Broad sweep: CSS reset canaries + page structure
+bash "$SCRIPTS/computed-diff.sh" <session> <orig> <impl> \
+  "h1" "h2" "h3" "h4" \
+  "img" "button" "a" \
+  "body" "header" "main" "footer"
+
+# Domain-specific selectors from common-selectors.md
+# IGNORE_FONT_SIZE=1 to skip OS text-scaling false positives
+IGNORE_FONT_SIZE=1 bash "$SCRIPTS/computed-diff.sh" <session> <orig> <impl> \
+  "[class*=title]" "[class*=logo]" "[class*=search]" "[class*=nav]"
+```
+
+See `common-selectors.md` for ready-to-use selector sets by domain.
 
 ### Full-page comparison (broad sweep)
 ```
-1. Capture    batch-scroll.sh <orig> <impl> <session>
-2. AE diff    batch-compare.sh <dir>
-3. DSSIM      dssim-compare.sh <dir>
-4. Diagnose   Read ONLY diff images for FAIL positions
-5. Fix        Targeted code change
-6. Re-compare Repeat 2–3
-7. LLM review Read ref+impl pairs for ALL positions (Phase E)
-8. Gate       All three axes PASS → DONE
+0. computed-diff  computed-diff.sh (CSS reset canaries + page structure)  ← NEW FIRST STEP
+1. Capture        batch-scroll.sh <orig> <impl> <session>
+2. AE diff        batch-compare.sh <dir>
+3. DSSIM          dssim-compare.sh <dir>
+4. Diagnose       Read ONLY diff images for FAIL positions
+5. Fix            Targeted code change
+6. Re-compare     Repeat 0–3
+7. LLM review     Read ref+impl pairs for ALL positions (Phase E)
+8. Gate           All axes PASS → DONE
 ```
 
 ### Section-level comparison (precise — preferred for post-gen verification)
 ```
+0. computed-diff  computed-diff.sh (CSS reset canaries + section selectors)  ← NEW FIRST STEP
 1. Section compare  section-compare.sh <orig> <impl> <session>
    → Per-section AE + structure diff (SVG-as-text, layout type, height)
 2. Transition compare  transition-compare.sh <orig> <impl> <session>
    → Per-element idle/hover style + timing diff
 3. Fix          Targeted code change per failing section/element
-4. Re-compare   Repeat 1–2
+4. Re-compare   Repeat 0–2
 5. Gate         All sections PASS + all transitions PASS → DONE
 ```
 

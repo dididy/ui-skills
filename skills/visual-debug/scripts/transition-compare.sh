@@ -23,6 +23,11 @@ IMPL_URL="${2:?Usage: transition-compare.sh <orig-url> <impl-url> <session> [out
 SESSION="${3:?Usage: transition-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 DIR="${4:-tmp/ref/visual-debug}"
 
+# Convert relative path to absolute (Stop gate uses absolute paths, result.txt lookup breaks otherwise)
+if [[ "$DIR" != /* ]]; then
+  DIR="$(pwd)/$DIR"
+fi
+
 SESSION_REF="${SESSION}-tc-ref"
 SESSION_IMPL="${SESSION}-tc-impl"
 
@@ -147,6 +152,20 @@ IMPL_TRANS=$(python3 -c "import json; print(len(json.loads(open('$DIR/transition
 
 echo "  Ref:  $REF_TRANS transition elements"
 echo "  Impl: $IMPL_TRANS transition elements"
+
+if [ "$REF_TRANS" -eq 0 ]; then
+  echo ""
+  echo "  ℹ No transition elements detected on the original site."
+  echo "  Possible causes:"
+  echo "    1. All transitions are JS-driven (GSAP) — not in getComputedStyle at rest"
+  echo "    2. Page not scrolled — transitions may be off-screen"
+  echo "    3. Transitions only exist on hover (GSAP mouseenter), not in base CSS"
+  echo "  If transitions exist, add custom selectors: bash transition-compare.sh ... then edit DETECT_TRANSITIONS"
+  echo ""
+  echo "═══ Transition Compare Complete ═══"
+  echo "  0 elements — skipped"
+  exit 0
+fi
 
 # ── Step 2: For each ref transition element, capture idle + hover states ──
 echo "▸ Capturing idle + hover states..."

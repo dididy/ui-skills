@@ -25,7 +25,7 @@ set -euo pipefail
 START_TIME=$(date +%s%3N 2>/dev/null || python3 -c "import time; print(int(time.time()*1000))")
 
 SESSION="${1:?Usage: section-clips.sh <session> <output-dir> <side>}"
-trap 'agent-browser close "$SESSION" 2>/dev/null || true' EXIT
+trap 'agent-browser --session "$SESSION" close 2>/dev/null || true' EXIT
 DIR="${2:?Usage: section-clips.sh <session> <output-dir> <side>}"
 SIDE="${3:?Usage: section-clips.sh <session> <output-dir> <side>}"
 VIEW_W="${VIEW_W:-1440}"

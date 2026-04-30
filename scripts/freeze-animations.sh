@@ -22,7 +22,7 @@
 set -uo pipefail
 
 SESSION="${1:?Usage: freeze-animations.sh <session>}"
-trap 'agent-browser close "$SESSION" 2>/dev/null || true' EXIT
+trap 'agent-browser --session "$SESSION" close 2>/dev/null || true' EXIT
 
 agent-browser eval "(()=>{
   const result = { frozenTimers: 0, frozenIntervals: 0, cssFreeze: false, canvasHidden: 0, lottieCount: 0 };

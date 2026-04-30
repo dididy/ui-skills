@@ -25,8 +25,8 @@ SESSION_REF="${SESSION}-ref"
 SESSION_IMPL="${SESSION}-impl"
 
 cleanup_browsers() {
-  agent-browser close --session "$SESSION_REF" 2>/dev/null
-  agent-browser close --session "$SESSION_IMPL" 2>/dev/null
+  agent-browser --session "$SESSION_REF" close 2>/dev/null || true
+  agent-browser --session "$SESSION_IMPL" close 2>/dev/null || true
 }
 trap cleanup_browsers EXIT
 
@@ -162,9 +162,20 @@ for PCT in "${POSITIONS[@]}"; do
   agent-browser --session "$SESSION_REF" screenshot "$DIR/static/ref/${PCT}pct.png" 2>&1 > /dev/null
   agent-browser --session "$SESSION_IMPL" screenshot "$DIR/static/impl/${PCT}pct.png" 2>&1 > /dev/null
 
-  echo "  ✓ ${PCT}% (ref y=$Y_REF, impl y=$Y_IMPL)"
+  # Verify screenshots were actually written (silent failure guard)
+  if [ ! -s "$DIR/static/ref/${PCT}pct.png" ] || [ ! -s "$DIR/static/impl/${PCT}pct.png" ]; then
+    echo "  ⚠️  ${PCT}% — screenshot missing or empty (browser may have crashed)"
+  else
+    echo "  ✓ ${PCT}% (ref y=$Y_REF, impl y=$Y_IMPL)"
+  fi
 done
 
+# Final count verification
+REF_ACTUAL=$({ find "$DIR/static/ref" -name "*.png" 2>/dev/null || true; } | wc -l | tr -d ' ')
+IMPL_ACTUAL=$({ find "$DIR/static/impl" -name "*.png" 2>/dev/null || true; } | wc -l | tr -d ' ')
 echo ""
-echo "▸ Captured ${#POSITIONS[@]} positions × 2 sites = $((${#POSITIONS[@]} * 2)) screenshots"
-echo "  Run: bash \"\$(dirname \"\$0\")/batch-compare.sh\" $DIR"
+echo "▸ Captured: ref=$REF_ACTUAL impl=$IMPL_ACTUAL (expected ${#POSITIONS[@]} each)"
+if [ "$REF_ACTUAL" -lt "${#POSITIONS[@]}" ] || [ "$IMPL_ACTUAL" -lt "${#POSITIONS[@]}" ]; then
+  echo "  ⚠️  Some captures missing — check browser sessions above"
+fi
+echo "▸ Next: bash \"\$(dirname \"\$0\")/batch-compare.sh\" $DIR"

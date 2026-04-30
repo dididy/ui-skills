@@ -26,7 +26,7 @@ VIEW_H="${VIEW_H:-900}"
 
 # Cleanup browser sessions on exit (including errors/signals)
 cleanup_browsers() {
-  agent-browser close --session "${SESSION}-verify" 2>/dev/null
+  agent-browser --session "${SESSION}-verify" close 2>/dev/null
 }
 trap cleanup_browsers EXIT
 
@@ -114,7 +114,7 @@ for pct in 0 10 20 30 40 50 60 70 80 90 100; do
   agent-browser screenshot "$REF_DIR/static/impl/${pct}pct.png" --session "${SESSION}-verify" 2>/dev/null || true
 done
 
-agent-browser close --session "${SESSION}-verify" 2>/dev/null || true
+agent-browser --session "${SESSION}-verify" close 2>/dev/null || true
 
 # Run batch comparison
 if [ -f "$VISUAL_DEBUG_SCRIPTS/batch-compare.sh" ]; then
