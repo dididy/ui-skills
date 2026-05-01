@@ -24,7 +24,15 @@ done
 # → 0 = pass. Non-zero = fail (diff image shows mismatched pixels)
 ```
 
-Only read the diff image (`static/diff/<pos>.png`) with the Read tool when AE > 0 and you need to diagnose which region differs.
+**On AE FAIL — use `auto-diagnose.sh` instead of reading diff images:**
+
+```bash
+SCRIPTS="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
+bash "$SCRIPTS/auto-diagnose.sh" <session> <orig-url> <impl-url> \
+  tmp/ref/<component>/static/diff/<pos>.png
+```
+
+This extracts mismatch coordinates from the diff image, identifies DOM elements via `elementFromPoint`, and runs `computed-diff` on those elements — all in text, **zero vision tokens**. Only fall back to reading the diff image with `Read` if `auto-diagnose.sh` finds no elements (e.g., background-only difference).
 
 | Position | AE | Status |
 |----------|----|--------|
@@ -98,16 +106,32 @@ done
 # → Only read diff images for FAIL frames when diagnosing root cause
 ```
 
+### Fix priority (severity-based)
+
+`section-compare.sh` classifies each defect by severity. **Always fix in this order:**
+
+| Severity | Icon | Meaning | Fix first? |
+|---|---|---|---|
+| **critical** | 🔴 | Section missing, layout broken, SVG text lost, height ratio >3x | Yes — blocks all other work |
+| **major** | 🟠 | Visible diff (color, font, spacing), AE > threshold | After critical |
+| **minor** | 🟡 | Sub-pixel diff, anti-aliasing, AE 500–2000 | Last, or skip if Phase E approves |
+
+Do NOT fix minor issues while critical ones exist — critical fixes often resolve major/minor issues as side effects (e.g., fixing a missing section also fixes its child element diffs).
+
 ### Fix protocol
 
-**For each ❌:**
+**For each ❌ (in severity order — critical first):**
 1. **Run 10-point score first** (see `../ui-reverse-engineering/style-audit.md` scoring section). This tells you what category to fix.
 2. Write one sentence naming the root cause before touching any code: _"The gap exists because X"_
 3. Check if the property belongs to a design bundle (`design-bundles.json`). If yes, verify all sibling properties in the bundle (see `component-generation.md` covariance rules).
 4. If you cannot name the cause, run `agent-browser eval` to inspect computed styles at that moment
 5. Targeted fix → re-run scoring → re-run the specific capture that failed → compare
 6. **Score regression → rollback:** If the 10-point score drops after a fix, `git checkout` the component and try a different approach
-7. If the same fix has been tried twice without result, the diagnosis was wrong — re-instrument
+7. **Repeated FAIL detection:** If the same scroll position or element FAILs twice consecutively with the same AE range (±200), the diagnosis is wrong. Do NOT try the same approach a third time. Instead:
+   - Switch from pixel diagnosis to `computed-diff.sh` (or vice versa)
+   - Check a different property category (layout → typography → color)
+   - Inspect the DOM structure, not just CSS values
+   - If 3 consecutive iterations fail on the same position, escalate to the user with the specific property/value diff
 
 ### Phase D0: Layout Health Check (MANDATORY before Phase D)
 

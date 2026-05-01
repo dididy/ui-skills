@@ -383,7 +383,7 @@ class Gate:
         results = []
         sc = section_map.get("totalCount", len(section_map.get("sections", [])))
         cc = component_map.get("sectionCount", len(component_map.get("sections", [])))
-        if sc and cc and sc != cc:
+        if sc is not None and cc is not None and sc != cc:
             results.append(
                 CheckResult(
                     "section count",
@@ -392,7 +392,7 @@ class Gate:
                     "OK if sections were intentionally merged/omitted)",
                 )
             )
-        elif sc and cc:
+        elif sc is not None and cc is not None:
             results.append(
                 CheckResult("section count", "pass", f"Section count matches ({sc} sections)")
             )

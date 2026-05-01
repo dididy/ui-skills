@@ -25,7 +25,7 @@ from ui_clone.hooks._common import find_ref_dir as _find_ref_dir
 # AND captures any unhandled promise rejections / console.error calls.
 _COLLECT_ERRORS_JS = """
 (function() {
-  var errs = (window.__uiSkillsErrors || []).slice(0, 20);
+  var errs = (window.__uiSkillsErrors || []).slice(0, 20); // collect 20, display 10 in Python
   return JSON.stringify({ errors: errs, count: errs.length });
 })()
 """.strip()

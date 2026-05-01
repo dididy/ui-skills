@@ -241,6 +241,8 @@ Generate shared files first. All section builders depend on these.
 **Phase 3B — Section builders (parallel):**
 For each section in `component-map.json`:
 
+**Complexity budget rule:** If a builder prompt exceeds ~150 lines of spec content, the section is too complex for one agent. Split it — one agent per distinct sub-component (card variant, nav panel, carousel), plus one agent for the section wrapper that imports them. This is a mechanical check, not a judgment call.
+
 1. Build an INLINE prompt (not file references) containing:
    - Section spec from design audit (relevant slice of `extracted.json`)
    - Relevant `transition-spec.json` entries (filter by section selector)

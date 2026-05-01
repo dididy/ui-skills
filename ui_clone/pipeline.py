@@ -360,7 +360,7 @@ class Pipeline:
             stale_parents = [i.because_of for i in stale_issues if i.stale == "extracted.json"]
             if stale_parents:
                 print(
-                    f"  {_YELLOW}\u26a0{_NC}  extracted.json is STALE \u2014 newer than: {' '.join(stale_parents)}"
+                    f"  {_YELLOW}\u26a0{_NC}  extracted.json is STALE \u2014 changed after assembly: {' '.join(stale_parents)}"
                 )
                 print("     Re-run Step 6b (assemble) before generating code.")
 

@@ -63,6 +63,58 @@ def write_extracted_json(ref_dir: Path) -> None:
     )
 
 
+def _populate_pre_generate_artifacts(ref_dir: Path) -> None:
+    """Write the minimal artifact set that makes gate_pre_generate pass.
+
+    Sets parent artifacts to a fixed past mtime and extracted.json to a newer
+    mtime so the DAG staleness check doesn't flag anything.
+    """
+    base_time = time.time() - 2.0
+    extracted_time = base_time + 1.0
+
+    # Core extraction artifacts
+    (ref_dir / "structure.json").write_text(json.dumps({"sections": [], "totalCount": 0}))
+    (ref_dir / "styles.json").write_text(json.dumps({"selectors": {}}))
+    (ref_dir / "section-map.json").write_text(
+        json.dumps({"sections": [], "totalCount": 0, "hasFooter": False})
+    )
+    (ref_dir / "component-map.json").write_text(json.dumps({"sections": [], "sectionCount": 0}))
+    (ref_dir / "interactions-detected.json").write_text(
+        json.dumps({"interactions": [], "hasPreloader": False})
+    )
+    (ref_dir / "hover-css-rules.json").write_text(json.dumps({"rules": []}))
+    (ref_dir / "transition-spec.json").write_text(json.dumps({"transitions": []}))
+    (ref_dir / "bundle-map.json").write_text(json.dumps({"chunks": []}))
+    (ref_dir / "animation-init-styles.json").write_text(json.dumps({"elements": []}))
+    (ref_dir / "svg-text-elements.json").write_text(json.dumps({"elements": []}))
+    (ref_dir / "transition-coverage.json").write_text(
+        json.dumps({"animatedElements": [], "staticElements": []})
+    )
+    (ref_dir / "element-roles.json").write_text(json.dumps({"roles": []}))
+    (ref_dir / "element-groups.json").write_text(json.dumps({"groups": []}))
+    (ref_dir / "layout-decisions.json").write_text(json.dumps({"decisions": []}))
+    responsive = ref_dir / "responsive"
+    responsive.mkdir(exist_ok=True)
+    (responsive / "sizing-expressions.json").write_text(json.dumps({"expressions": []}))
+
+    # Set all parents to base_time
+    for name in [
+        "structure.json", "styles.json", "section-map.json", "component-map.json",
+        "interactions-detected.json", "hover-css-rules.json", "transition-spec.json",
+        "bundle-map.json", "animation-init-styles.json", "svg-text-elements.json",
+        "transition-coverage.json",
+    ]:
+        p = ref_dir / name
+        if p.exists():
+            os.utime(p, (base_time, base_time))
+
+    # extracted.json must be strictly newer
+    (ref_dir / "extracted.json").write_text(
+        json.dumps({"sections": [], "url": "https://example.com"})
+    )
+    os.utime(ref_dir / "extracted.json", (extracted_time, extracted_time))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # pre_generate tests
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +191,32 @@ class TestPreGenerate:
         hook_out = data["hookSpecificOutput"]
         assert hook_out.get("permissionDecision") == "deny"
         assert "permissionDecisionReason" in hook_out
+
+    def test_wip_marker_gate_passes_touches_marker_and_prints_stop_gate(self, tmp_path: Path):
+        """WIP marker + component path + gate passes → touches marker + prints stop gate message."""
+        search_root = make_search_root(tmp_path)
+        ref_dir = make_ref_dir(search_root)
+        marker = set_active_marker(ref_dir, age_seconds=60.0)  # 1 min old
+        old_mtime = marker.stat().st_mtime
+
+        # Write ALL artifacts so pre-generate gate passes (use ref_dir_with_artifacts pattern)
+        # Minimal set that makes gate_pre_generate pass:
+        _populate_pre_generate_artifacts(ref_dir)
+
+        tool_input = self._tool_input(str(tmp_path / "src/components/Hero.tsx"))
+        result = run_hook(
+            self.MODULE,
+            stdin_data=tool_input,
+            env={"CLAUDE_PROJECT_DIR": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        # stdout should be empty (no block JSON)
+        assert "permissionDecision" not in result.stdout
+        # stderr should mention stop gate activated
+        assert "stop gate" in result.stderr.lower()
+        # Marker should have been touched (newer mtime)
+        assert marker.exists()
+        assert marker.stat().st_mtime > old_mtime
 
     def test_non_component_path_skips(self, tmp_path: Path):
         """Non-component path → exits 0 regardless of WIP state."""
@@ -726,6 +804,112 @@ class TestNestedGitRepoRoot:
 
         result = find_project_root()
         assert result == tmp_path
+
+
+class TestPostVerifyVerificationNotRun:
+    """Tests for post_verify Check 1: verification has NOT been run."""
+
+    MODULE = "ui_clone.hooks.post_verify"
+
+    def _bash_tool_input(self, command: str) -> str:
+        return json.dumps(
+            {"tool_name": "Bash", "tool_input": {"command": command}, "tool_response": "ok"}
+        )
+
+    def test_no_diff_no_health_warns(self, tmp_path: Path):
+        """WIP marker + completion cmd + no diffs/health → warns about verification."""
+        search_root = make_search_root(tmp_path)
+        ref_dir = make_ref_dir(search_root)
+        set_active_marker(ref_dir)
+        write_extracted_json(ref_dir)
+
+        result = run_hook(
+            self.MODULE,
+            stdin_data=self._bash_tool_input("git commit -m done"),
+            env={"CLAUDE_PROJECT_DIR": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "verification" in result.stdout.lower() and "not" in result.stdout.lower()
+
+    def test_enough_diffs_no_warning(self, tmp_path: Path):
+        """WIP marker + completion cmd + >=3 diffs + health file → no Check 1 warning."""
+        search_root = make_search_root(tmp_path)
+        ref_dir = make_ref_dir(search_root)
+        set_active_marker(ref_dir)
+        write_extracted_json(ref_dir)
+        diff_dir = ref_dir / "static" / "diff"
+        diff_dir.mkdir(parents=True)
+        for i in range(3):
+            (diff_dir / f"diff_{i}.png").write_bytes(b"\x89PNG" + b"\x00" * 20)
+
+        result = run_hook(
+            self.MODULE,
+            stdin_data=self._bash_tool_input("git commit -m done"),
+            env={"CLAUDE_PROJECT_DIR": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        # Should NOT warn about verification not being run
+        assert "verification has not" not in result.stdout.lower()
+
+
+class TestPostVerifyBatchCompareFailures:
+    """Tests for post_verify Check 2: batch-compare result has failures."""
+
+    MODULE = "ui_clone.hooks.post_verify"
+
+    def _bash_tool_input(self, command: str) -> str:
+        return json.dumps(
+            {"tool_name": "Bash", "tool_input": {"command": command}, "tool_response": "ok"}
+        )
+
+    def test_batch_compare_failures_warns(self, tmp_path: Path):
+        """batch-compare-result.txt with ❌ lines → warns about failures."""
+        search_root = make_search_root(tmp_path)
+        ref_dir = make_ref_dir(search_root)
+        set_active_marker(ref_dir)
+        write_extracted_json(ref_dir)
+        # Make Check 1 pass (enough diffs)
+        diff_dir = ref_dir / "static" / "diff"
+        diff_dir.mkdir(parents=True)
+        for i in range(3):
+            (diff_dir / f"diff_{i}.png").write_bytes(b"\x89PNG" + b"\x00" * 20)
+        # batch-compare-result.txt with failures
+        (ref_dir / "batch-compare-result.txt").write_text(
+            "scroll_00: ✅ AE=800\nscroll_50: ❌ AE=5000\nscroll_100: ❌ AE=4200\n",
+            encoding="utf-8",
+        )
+
+        result = run_hook(
+            self.MODULE,
+            stdin_data=self._bash_tool_input("git commit -m done"),
+            env={"CLAUDE_PROJECT_DIR": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "FAILED" in result.stdout or "failed" in result.stdout.lower()
+        assert "2" in result.stdout  # 2 failures
+
+    def test_batch_compare_all_pass_no_warning(self, tmp_path: Path):
+        """batch-compare-result.txt with only ✅ → no Check 2 warning."""
+        search_root = make_search_root(tmp_path)
+        ref_dir = make_ref_dir(search_root)
+        set_active_marker(ref_dir)
+        write_extracted_json(ref_dir)
+        diff_dir = ref_dir / "static" / "diff"
+        diff_dir.mkdir(parents=True)
+        for i in range(3):
+            (diff_dir / f"diff_{i}.png").write_bytes(b"\x89PNG" + b"\x00" * 20)
+        (ref_dir / "batch-compare-result.txt").write_text(
+            "scroll_00: ✅ AE=300\nscroll_50: ✅ AE=200\n",
+            encoding="utf-8",
+        )
+
+        result = run_hook(
+            self.MODULE,
+            stdin_data=self._bash_tool_input("git commit -m done"),
+            env={"CLAUDE_PROJECT_DIR": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "FAILED" not in result.stdout
 
 
 class TestCompletionPatternWordBoundary:

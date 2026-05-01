@@ -432,8 +432,8 @@ if [ "$MATCH_COUNT" -eq 0 ]; then
   # Write a FAIL result.txt so the Stop gate gives a useful message instead of "not run"
   mkdir -p "$DIR/sections"
   {
-    echo "| Section | AE | Threshold | Status |"
-    echo "|---------|-----|-----------|--------|"
+    echo "| Section | AE | Severity | Status |"
+    echo "|---------|-----|----------|--------|"
     echo "| (none) | — | — | ❌ |"
     echo ""
     echo "**Result: 0 PASS, 1 FAIL, 0 SKIP**"
@@ -545,20 +545,30 @@ for REF_IMG in "${REF_IMGS[@]}"; do
   fi
 
   THRESHOLD="${SECTION_THRESHOLD:-2000}"  # Override: SECTION_THRESHOLD=50000 for dynamic-content sites
-  if [ "$AE" -le "$THRESHOLD" ]; then
+  if [ "$AE" -le 500 ]; then
     STATUS="✅"
+    SEV="ok"
     PASS_COUNT=$((PASS_COUNT + 1))
+  elif [ "$AE" -le "$THRESHOLD" ]; then
+    STATUS="✅"
+    SEV="minor"
+    PASS_COUNT=$((PASS_COUNT + 1))
+  elif [ "$AE" -le $((THRESHOLD * 10)) ]; then
+    STATUS="❌"
+    SEV="major"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   else
     STATUS="❌"
+    SEV="critical"
     FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 
-  RESULTS="${RESULTS}| ${NAME} | ${AE} | ${THRESHOLD} | ${STATUS} |\n"
+  RESULTS="${RESULTS}| ${NAME} | ${AE} | ${SEV} | ${STATUS} |\n"
 done
 
 echo ""
-echo "| Section | AE | Threshold | Status |"
-echo "|---------|-----|-----------|--------|"
+echo "| Section | AE | Severity | Status |"
+echo "|---------|-----|----------|--------|"
 echo -e "$RESULTS"
 echo ""
 echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
@@ -566,8 +576,8 @@ echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
 # ── Auto-save result for Stop gate hook ──
 mkdir -p "$DIR/sections"
 {
-  echo "| Section | AE | Threshold | Status |"
-  echo "|---------|-----|-----------|--------|"
+  echo "| Section | AE | Severity | Status |"
+  echo "|---------|-----|----------|--------|"
   echo -e "$RESULTS"
   echo ""
   echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
@@ -617,17 +627,42 @@ for m in matches:
     if rc > 0 and abs(rc - ic) > max(2, rc * 0.3):
         issues.append(f'CHILD_COUNT_MISMATCH: ref={rc}, impl={ic}')
 
+    # Classify severity
+    rh = ref['rect']['height']
+    ih = impl['rect']['height']
+    h_ratio = ih / rh if rh > 0 else 1.0
+    sev = 'ok'
+    if any('SVG_TEXT_MISSING' in i or 'LAYOUT_MISMATCH' in i for i in issues):
+        sev = 'critical'
+    elif h_ratio < 0.3 or h_ratio > 3.0:
+        sev = 'critical'
+    elif any('HEIGHT_MISMATCH' in i or 'CHILD_COUNT_MISMATCH' in i or 'DISPLAY_MISMATCH' in i for i in issues):
+        sev = 'major'
+    elif issues:
+        sev = 'minor'
+
     if issues:
-        diffs.append({'section': m['name'], 'issues': issues})
+        diffs.append({'section': m['name'], 'issues': issues, 'severity': sev})
 
 json.dump(diffs, open('$DIR/sections/structure-diff.json', 'w'), indent=2)
 
 if diffs:
+    # Sort by severity: critical first, then major, then minor
+    sev_order = {'critical': 0, 'major': 1, 'minor': 2, 'ok': 3}
+    diffs.sort(key=lambda d: sev_order.get(d.get('severity', 'ok'), 3))
     print('')
     for d in diffs:
-        print(f'  ⚠️  {d[\"section\"]}:')
+        sev_icon = {'critical': '🔴', 'major': '🟠', 'minor': '🟡'}.get(d['severity'], '⚪')
+        print(f'  {sev_icon} [{d[\"severity\"].upper()}] {d[\"section\"]}:')
         for issue in d['issues']:
             print(f'     - {issue}')
+    print('')
+    crit = sum(1 for d in diffs if d['severity'] == 'critical')
+    maj = sum(1 for d in diffs if d['severity'] == 'major')
+    minor = sum(1 for d in diffs if d['severity'] == 'minor')
+    print(f'  Severity: {crit} critical, {maj} major, {minor} minor')
+    if crit > 0:
+        print(f'  ⛔ Fix {crit} CRITICAL issue(s) first — these indicate missing/broken sections')
 else:
     print('  ✅ No structural mismatches detected')
 " 2>&1

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.1] - 2026-05-01
+
+Test coverage hardening — 18 new tests covering previously untested hook integration paths and pipeline extraction phase.
+
+### Added
+
+- **`TestPostVerifyVerificationNotRun`** (2 tests) — post_verify Check 1: warns when verification has not been run (no diffs/health file)
+- **`TestPostVerifyBatchCompareFailures`** (2 tests) — post_verify Check 2: warns when batch-compare-result.txt contains failures
+- **`TestPreGenerate::test_wip_marker_gate_passes_touches_marker_and_prints_stop_gate`** — pre_generate gate-passes path: verifies marker touch and stop gate activation message
+- **`TestCheckPhase2`** (11 tests) — pipeline.py `check_phase_2` method: all extraction artifact checks, missing artifact hints, staleness warning, JS chunk count advisory, responsive sizing
+- **`TestDevtoolsMainOutput`** (2 tests) — devtools_errors main() output formatting: error lines with fix hints, >10 error truncation notice
+- **`_populate_pre_generate_artifacts`** helper — reusable fixture for tests needing a fully populated pre-generate gate
+
+### Improved
+
+- Test count: 201 → 219 (+18)
+- Overall coverage: 74% → 82%
+- `pipeline.py` coverage: 70% → 90%
+- `devtools_errors.py` coverage: 55% → 91%
+
 ## [0.4.0] - 2026-05-01
 
 Major refactoring — package rename, pipeline Python migration, hook consolidation, code quality hardening, content accuracy fixes, CI, and developer tooling.

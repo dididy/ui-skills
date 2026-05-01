@@ -1,6 +1,7 @@
 """Tests for ui_clone.pipeline — pipeline status checker."""
 
 import json
+import time
 from unittest.mock import patch
 
 from ui_clone.hooks._common import load_json_safe as _load_json_safe
@@ -392,6 +393,132 @@ class TestPipelinePhases:
                 p.ref_dir = ref_dir
                 result = p.run(json_output=True)
         assert result == 0
+
+
+class TestCheckPhase2:
+    """Unit tests for Pipeline.check_phase_2 — the extraction phase."""
+
+    def _make_pipeline(self, tmp_path, ref_dir):
+        with patch("ui_clone.pipeline.find_project_root", return_value=tmp_path):
+            p = Pipeline("https://example.com", ref_dir.name, "sess")
+            p.project_root = tmp_path
+            p.ref_dir = ref_dir
+        return p
+
+    def test_skipped_when_no_ref(self, tmp_path):
+        """check_phase_2(has_ref=False) → skipped."""
+        ref_dir = tmp_path / "tmp" / "ref" / "comp"
+        ref_dir.mkdir(parents=True)
+        p = self._make_pipeline(tmp_path, ref_dir)
+        result = p.check_phase_2(has_ref=False)
+        assert result.skipped
+        assert result.skip_reason
+
+    def test_empty_ref_dir_sets_next_phase_2(self, tmp_path):
+        """has_ref=True but no artifacts → next_phase=2."""
+        ref_dir = tmp_path / "tmp" / "ref" / "comp"
+        ref_dir.mkdir(parents=True)
+        p = self._make_pipeline(tmp_path, ref_dir)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+
+    def _add_breakpoints(self, ref_dir):
+        """Add detected-breakpoints.json — missing from ref_dir_with_artifacts fixture."""
+        (ref_dir / "detected-breakpoints.json").write_text(
+            json.dumps({"breakpoints": [768, 1024, 1440]})
+        )
+
+    def test_all_extraction_artifacts_present(self, tmp_path, ref_dir_with_artifacts):
+        """All extraction artifacts present → no next_phase set to 2."""
+        self._add_breakpoints(ref_dir_with_artifacts)
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase != "2"
+
+    def test_missing_structure_json_sets_next(self, tmp_path, ref_dir_with_artifacts):
+        """Missing structure.json → next_phase=2 with dom-extraction hint."""
+        self._add_breakpoints(ref_dir_with_artifacts)
+        (ref_dir_with_artifacts / "structure.json").unlink()
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+        assert "dom-extraction" in p.next_step.lower() or "structure" in p.next_step.lower()
+
+    def test_missing_bundles_sets_next(self, tmp_path, ref_dir_with_artifacts):
+        """Missing bundles/ directory → next_phase=2 with bundle hint (first-incomplete wins)."""
+        import shutil
+
+        self._add_breakpoints(ref_dir_with_artifacts)
+        shutil.rmtree(ref_dir_with_artifacts / "bundles")
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+        assert "bundle" in p.next_step.lower()
+
+    def test_missing_transition_spec_sets_next(self, tmp_path, ref_dir_with_artifacts):
+        """Missing transition-spec.json → next_phase=2."""
+        self._add_breakpoints(ref_dir_with_artifacts)
+        (ref_dir_with_artifacts / "transition-spec.json").unlink()
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+        assert "transition-spec" in p.next_step.lower() or "bundle" in p.next_step.lower()
+
+    def test_missing_extracted_json_sets_next(self, tmp_path, ref_dir_with_artifacts):
+        """Missing extracted.json → next_phase=2 with assemble hint."""
+        self._add_breakpoints(ref_dir_with_artifacts)
+        (ref_dir_with_artifacts / "extracted.json").unlink()
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+        assert "assemble" in p.next_step.lower() or "extracted" in p.next_step.lower()
+
+    def test_missing_component_map_sets_next(self, tmp_path, ref_dir_with_artifacts):
+        """Missing component-map.json → next_phase=2 with section-audit hint."""
+        self._add_breakpoints(ref_dir_with_artifacts)
+        (ref_dir_with_artifacts / "component-map.json").unlink()
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+        assert "audit" in p.next_step.lower() or "component-map" in p.next_step.lower()
+
+    def test_stale_extracted_json_warns(self, tmp_path, ref_dir_with_artifacts, capsys):
+        """extracted.json older than its parent → staleness warning printed."""
+        import os
+
+        self._add_breakpoints(ref_dir_with_artifacts)
+        now = time.time()
+        os.utime(ref_dir_with_artifacts / "structure.json", (now, now))
+        os.utime(ref_dir_with_artifacts / "extracted.json", (now - 5, now - 5))
+
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        captured = capsys.readouterr()
+        assert "STALE" in captured.out
+
+    def test_few_js_chunks_warns(self, tmp_path, ref_dir_with_artifacts, capsys):
+        """Only 1-2 JS chunks → advisory warning printed."""
+        import shutil
+
+        self._add_breakpoints(ref_dir_with_artifacts)
+        shutil.rmtree(ref_dir_with_artifacts / "bundles")
+        bundles = ref_dir_with_artifacts / "bundles"
+        bundles.mkdir()
+        (bundles / "chunk-0.js").write_text("// single chunk")
+
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        captured = capsys.readouterr()
+        assert "1 JS chunk" in captured.out or "Only 1" in captured.out
+
+    def test_missing_responsive_sizing_sets_next(self, tmp_path, ref_dir_with_artifacts):
+        """Missing responsive/sizing-expressions.json → next_phase=2."""
+        self._add_breakpoints(ref_dir_with_artifacts)
+        (ref_dir_with_artifacts / "responsive" / "sizing-expressions.json").unlink()
+        p = self._make_pipeline(tmp_path, ref_dir_with_artifacts)
+        p.check_phase_2(has_ref=True)
+        assert p.next_phase == "2"
+        assert "sizing" in p.next_step.lower() or "responsive" in p.next_step.lower()
 
 
 class TestDagDepsCoverage:

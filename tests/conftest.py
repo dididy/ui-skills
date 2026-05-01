@@ -38,22 +38,22 @@ def ref_dir_with_artifacts(ref_dir: Path) -> Path:
     css_dir = ref_dir / "css"
     css_dir.mkdir()
     (css_dir / "variables.txt").write_text(":root { --color: #fff; }")
-    (ref_dir / "visible-images.json").write_text(json.dumps([]))
-    (ref_dir / "inline-svgs.json").write_text(json.dumps([]))
-    (ref_dir / "body-state.json").write_text(json.dumps({}))
-    (ref_dir / "design-bundles.json").write_text(json.dumps({}))
+    (ref_dir / "visible-images.json").write_text(json.dumps({"images": []}, indent=2))
+    (ref_dir / "inline-svgs.json").write_text(json.dumps({"svgs": []}, indent=2))
+    (ref_dir / "body-state.json").write_text(json.dumps({"state": "idle"}, indent=2))
+    (ref_dir / "design-bundles.json").write_text(json.dumps({"bundles": []}, indent=2))
     (ref_dir / "interactions-detected.json").write_text(
         json.dumps({"interactions": [], "hasPreloader": False})
     )
     (ref_dir / "scroll-engine.json").write_text(json.dumps({"engine": "native"}))
-    (ref_dir / "external-sdks.json").write_text(json.dumps({}))
+    (ref_dir / "external-sdks.json").write_text(json.dumps({"sdks": []}, indent=2))
 
     bundles = ref_dir / "bundles"
     bundles.mkdir()
     for i in range(3):
         (bundles / f"chunk-{i}.js").write_text("// chunk")
 
-    (ref_dir / "bundle-map.json").write_text(json.dumps({}))
+    (ref_dir / "bundle-map.json").write_text(json.dumps({"chunks": []}, indent=2))
     (ref_dir / "transition-spec.json").write_text(json.dumps({"transitions": []}))
 
     verify = ref_dir / "verify"
@@ -61,19 +61,23 @@ def ref_dir_with_artifacts(ref_dir: Path) -> Path:
     for i in range(5):
         (verify / f"frame_{i:02d}.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
 
-    (ref_dir / "animation-init-styles.json").write_text(json.dumps({}))
+    (ref_dir / "animation-init-styles.json").write_text(
+        json.dumps({"elements": []}, indent=2)
+    )
     (ref_dir / "section-map.json").write_text(
         json.dumps({"sections": [], "totalCount": 0, "hasFooter": False})
     )
     responsive = ref_dir / "responsive"
     responsive.mkdir()
-    (responsive / "sizing-expressions.json").write_text(json.dumps({}))
-    (ref_dir / "svg-text-elements.json").write_text(json.dumps([]))
-    (ref_dir / "hover-css-rules.json").write_text(json.dumps([]))
+    (responsive / "sizing-expressions.json").write_text(
+        json.dumps({"expressions": []}, indent=2)
+    )
+    (ref_dir / "svg-text-elements.json").write_text(json.dumps({"elements": []}, indent=2))
+    (ref_dir / "hover-css-rules.json").write_text(json.dumps({"rules": []}, indent=2))
 
-    (ref_dir / "element-roles.json").write_text(json.dumps({}))
-    (ref_dir / "element-groups.json").write_text(json.dumps({}))
-    (ref_dir / "layout-decisions.json").write_text(json.dumps({}))
+    (ref_dir / "element-roles.json").write_text(json.dumps({"roles": []}, indent=2))
+    (ref_dir / "element-groups.json").write_text(json.dumps({"groups": []}, indent=2))
+    (ref_dir / "layout-decisions.json").write_text(json.dumps({"decisions": []}, indent=2))
     (ref_dir / "component-map.json").write_text(json.dumps({"sections": [], "sectionCount": 0}))
 
     # Set parent artifacts to a fixed past time

@@ -17,6 +17,12 @@ jobs:
       - name: Run tests
         run: uv run python -m pytest tests/ -q
 
+      - name: Type check
+        run: uv run python -m mypy ui_clone/
+
+      - name: Lint check
+        run: uv run python -m ruff check ui_clone/ tests/
+
       - name: Shell syntax check
         run: |
           for f in scripts/*.sh hooks/*.sh skills/visual-debug/scripts/*.sh; do

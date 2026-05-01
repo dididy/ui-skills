@@ -31,6 +31,14 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 ## Requirements
 
 ```bash
+# one-liner (macOS)
+brew install imagemagick dssim ffmpeg && npm i -g agent-browser && curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+<details>
+<summary>Individual install commands + verification</summary>
+
+```bash
 npm i -g agent-browser       # browser automation for AI agents (github.com/vercel-labs/agent-browser)
 brew install imagemagick     # AE pixel comparison (apt: imagemagick, choco: imagemagick)
 brew install dssim           # structural visual similarity (cargo install dssim)
@@ -45,6 +53,8 @@ ffmpeg -version
 uv --version
 python3 --version            # 3.11+ required (macOS default is sufficient)
 ```
+
+</details>
 
 `uv` auto-creates a virtualenv and installs `scikit-image` + `Pillow` on first run — no manual `pip install` needed.
 

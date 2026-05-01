@@ -570,6 +570,36 @@ def test_gate_section_compare_accessible_via_run(tmp_path: Path):
     assert exit_code == 1
 
 
+def test_section_count_mismatch_warns(tmp_path: Path):
+    """section-map totalCount=3 vs component-map sectionCount=0 must produce a warn."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "section-map.json").write_text(
+        json.dumps({"sections": [{"tag": "s1"}, {"tag": "s2"}, {"tag": "s3"}], "totalCount": 3})
+    )
+    (ref / "component-map.json").write_text(json.dumps({"sections": [], "sectionCount": 0}))
+    gate = Gate(ref)
+    results = gate._check_section_counts(
+        json.loads((ref / "section-map.json").read_text()),
+        json.loads((ref / "component-map.json").read_text()),
+    )
+    warns = [r for r in results if r.status == "warn" and "section count" in r.label.lower()]
+    assert warns, "section-map=3 vs component-map=0 must produce a warn"
+
+
+def test_section_count_both_zero_passes(tmp_path: Path):
+    """section-map totalCount=0 vs component-map sectionCount=0 must pass (not silently skip)."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    gate = Gate(ref)
+    results = gate._check_section_counts(
+        {"sections": [], "totalCount": 0},
+        {"sections": [], "sectionCount": 0},
+    )
+    passes = [r for r in results if r.status == "pass" and "section count" in r.label.lower()]
+    assert passes, "Both counts=0 must produce a pass result"
+
+
 def test_valid_gates_matches_dispatch():
     """VALID_GATES must exactly match the gates handled by _dispatch."""
     from pathlib import Path

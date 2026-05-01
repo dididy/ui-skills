@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from ui_clone.metrics import multiscale_ssim, severity
+from ui_clone.metrics import defect_severity, multiscale_ssim, severity
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -174,3 +174,56 @@ def test_multiscale_ssim_degenerate_1x1(tmp_path):
     impl = _make_image(arr.copy(), tmp_path)
     score = multiscale_ssim(ref, impl)
     assert score == 0.0
+
+
+# ── defect_severity ──
+
+
+def test_defect_severity_critical_missing_section():
+    """Section with height ratio < 0.3 → critical."""
+    assert defect_severity(height_ratio=0.1) == "critical"
+
+
+def test_defect_severity_critical_svg_text_missing():
+    """SVG_TEXT_MISSING in structure issues → critical."""
+    assert defect_severity(structure_issues=["SVG_TEXT_MISSING: ref has SVG text"]) == "critical"
+
+
+def test_defect_severity_critical_high_ae():
+    """AE > threshold * 10 → critical."""
+    assert defect_severity(ae=25000, threshold=2000) == "critical"
+
+
+def test_defect_severity_critical_no_children():
+    """Ref has children, impl has 0 → critical."""
+    assert defect_severity(child_count_ref=5, child_count_impl=0) == "critical"
+
+
+def test_defect_severity_major_ae_over_threshold():
+    """AE > threshold but < threshold * 10 → major."""
+    assert defect_severity(ae=5000, threshold=2000) == "major"
+
+
+def test_defect_severity_major_height_mismatch():
+    """Height ratio 0.5 (outside 0.7-1.3) → major."""
+    assert defect_severity(height_ratio=0.5) == "major"
+
+
+def test_defect_severity_major_display_mismatch():
+    """DISPLAY_MISMATCH → major."""
+    assert defect_severity(structure_issues=["DISPLAY_MISMATCH: ref=grid, impl=flex"]) == "major"
+
+
+def test_defect_severity_minor_small_ae():
+    """AE between 500 and threshold → minor."""
+    assert defect_severity(ae=800, threshold=2000) == "minor"
+
+
+def test_defect_severity_ok_low_ae():
+    """AE ≤ 500 → ok."""
+    assert defect_severity(ae=200) == "ok"
+
+
+def test_defect_severity_ok_no_issues():
+    """No issues at all → ok."""
+    assert defect_severity() == "ok"

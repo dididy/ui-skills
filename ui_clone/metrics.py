@@ -158,6 +158,58 @@ def _severity_for_single(diff: float, threshold: float) -> str:
 _SEVERITY_RANK = {"ok": 0, "warn": 1, "critical": 2}
 
 
+# ---------------------------------------------------------------------------
+# defect_severity — section-level defect classification
+# ---------------------------------------------------------------------------
+
+
+def defect_severity(
+    *,
+    ae: int | None = None,
+    threshold: int = 2000,
+    height_ratio: float | None = None,
+    child_count_ref: int = 0,
+    child_count_impl: int = 0,
+    structure_issues: list[str] | None = None,
+) -> str:
+    """Classify a section-level defect as critical, major, or minor.
+
+    Used by section-compare.sh (via Python inline) to prioritize fixes.
+
+    Returns:
+        "critical" — section missing, layout broken, or structure fundamentally wrong
+        "major"    — visible differences (color, font, spacing) but layout intact
+        "minor"    — sub-pixel differences, anti-aliasing, dynamic content variance
+    """
+    issues = structure_issues or []
+
+    # Critical: section missing or structurally broken
+    if height_ratio is not None and (height_ratio < 0.3 or height_ratio > 3.0):
+        return "critical"
+    if any("SVG_TEXT_MISSING" in i or "LAYOUT_MISMATCH" in i for i in issues):
+        return "critical"
+    if child_count_ref > 0 and child_count_impl == 0:
+        return "critical"
+    if ae is not None and ae > threshold * 10:
+        return "critical"
+
+    # Major: clearly visible differences
+    if ae is not None and ae > threshold:
+        return "major"
+    if height_ratio is not None and (height_ratio < 0.7 or height_ratio > 1.3):
+        return "major"
+    if any("HEIGHT_MISMATCH" in i or "CHILD_COUNT_MISMATCH" in i for i in issues):
+        return "major"
+    if any("DISPLAY_MISMATCH" in i for i in issues):
+        return "major"
+
+    # Minor: small differences
+    if ae is not None and ae > 500:
+        return "minor"
+
+    return "ok"
+
+
 def severity(prop: str, ref_val: str, impl_val: str, viewport: int = 1440) -> str:
     """
     Return "ok", "warn", or "critical" based on viewport-relative CSS error.

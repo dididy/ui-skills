@@ -79,7 +79,7 @@ def main() -> None:
     if age >= _get_stale_seconds():
         age_days = int(age // 86400)
         print(
-            f"ui-re-gate: Stale WIP marker ({age_days}d) at {marker} — removing.", file=sys.stderr
+            f"ui-clone-skills: Stale WIP marker ({age_days}d) at {marker} — removing.", file=sys.stderr
         )
         try:
             marker.unlink()
@@ -92,7 +92,7 @@ def main() -> None:
 
     if len(active_dirs) > 1:
         print(
-            f"ui-re-gate: WARNING: {len(active_dirs)} concurrent WIP markers. Enforcing: {ref_dir}",
+            f"ui-clone-skills: WARNING: {len(active_dirs)} concurrent WIP markers. Enforcing: {ref_dir}",
             file=sys.stderr,
         )
 

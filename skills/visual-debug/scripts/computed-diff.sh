@@ -165,20 +165,48 @@ except Exception as e:
 # Properties where OS-level font scaling causes spurious diffs
 FONT_SIZE_PROPS = {"fontSize", "lineHeight", "width", "height", "letterSpacing"}
 
+import importlib, os
+
+# Try to import severity from ui_clone.metrics (available when plugin is installed)
+_severity_fn = None
+_plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+if _plugin_root:
+    sys.path.insert(0, _plugin_root)
+try:
+    from ui_clone.metrics import severity as _severity_fn
+except ImportError:
+    pass
+
+def _sev(prop, ov, iv):
+    if _severity_fn is None:
+        return ""
+    try:
+        return _severity_fn(prop, ov, iv)
+    except Exception:
+        return ""
+
+SEV_RANK = {"ok": 0, "minor": 0, "warn": 1, "critical": 2}
+SEV_LABEL = {"ok": "", "warn": "🟡 minor", "critical": "🔴 critical"}
+
 mismatches = 0
-print("| Selector | Property | Original | Implementation |")
-print("|----------|----------|----------|----------------|")
+critical_count = 0
+warn_count = 0
+per_selector_worst = {}
+print("| Selector | Property | Original | Implementation | Severity |")
+print("|----------|----------|----------|----------------|----------|")
 
 for sel in orig:
     if orig[sel] is None:
         if impl.get(sel) is None:
-            continue  # Both missing — not a mismatch
-        print(f"| `{sel}` | — | NOT FOUND on orig | found on impl |")
+            continue
+        print(f"| `{sel}` | — | NOT FOUND on orig | found on impl | |")
         mismatches += 1
         continue
     if impl.get(sel) is None:
-        print(f"| `{sel}` | — | found on orig | NOT FOUND on impl |")
+        print(f"| `{sel}` | — | found on orig | NOT FOUND on impl | 🔴 critical |")
         mismatches += 1
+        critical_count += 1
+        per_selector_worst[sel] = "critical"
         continue
 
     for prop in orig[sel]:
@@ -207,10 +235,28 @@ for sel in orig:
         if ignore_font_size and prop in FONT_SIZE_PROPS:
             continue
 
-        print(f"| `{sel}` | {prop} | `{ov[:60]}` | `{iv[:60]}` |")
+        sev = _sev(prop, ov, iv)
+        sev_label = SEV_LABEL.get(sev, "")
+        print(f"| `{sel}` | {prop} | `{ov[:60]}` | `{iv[:60]}` | {sev_label} |")
         mismatches += 1
+        if sev == "critical":
+            critical_count += 1
+        elif sev == "warn":
+            warn_count += 1
 
+        # Track worst severity per selector
+        prev = per_selector_worst.get(sel, "ok")
+        if SEV_RANK.get(sev, 0) > SEV_RANK.get(prev, 0):
+            per_selector_worst[sel] = sev
+
+# Summary
 print(f"\n**{mismatches} mismatches found**")
+if _severity_fn and mismatches > 0:
+    print(f"  Severity: {critical_count} critical, {warn_count} warn, {mismatches - critical_count - warn_count} ok")
+    if per_selector_worst:
+        crit_sels = [s for s, v in per_selector_worst.items() if v == "critical"]
+        if crit_sels:
+            print(f"  ⛔ Fix these first: {', '.join(crit_sels[:5])}")
 if mismatches > 0:
     print("")
     print("Fix priority:")

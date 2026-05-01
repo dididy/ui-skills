@@ -148,6 +148,8 @@ def check_staleness(ref_dir: Path) -> list[StalenessIssue]:
     issues: list[StalenessIssue] = []
     # Track which artifacts are directly stale (parent mtime > child mtime)
     directly_stale: set[str] = set()
+    # Map stale artifact → first parent that caused it (dedup: one issue per artifact)
+    stale_first_parent: dict[str, str] = {}
 
     # Pass 1: detect direct staleness from mtime comparisons
     for parent_name, dependents in DEPS.items():
@@ -164,21 +166,24 @@ def check_staleness(ref_dir: Path) -> list[StalenessIssue]:
 
             if parent_mtime > child_mtime:
                 directly_stale.add(child_name)
-                sev: Literal["block", "warn"] = (
-                    "block" if child_name in _BLOCK_ARTIFACTS else "warn"
-                )
-                fix = _FIX_MAP.get(
-                    child_name,
-                    f"Re-run the step that produces {child_name}",
-                )
-                issues.append(
-                    StalenessIssue(
-                        stale=child_name,
-                        because_of=parent_name,
-                        severity=sev,
-                        fix=fix,
+                # Only report the first parent that caused staleness (dedup)
+                if child_name not in stale_first_parent:
+                    stale_first_parent[child_name] = parent_name
+                    sev: Literal["block", "warn"] = (
+                        "block" if child_name in _BLOCK_ARTIFACTS else "warn"
                     )
-                )
+                    fix = _FIX_MAP.get(
+                        child_name,
+                        f"Re-run the step that produces {child_name}",
+                    )
+                    issues.append(
+                        StalenessIssue(
+                            stale=child_name,
+                            because_of=parent_name,
+                            severity=sev,
+                            fix=fix,
+                        )
+                    )
 
     # Pass 2: propagate transitively — if a parent is stale, its children
     # are also stale even if their mtime is newer (the parent needs rebuild first).

@@ -1,6 +1,6 @@
 ---
 name: visual-debug
-description: Compare original site vs implementation with automated AE/SSIM diff — zero LLM vision tokens. Triggers on "it looks different", "doesn't match", "compare with original", "what's wrong". Only reads diff images when AE/SSIM reports a failure.
+description: Compare original site vs implementation with automated AE/SSIM diff — near-zero vision tokens. Triggers on "it looks different", "doesn't match", "compare with original", "what's wrong". Uses auto-diagnose to find mismatched elements from diff images without vision tokens. Falls back to reading diff images only when auto-diagnose finds nothing.
 metadata:
   filePattern:
     - "**/tmp/ref/**/static/**"
@@ -14,6 +14,7 @@ metadata:
     - "batch-compare"
     - "batch-scroll"
     - "computed-diff"
+    - "auto-diagnose"
   priority: 90
 ---
 
@@ -28,7 +29,7 @@ Automated visual comparison — original vs implementation. **Zero vision tokens
 - During ui-reverse-engineering Phase C
 - **Instead of** `Read`-ing screenshots for comparison
 
-**HARD RULE:** Never `Read` ref/impl images for comparison. Only read DIFF images for FAIL positions. Exception: Phase E reads ref+impl pairs.
+**HARD RULE:** Never `Read` ref/impl images for comparison. For FAIL positions, use `auto-diagnose.sh` first (zero vision tokens). Only `Read` diff images as fallback if auto-diagnose finds nothing. Exception: Phase E reads ref+impl pairs.
 
 ## Token rule
 
@@ -61,6 +62,7 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 | `dssim-compare.sh <dir> [threshold]` | Structural similarity (catches what AE misses) |
 | `layout-diff.sh <session> <orig> <impl>` | Section bounding box comparison |
 | `section-compare.sh <orig> <impl> <session> <dir>` | **Section-level comparison** — crops each section, AE + structure diff. Catches SVG-as-text, layout mismatches. **`<dir>` is required** — pass `"$(pwd)/tmp/ref/<component>"` |
+| `auto-diagnose.sh <session> <orig> <impl> <diff.png>` | **Auto-find mismatched elements** from AE diff image → elementFromPoint → computed-diff with severity |
 | `layout-health-check.sh <session> <orig> <impl> <dir>` | Section height/total height structural check before pixel diff |
 | `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
 
@@ -91,12 +93,14 @@ See `common-selectors.md` for ready-to-use selector sets by domain.
 
 ### Full-page comparison (broad sweep)
 ```
-0. computed-diff  computed-diff.sh (CSS reset canaries + page structure)  ← NEW FIRST STEP
+0. computed-diff  computed-diff.sh (CSS reset canaries + page structure)
 1. Capture        batch-scroll.sh <orig> <impl> <session>
 2. AE diff        batch-compare.sh <dir>
 3. DSSIM          dssim-compare.sh <dir>
-4. Diagnose       Read ONLY diff images for FAIL positions
-5. Fix            Targeted code change
+4. Diagnose       auto-diagnose.sh <session> <orig> <impl> <diff.png>
+                  → auto-finds mismatched elements, runs computed-diff with severity
+                  → zero vision tokens. Only Read diff image if auto-diagnose finds nothing.
+5. Fix            Targeted code change (critical severity first)
 6. Re-compare     Repeat 0–3
 7. LLM review     Read ref+impl pairs for ALL positions (Phase E)
 8. Gate           All axes PASS → DONE
@@ -104,16 +108,18 @@ See `common-selectors.md` for ready-to-use selector sets by domain.
 
 ### Section-level comparison (precise — preferred for post-gen verification)
 ```
-0. computed-diff  computed-diff.sh (CSS reset canaries + section selectors)  ← NEW FIRST STEP
+0. computed-diff  computed-diff.sh (CSS reset canaries + section selectors)
 1. Section compare  section-compare.sh <orig> <impl> <session> "$(pwd)/tmp/ref/<component>"
-   → Per-section AE + structure diff (SVG-as-text, layout type, height)
+   → Per-section AE + severity (critical/major/minor) + structure diff
    ⚠️  The 4th argument (ref dir path) is MANDATORY — the Stop gate reads result.txt from that
        exact path. Omitting it writes result.txt to the wrong location and the gate never clears.
 2. Transition compare  transition-compare.sh <orig> <impl> <session>
    → Per-element idle/hover style + timing diff
-3. Fix          Targeted code change per failing section/element
-4. Re-compare   Repeat 0–2
-5. Gate         All sections PASS + all transitions PASS → DONE
+3. Diagnose     For FAIL sections: auto-diagnose.sh <session> <orig> <impl> <diff.png>
+                → auto-finds mismatched elements within that section (zero vision tokens)
+4. Fix          Targeted code change (critical severity first, then major, skip minor until Phase E)
+5. Re-compare   Repeat 0–2
+6. Gate         All sections PASS + all transitions PASS → DONE
 ```
 
 **Use section-level for ui-reverse-engineering Step 8b/8c.** Use full-page for standalone `/visual-debug` invocations.

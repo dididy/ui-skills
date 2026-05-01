@@ -1,6 +1,6 @@
 {
   "name": "ui-clone-skills",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Point at any live website URL. Get production-ready React + Tailwind components that match the original — styles, animations, and responsive behavior. Downloads the actual CSS, greps JS bundles for animation parameters, and extracts Webflow IX2 timelines. Automated visual diff verification (AE/SSIM, no screenshot tokens). Anti-skip gates block phase transitions until extraction is complete.",
   "license": "Apache-2.0",
   "author": {

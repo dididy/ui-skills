@@ -256,3 +256,114 @@ def test_hook_always_exits_0(tmp_path):
     stdin = json.dumps({"tool_input": {"command": "agent-browser --session my-sess eval '...'"}})
     result = run_hook(stdin, env={"CLAUDE_PROJECT_DIR": str(tmp_path)})
     assert result.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Hook main() — output formatting with mocked errors
+# ---------------------------------------------------------------------------
+
+
+class TestDevtoolsMainOutput:
+    """Tests for main() output formatting when errors are present."""
+
+    def test_errors_printed_with_fix_hints(self, monkeypatch):
+        """When errors exist, main() prints formatted error lines with fix hints."""
+        import importlib
+        import io
+        from unittest.mock import patch
+
+        import ui_clone.hooks.devtools_errors as mod
+
+        importlib.reload(mod)
+
+        # Mock _collect_errors to return errors without needing agent-browser
+        fake_errors = [
+            {"type": "uncaught", "message": "ReferenceError: x is not defined", "source": "app.js", "line": 42},
+            {"type": "console.error", "message": "Failed to fetch https://api.example.com"},
+        ]
+        monkeypatch.setattr(mod, "_collect_errors", lambda session: fake_errors)
+
+        # Set up the environment so main() reaches _collect_errors
+        ref_dir = None
+        def fake_find_project_root():
+            return ref_dir.parent.parent.parent
+
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            from pathlib import Path
+            base = Path(td)
+            sr = base / "tmp" / "ref"
+            sr.mkdir(parents=True)
+            rd = sr / "comp"
+            rd.mkdir()
+            (rd / ".ui-re-active").touch()
+            (rd / "extracted.json").write_text('{"sections": []}')
+            ref_dir = rd
+
+            monkeypatch.setattr(mod, "_find_project_root", fake_find_project_root)
+
+            captured = io.StringIO()
+            stdin_data = json.dumps({"tool_input": {"command": "agent-browser --session test-sess eval '1'"}})
+
+            try:
+                with patch("sys.stdin", io.StringIO(stdin_data)):
+                    with patch("sys.stdout", captured):
+                        mod.main()
+            except SystemExit:
+                pass
+
+        output = captured.getvalue()
+        # Should contain error count
+        assert "2 console error" in output
+        # Should contain the error messages
+        assert "is not defined" in output
+        assert "Failed to fetch" in output
+        # Should contain fix hints
+        assert "→" in output  # fix hint arrow
+
+    def test_more_than_10_errors_shows_truncation_notice(self, monkeypatch):
+        """When >10 errors, prints truncation notice."""
+        import importlib
+        import io
+        from unittest.mock import patch
+
+        import ui_clone.hooks.devtools_errors as mod
+
+        importlib.reload(mod)
+
+        fake_errors = [
+            {"type": "uncaught", "message": f"Error #{i}"} for i in range(15)
+        ]
+        monkeypatch.setattr(mod, "_collect_errors", lambda session: fake_errors)
+
+        import tempfile
+        ref_dir = None
+        def fake_find_project_root():
+            return ref_dir.parent.parent.parent
+
+        with tempfile.TemporaryDirectory() as td:
+            from pathlib import Path
+            base = Path(td)
+            sr = base / "tmp" / "ref"
+            sr.mkdir(parents=True)
+            rd = sr / "comp"
+            rd.mkdir()
+            (rd / ".ui-re-active").touch()
+            (rd / "extracted.json").write_text('{"sections": []}')
+            ref_dir = rd
+
+            monkeypatch.setattr(mod, "_find_project_root", fake_find_project_root)
+
+            captured = io.StringIO()
+            stdin_data = json.dumps({"tool_input": {"command": "agent-browser --session test-sess eval '1'"}})
+
+            try:
+                with patch("sys.stdin", io.StringIO(stdin_data)):
+                    with patch("sys.stdout", captured):
+                        mod.main()
+            except SystemExit:
+                pass
+
+        output = captured.getvalue()
+        assert "15 console error" in output
+        assert "5 more" in output  # "and 5 more errors"

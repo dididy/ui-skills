@@ -1,11 +1,11 @@
 [project]
 name = "ui-clone-skills"
-version = "0.4.0"
+version = "0.4.1"
 requires-python = ">=3.11"
 dependencies = [
     "scikit-image==0.26.0",
     "Pillow==12.2.0",
-    "numpy>=1.26.0",
+    "numpy==2.4.4",
 ]
 
 [dependency-groups]

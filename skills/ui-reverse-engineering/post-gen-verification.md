@@ -35,6 +35,120 @@ Read the diff image and determine whether pixel differences are in **image regio
 
 Run BEFORE visual verification. Catches layout and behavior errors that screenshots miss.
 
+## Font verification (MANDATORY — run before any visual comparison)
+
+Font mismatch is the #1 repeated failure. Run this check immediately after generation, before any screenshot comparison:
+
+```bash
+# On IMPL — check if custom fonts are actually rendering (not falling back to system)
+agent-browser --session <impl> eval "(() => {
+  const body = getComputedStyle(document.body);
+  const bodyFont = body.fontFamily;
+  const results = [];
+
+  // Check key text elements
+  ['h1','h2','h3','p','a','button','nav'].forEach(tag => {
+    const el = document.querySelector(tag);
+    if (!el || !el.offsetHeight) return;
+    const computed = getComputedStyle(el).fontFamily;
+    const usingBodyFont = computed === bodyFont;
+    results.push({ tag, font: computed.split(',')[0].trim(), fallback: usingBodyFont });
+  });
+
+  // Check document.fonts load status
+  const fontStatus = [];
+  document.fonts.forEach(f => {
+    fontStatus.push({ family: f.family, status: f.status });
+  });
+  const loaded = fontStatus.filter(f => f.status === 'loaded').length;
+  const total = fontStatus.length;
+
+  return JSON.stringify({ bodyFont: bodyFont.split(',')[0], elements: results, fontsLoaded: loaded, fontsTotal: total });
+})()"
+```
+
+**Diagnosis table:**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| All elements show same `bodyFont` | Custom font classes not applied | Check Tailwind class: `font-[var(--x)]` broken in v4 → use `@theme` + `font-<name>` |
+| `fontsLoaded: 0` | @font-face registered but no font file loaded | Check font file paths in `public/fonts/`, verify `@font-face src url()` is correct |
+| `fontsLoaded > 0` but wrong family on elements | Font loaded but CSS selector not reaching element | Body scoping: copy `font-family` to `[data-project]` selector, not just `body {}` |
+| Font loads on ref but not impl | CORS-blocked CDN font | Download font file, self-host in `public/fonts/`, update `@font-face` |
+| `@theme` font silently ignored | Embedded project: `@theme` only works in file with `@import "tailwindcss"` | Use plain CSS vars on `[data-project]` scope |
+
+⛔ **Gate:** If `fontsLoaded: 0` or all elements show body fallback font, fix before proceeding to visual comparison — every screenshot will be wrong otherwise.
+
+## Silent failure checks (MANDATORY — run after font verification)
+
+These are problems that produce no errors but cause every screenshot comparison to fail:
+
+### 1. Video backgrounds rendered as static images
+
+```bash
+# Check if ref has <video> but impl has <img> for the same section
+agent-browser --session <ref> eval "(() => {
+  return JSON.stringify([...document.querySelectorAll('video')].map(v => ({
+    src: v.currentSrc || v.src,
+    parent: v.parentElement?.className?.split(' ')[0] || v.parentElement?.tagName
+  })));
+})()"
+
+# Then verify impl has matching <video> tags, not <img>
+agent-browser --session <impl> eval "(() => {
+  const videos = document.querySelectorAll('video');
+  const imgs = document.querySelectorAll('img[src*=video], img[src*=mp4], img[src*=webm]');
+  return JSON.stringify({ videoCount: videos.length, suspiciousImgs: imgs.length });
+})()"
+```
+
+⛔ If ref has videos but impl has 0 → fix before visual comparison.
+
+### 2. CSS variables undefined
+
+```bash
+# Check for undefined CSS variables in impl
+agent-browser --session <impl> eval "(() => {
+  const root = getComputedStyle(document.documentElement);
+  const body = getComputedStyle(document.body);
+  const vars = [];
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) {
+        const matches = rule.cssText.match(/var\(--[^)]+\)/g) || [];
+        matches.forEach(m => {
+          const name = m.match(/var\((--[^,)]+)/)?.[1];
+          if (name) {
+            const val = root.getPropertyValue(name).trim() || body.getPropertyValue(name).trim();
+            if (!val) vars.push(name);
+          }
+        });
+      }
+    } catch(e) {}
+  }
+  return JSON.stringify([...new Set(vars)].slice(0, 20));
+})()"
+```
+
+⛔ Undefined variables cause wrong colors, sizes, positions with no error.
+
+### 3. JS bundle init failure (animations broken)
+
+```bash
+# Check if the site's JS bundle loaded and initialized
+agent-browser --session <impl> eval "(() => {
+  const checks = {
+    gsap: typeof gsap !== 'undefined',
+    lenis: typeof Lenis !== 'undefined' || !!document.querySelector('.lenis'),
+    scrollTrigger: typeof ScrollTrigger !== 'undefined',
+    animations: document.getAnimations().length
+  };
+  return JSON.stringify(checks);
+})()"
+```
+
+If ref has GSAP/Lenis but impl shows all false → the bundle script tag is missing from `layout.tsx`, or a renamed class broke `querySelector`. See `diagnosis.md` Root Cause F.
+
 ## Loop 0: Original A/B comparison at 60fps (MANDATORY for animated components)
 
 **The ONLY reliable way to verify animations.** Checking that values change in your impl proves nothing — you must compare AGAINST THE ORIGINAL at the same resolution. Without this, you WILL ship wrong easing, wrong axis, wrong direction, wrong timing.

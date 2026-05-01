@@ -45,6 +45,12 @@ def _plugin_root() -> Path:
 _cached_project_root: Path | None = None
 
 
+def _reset_project_root_cache() -> None:
+    """Clear the cached project root. Intended for test cleanup."""
+    global _cached_project_root
+    _cached_project_root = None
+
+
 def find_project_root() -> Path:
     """Discover project root.
 
@@ -133,6 +139,22 @@ def load_json_safe(path: Path) -> dict[str, Any] | None:
     return data
 
 
+def _log_gate_skip(ref_dir: Path, gate_name: str, reason: str) -> None:
+    """Append a gate skip event to ref_dir/.gate-skip-log for auditability.
+
+    Best-effort — never raises.
+    """
+    try:
+        from datetime import UTC, datetime
+
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        log_path = ref_dir / ".gate-skip-log"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{ts} gate={gate_name} reason={reason}\n")
+    except OSError:
+        pass
+
+
 def run_gate(ref_dir: Path, gate_name: str) -> dict[str, object]:
     """Run `uv run python -m ui_clone.gate <ref_dir> <gate_name> --json` as a subprocess.
 
@@ -142,6 +164,7 @@ def run_gate(ref_dir: Path, gate_name: str) -> dict[str, object]:
 
     Returns parsed JSON dict from gate output.
     Falls back to {"passed": True} if gate script not found (fail-open).
+    Gate skips are logged to ref_dir/.gate-skip-log for auditability.
     """
     uv = shutil.which("uv")
     if uv:
@@ -158,7 +181,10 @@ def run_gate(ref_dir: Path, gate_name: str) -> dict[str, object]:
             "--json",
         ]
     else:
-        print("ui-re-gate: WARNING: uv not found, falling back to sys.executable", file=sys.stderr)
+        print(
+            "ui-clone-skills: WARNING: uv not found, falling back to sys.executable",
+            file=sys.stderr,
+        )
         cmd = [sys.executable, "-m", "ui_clone.gate", str(ref_dir), gate_name, "--json"]
 
     try:
@@ -185,5 +211,7 @@ def run_gate(ref_dir: Path, gate_name: str) -> dict[str, object]:
                 ],
             }
     except (FileNotFoundError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
-        print(f"ui-re-gate: WARNING: gate not runnable: {exc}", file=sys.stderr)
+        reason = f"{type(exc).__name__}: {exc}"
+        print(f"ui-clone-skills: WARNING: gate not runnable: {exc}", file=sys.stderr)
+        _log_gate_skip(ref_dir, gate_name, reason)
     return {"passed": True, "fail_count": 0, "failures": []}

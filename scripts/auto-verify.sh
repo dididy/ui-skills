@@ -104,17 +104,17 @@ echo -e "\n${BOLD}Capturing implementation screenshots...${NC}"
 mkdir -p "$REF_DIR/static/impl" "$REF_DIR/static/diff"
 
 # Capture impl at same scroll positions as ref
-agent-browser open "$IMPL_URL" --session "${SESSION}-verify" 2>/dev/null || true
-agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-verify" 2>/dev/null || true
+timeout 30 agent-browser open "$IMPL_URL" --session "${SESSION}-verify" 2>/dev/null || true
+timeout 10 agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-verify" 2>/dev/null || true
 sleep 5
 
 for pct in 0 10 20 30 40 50 60 70 80 90 100; do
-  agent-browser eval "(()=>{const h=document.documentElement.scrollHeight-window.innerHeight;window.scrollTo(0,h*$pct/100);return $pct})()" --session "${SESSION}-verify" 2>/dev/null || true
+  timeout 15 agent-browser eval "(()=>{const h=document.documentElement.scrollHeight-window.innerHeight;window.scrollTo(0,h*$pct/100);return $pct})()" --session "${SESSION}-verify" 2>/dev/null || true
   sleep 1
-  agent-browser screenshot "$REF_DIR/static/impl/${pct}pct.png" --session "${SESSION}-verify" 2>/dev/null || true
+  timeout 15 agent-browser screenshot "$REF_DIR/static/impl/${pct}pct.png" --session "${SESSION}-verify" 2>/dev/null || true
 done
 
-agent-browser --session "${SESSION}-verify" close 2>/dev/null || true
+timeout 10 agent-browser --session "${SESSION}-verify" close 2>/dev/null || true
 
 # Run batch comparison
 if [ -f "$VISUAL_DEBUG_SCRIPTS/batch-compare.sh" ]; then

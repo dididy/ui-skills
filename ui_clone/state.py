@@ -50,7 +50,7 @@ class PipelineState:
         except json.JSONDecodeError:
             return cls(component=ref_dir.name)
         except OSError as exc:
-            print(f"ui-re-state: Cannot read {path}: {exc}", file=sys.stderr)
+            print(f"ui-clone-skills: Cannot read {path}: {exc}", file=sys.stderr)
             return cls(component=ref_dir.name)
 
     def mark_passed(self, gate: str, ref_dir: Path) -> None:

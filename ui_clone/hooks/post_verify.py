@@ -18,6 +18,8 @@ from ui_clone.hooks._common import find_ref_dir as _find_ref_dir
 
 # Word-boundary patterns for English terms to avoid false positives like
 # "let's commit to this" or "commitment" triggering the hook.
+_ALT_STATE_EXTS = {".png", ".webm", ".jpg", ".jpeg"}
+
 _WORD_BOUNDARY_PATTERNS = re.compile(
     r"\b(?:commit|done|complete|finish|merge|push|deploy)\b"
     r"|looks\s+good"
@@ -102,6 +104,7 @@ def main() -> None:
                     if d.is_dir()
                     for f in d.rglob("*")
                     if f.is_file()
+                    and f.suffix.lower() in _ALT_STATE_EXTS
                     and any(kw in f.name for kw in ("search", "active", "result", "click"))
                 )
                 if alt_captures == 0:

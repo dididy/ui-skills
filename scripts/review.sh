@@ -112,7 +112,7 @@ fi
 section "Gate-artifact timing"
 
 # external-sdks.json must be in gate_spec, not gate_bundle
-if python3 -c "
+if uv run python -c "
 import ast, sys
 with open('ui_clone/gate.py') as f:
     src = f.read()
