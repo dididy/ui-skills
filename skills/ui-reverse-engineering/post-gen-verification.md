@@ -1,5 +1,38 @@
 # Post-Generation Verification Loops
 
+## Pre-verification checklist
+
+### Check Next.js build errors first
+
+Verify server status before starting visual-debug:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/
+```
+
+If a screenshot shows a Next.js error overlay, check the error file path and inspect JSX tag balance:
+
+```bash
+grep -n "<section\|</section\|<div\|</div" <file-path> | head -30
+```
+
+**Root cause:** A global Next.js build error blocks ALL pages with the error overlay — the page under comparison may not be the one with the error.
+
+---
+
+### On AE FAIL — read the diff image first
+
+High AE does not necessarily mean layout mismatch. Do not auto-judge `AE > 500 → FAIL`.
+
+Read the diff image and determine whether pixel differences are in **image regions** or **layout regions**:
+
+- **Image region differences** = live thumbnails, streaming content, dynamic media. Unrelated to layout quality → **treat as PASS**
+- **Layout region differences** (header, navbar, section titles, margins) = actual layout mismatch → **fix required**
+
+**Live service note:** Streaming CDN URLs like `livecloud-thumb.akamaized.net` change every minute. Hardcoded URLs will always differ from current ones. This is NOT a layout issue.
+
+---
+
 Run BEFORE visual verification. Catches layout and behavior errors that screenshots miss.
 
 ## Loop 0: Original A/B comparison at 60fps (MANDATORY for animated components)

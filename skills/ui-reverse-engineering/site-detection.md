@@ -134,7 +134,7 @@ JS-driven sites set inline styles for two purposes:
 Use `extract-dynamic-styles.sh` to classify:
 
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find ~/.claude/skills -name 'validate-gate.sh' -exec dirname {} \; 2>/dev/null | head -1 | xargs dirname)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find ~/.claude/skills -path '*/ui_clone/pipeline.py' 2>/dev/null | head -1 | xargs -I{} dirname "$(dirname "{}")")}"
 bash "$PLUGIN_ROOT/scripts/extract-dynamic-styles.sh" <session> tmp/ref/<component>
 ```
 

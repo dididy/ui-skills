@@ -93,7 +93,77 @@ When implementation visually matches but **behaves wrong** — or matches poorly
 | `scroll-title` div takes up height when it should be 0 | `scroll-title` has `opacity: 0` by default (CSS) and is only visible on `.is-sticky`/`.is-fixed`. But it still has physical height from its text content, causing a gap above the first section. | Add CSS: `.navercorp .scroll-title:not(.is-sticky):not(.is-fixed) { height: 0 !important; overflow: hidden }` — collapsing its height until JS activates it. |
 | All section-compare AE failures treated as real bugs | Hero parallax images are captured at scroll position 0 with different timing → different image positions → high AE. Header background is dynamic (theme class applied after load). These show as FAIL but are not layout bugs. | Before debugging AE failures: read the diff image first. If diff shows only the hero area with random image positions, or header-only diff with consistent AE (≈4360), these are dynamic rendering artifacts — not bugs. Focus on section content below the hero. |
 
-| Swiper `spaceBetween` gap invisible without Swiper.js | Original CSS sets `card__list { gap: 0 }` and relies on Swiper JS injecting `margin-right: Npx` inline per slide. Clone copies class names (`swiper-wrapper`, `swiper-slide`) but not the library → cards render flush with `gap: 0`. | Cards are visually stuck together with no spacing; user reports "간격반영안됨" | Check original: `agent-browser eval "(function(){const r1=items[0].getBoundingClientRect(),r2=items[1].getBoundingClientRect();return r2.left-r1.right})()"`. Extract exact `spaceBetween` value. Add `gap: Npx !important` in globals.css to override the `gap: 0` rule that was designed for Swiper. |
+| Swiper `spaceBetween` gap invisible without Swiper.js | Original CSS sets `card__list { gap: 0 }` and relies on Swiper JS injecting `margin-right: Npx` inline per slide. Clone copies class names (`swiper-wrapper`, `swiper-slide`) but not the library → cards render flush with `gap: 0`. | Cards are visually stuck together with no spacing; user reports "gaps not applied" | Check original: `agent-browser eval "(function(){const r1=items[0].getBoundingClientRect(),r2=items[1].getBoundingClientRect();return r2.left-r1.right})()"`. Extract exact `spaceBetween` value. Add `gap: Npx !important` in globals.css to override the `gap: 0` rule that was designed for Swiper. |
 | Mobile CSS references `/img/mo/` images that don't exist in clone | navercorp.css has two sets of thumbnail rules: `@media desktop` uses `/img/pc/` and `@media mobile` uses `/img/mo/`. Clone only downloaded `/img/pc/` files → mobile viewport shows blank/black card backgrounds. | Card thumbnails render as solid black at mobile viewport width; `new Image(); img.onerror` confirms load failure | Run `ls public/img/mo/ \| grep <pattern>` to check which `/img/mo/` files are missing. For missing files, add `globals.css` overrides: `.selector .thumbnail { background-image: url(/img/pc/fallback.jpg) !important }`. Always audit `/img/mo/` against navercorp.css mobile rules after downloading assets. |
 
+| Tailwind v4 cascade layer overrides original CSS | Tailwind v4 wraps utilities in `@layer utilities`, which beats unlayered CSS (original site CSS) regardless of specificity. `.sticky` from Tailwind overrides `.page-headline .sticky { position: static }` from site CSS. | Original site CSS rules silently ignored — layout breaks, sticky elements in wrong position | Check if project uses Tailwind v4. If so, wrap conflicting original CSS rules in `@layer overrides { ... }` in globals.css. Or use `@layer base` to import original CSS so it participates in the cascade correctly. |
+
 **Usage:** When visual verification fails and the cause isn't obvious, scan this table before debugging. Most behavioral bugs match one of these categories.
+
+## Layout implementation pitfalls
+
+### float→flexbox replacement requires height measurement
+
+Replacing `float: left` + `overflow: hidden` (BFC trick) with Flexbox changes item heights.
+
+Check the ref's layout method before implementing:
+```javascript
+getComputedStyle(document.querySelector('.list-item')).float
+// "left" means float layout
+```
+
+After replacing with Flexbox, measure item height in pixels and verify against ref:
+```javascript
+document.querySelector('.list-item').getBoundingClientRect().height
+```
+
+---
+
+### JS carousel/tab container height must be fixed
+
+When replacing a ref's JS carousel (tab panels transformed horizontally) with React state, the container height must be fixed to match the ref.
+
+Measure the ref's tab container height:
+```javascript
+document.querySelector('.flicking-viewport').offsetHeight
+// e.g., 249 → apply h-[249px] to impl
+```
+
+---
+
+### Live service image URLs — onError handler required
+
+Streaming CDN URLs like `livecloud-thumb.akamaized.net` are broadcast-specific snapshots. They return 404 when the broadcast ends.
+
+```tsx
+// Always add
+<img
+  src={thumbnailUrl}
+  onError={(e) => { e.currentTarget.src = '/fallback-thumbnail.png'; }}
+  alt=""
+/>
+```
+
+When using Next.js Image component, use `placeholder="blur"` + `blurDataURL` for fallback handling.
+
+---
+
+### Next.js Image — remotePatterns registration required
+
+If external domain images render at 0x0, the cause is missing `remotePatterns` in `next.config.ts`.
+
+```typescript
+// next.config.ts
+images: {
+  remotePatterns: [
+    { protocol: 'https', hostname: 'livecloud-thumb.akamaized.net' },
+    { protocol: 'https', hostname: 'nng-phinf.pstatic.net' },
+    // additional CDN domains...
+  ],
+},
+```
+
+Verify original URLs before adding images:
+```bash
+curl -I "https://cdn.example.com/image.jpg" | grep -i "http\|content-type"
+```

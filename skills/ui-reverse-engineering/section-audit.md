@@ -303,7 +303,7 @@ Before proceeding to generation, verify:
 
 Run the gate:
 ```bash
-bash validate-gate.sh tmp/ref/<component> pre-generate
+uv run python -m ui_clone.gate tmp/ref/<component> pre-generate
 ```
 
 ## Stage 7: Post-implementation height verification

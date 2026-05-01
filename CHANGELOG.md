@@ -1,10 +1,122 @@
 # Changelog
 
+## [0.4.0] - 2026-05-01
+
+Major refactoring — package rename, pipeline Python migration, hook consolidation, code quality hardening, content accuracy fixes, CI, and developer tooling.
+
+### Breaking Changes
+
+- **Package renamed:** `ui_skills/` → `ui_clone/` (Python package)
+- **Plugin renamed:** `ui-skills` → `ui-clone-skills`
+- **Owner renamed:** `dididy` → `voidmatcha`
+- All `python -m ui_skills.*` commands → `python -m ui_clone.*`
+
+### Pipeline Migration (`ui_clone/pipeline.py`)
+
+`run-pipeline.sh` (388 lines of bash) replaced by `ui_clone/pipeline.py`. Reuses existing `Gate`, `PipelineState`, `find_project_root()`, and `check_staleness()`. The bash script is now a 6-line shim.
+
+```bash
+python -m ui_clone.pipeline <url> <component> <session> status [--json]
+```
+
+### Hook Consolidation
+
+4 individual bash shim files (`ui-re-pre-generate-check.sh`, `ui-re-post-verify-check.sh`, `ui-re-devtools-check.sh`, `ui-re-section-compare-gate.sh`) replaced by a single universal `hooks/shim.sh`.
+
+### Fixes
+
+- **Gate timing:** `external-sdks.json` moved from `gate_bundle` to `gate_spec` — file is produced at Step 5d, not 5c
+- **Step numbering:** `bundle-analysis.md` title corrected from "Step 6" to "Step 5c"
+- **interaction-detection.md:** "After this step" now correctly points to Step 5b → 5c (was Step 6)
+- **agent-browser npm name:** `@anthropic-ai/agent-browser` → `agent-browser` in `pipeline.py` and `ui-capture/SKILL.md`
+- **agent-browser GitHub:** `github.com/anthropics/agent-browser` → `github.com/vercel-labs/agent-browser` in README
+- **rtk GitHub:** added correct link `github.com/rtk-ai/rtk`
+- **README numbers:** sub-doc count 32 → 37, token count ~6.3K → ~5.9K
+- **transition-compare.sh:** FPS default changed from 10 to 60 to match verification.md requirement
+- **comparison-fix.md:** `style-audit.md` path corrected to `../ui-reverse-engineering/style-audit.md`
+- **visual-debug SKILL.md:** hardcoded local path replaced with `$SCRIPTS_DIR`
+- **shim.sh:** added `uv` missing error message (was silent fail)
+
+### Removed
+
+- `scripts/validate-gate.sh` — use `python -m ui_clone.gate` directly
+- 4 individual hook shim files
+- `waapi-scrubbing.md` — orphaned doc referencing 2 missing files. WAAPI measurement covered by `measurement.md`
+- `same.energy` site-specific modal dismiss code from `transition-compare.sh`
+
+### Added
+
+- **CLAUDE.md** — development guide with naming rules, step numbering, gate-artifact mapping, language rules, review checklist
+- **scripts/review.sh** — automated review (16 checks: tests, security, step numbering, stale refs, gate timing, README accuracy, language)
+- **`.github/workflows/ci.yml`** — CI with pytest, security gate, Socket supply chain scan, Snyk dependency scan
+- **visual-debug/evals/evals.json** — 15 evals for visual-debug skill (was missing)
+- SKILL.md metadata blocks (`filePattern`/`bashPattern`) for `ui-reverse-engineering` and `ui-capture`
+- SKILL.md Reference files table expanded: 14 previously undocumented sub-docs added
+- Token management section in README (built-in strategies + rtk integration)
+
+### Improved
+
+- Section name detection in 3 scripts expanded from 6 → 23 keywords
+- `extract-assets.sh`: video poster frame extraction generalized (was hero-only)
+- `claude-post-push.sh`: runs `review.sh --quiet` after successful push
+
+### Code Quality
+
+- **mypy:** `disallow_untyped_defs = true`, `warn_return_any = true` — all type errors resolved
+- **gate.py:** `check_file()` and `check_dir()` accept optional `fix` parameter for actionable error messages
+- **metrics.py:** Enhanced docstrings for `_ssim_at()` (SSIM algorithm explanation, parameter docs)
+- **dag.py:** Enhanced module docstring documenting edge direction convention
+
+### Tests
+
+- New `tests/test_pipeline.py` (14 tests) — dependency checks, JSON loading, app dir discovery, pipeline state handling, DAG coverage validation
+- Updated `tests/test_integration.py` — removed `validate-gate.sh` references, added pipeline CLI test
+
+### .gitignore
+
+Added: `__pycache__/`, `*.pyc`, `.venv/`, `*.egg-info/`, `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`
+
+---
+
 ## [0.3.1] - 2026-04-30
 
-Full-audit hardening — browser session correctness, validation gate reliability, lazy-content fingerprinting, skill invocation UX, hook system fixes, Webflow IX2 extraction, transition coverage audit, and incremental pipeline improvements from active clone sessions (Naver, cake.day).
+Full-audit hardening — browser session correctness, validation gate reliability, lazy-content fingerprinting, skill invocation UX, hook system fixes, Webflow IX2 extraction, transition coverage audit, incremental pipeline improvements from active clone sessions (Naver, cake.day), and Python migration of the gate/hook system.
+
+### Python Migration (`ui_skills/` package)
+
+Replaced ~2,400 lines of bash (`validate-gate.sh`, three pipeline hooks) with a Python 3.11+ package managed by `uv`. All external interfaces (CLI args, exit codes, `hooks.json`) are unchanged — existing workflows require no updates.
+
+**Root causes fixed:**
+
+- **Silent staleness failure** — `stat -f %m` (macOS) and `stat -c %Y` (Linux) both fell back to `echo 0` on failure, completely disabling staleness detection. Replaced with `Path.stat().st_mtime` (Python stdlib, cross-platform, raises on error).
+- **Flat staleness detection** — `validate-gate.sh` only compared direct parent → child pairs. A change to `structure.json` did not invalidate `component-map.json` (two hops away). Now uses a dependency DAG with BFS + Kahn's topological sort: changing `structure.json` correctly marks `section-map.json` → `component-map.json` → `extracted.json` all stale.
+- **Hook bypass via Bash** — `PreToolUse` hook only blocked `Write`/`Edit` tool calls. Direct `Bash` writes bypassed the gate entirely. The new hook fires on `Write|Edit` and validates against the Python gate result.
+- **Single-scale SSIM false positives** — a 1px layout shift produced SSIM scores below threshold, triggering spurious failures. Replaced with 3-scale multiscale SSIM (1/4 → 1/2 → full resolution, weighted [0.5, 0.3, 0.2]).
+- **Hardcoded 50px threshold** — `diff > 50px → CRITICAL` regardless of viewport. Replaced with viewport-relative thresholds: `fontSize` 2% of 100px, `width` 5% of viewport, `margin`/`padding` 8% of 100px.
+- **Emoji-based hook parsing** — hooks parsed `✗`/`✅` from text output, breaking in non-UTF-8 environments. Replaced with `--json` flag outputting `{"passed": bool, "fail_count": int, "failures": [...]}`.
+
+**New files:**
+
+| File | Replaces |
+|------|----------|
+| `ui_skills/gate.py` | `scripts/validate-gate.sh` (594 lines) |
+| `ui_skills/dag.py` | inline mtime comparisons in `validate-gate.sh` |
+| `ui_skills/metrics.py` | single-SSIM calls in `compare-sections.sh` |
+| `ui_skills/hooks/pre_generate.py` | `hooks/ui-re-pre-generate-check.sh` |
+| `ui_skills/hooks/post_verify.py` | `hooks/ui-re-post-verify-check.sh` |
+| `ui_skills/hooks/section_gate.py` | `hooks/ui-re-section-compare-gate.sh` |
+
+Each replaced bash file is now a 2-line `exec uv run` shim. `uv` auto-creates a virtualenv and installs dependencies on first invocation — no manual setup required.
+
+**Test coverage:** 56 tests across `test_dag.py`, `test_gate.py`, `test_hooks.py`, `test_metrics.py`, `test_integration.py`.
 
 ### Fixed
+
+#### `transition-compare.sh` — bash syntax error (script completely broken)
+
+`HOVER_CAPTURE_SCRIPT` was a single-quoted shell variable containing Python code. Expanding it with `python3 -c "$HOVER_CAPTURE_SCRIPT ..."` inside a double-quoted argument caused bash to fail at parse time when the Python string literals (e.g. `'ref'`, `'ref-elements.json'`) were encountered — bash interprets the single-quotes as ending the double-quoted string context. Result: `syntax error near unexpected token '('` on every invocation; the script was completely non-functional.
+
+Fix: write the Python function to a `mktemp` tmpfile via `cat > "$_TC_PY" << 'PYEOF'` heredoc, pass session names + output dir as env vars (`_TC_SESSION_REF`, `_TC_SESSION_IMPL`, `_TC_DIR`), run `python3 "$_TC_PY"`. Secondary fix: merged the second `trap ... EXIT` (tmpfile cleanup) into the existing `cleanup_all` function so browser close is not overwritten.
 
 #### `agent-browser close` arg order — systemic bug (9 scripts)
 

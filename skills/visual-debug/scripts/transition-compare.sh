@@ -17,6 +17,11 @@ set -euo pipefail
 
 VIEW_W="${VIEW_W:-1440}"
 VIEW_H="${VIEW_H:-900}"
+NO_IMAGES="${NO_IMAGES:-0}"
+WAIT_REF="${WAIT_REF:-8000}"
+WAIT_IMPL="${WAIT_IMPL:-6000}"
+TRANSITION_WAIT="${TRANSITION_WAIT:-500}"   # ms to wait after hover before screenshot
+MAX_TRANSITIONS="${MAX_TRANSITIONS:-30}"    # max elements to compare
 
 ORIG_URL="${1:?Usage: transition-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 IMPL_URL="${2:?Usage: transition-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
@@ -31,11 +36,13 @@ fi
 SESSION_REF="${SESSION}-tc-ref"
 SESSION_IMPL="${SESSION}-tc-impl"
 
-cleanup_browsers() {
+_TC_PY=""  # set later; declare here so cleanup_all can reference it
+cleanup_all() {
   agent-browser --session "$SESSION_REF" close 2>/dev/null || true
   agent-browser --session "$SESSION_IMPL" close 2>/dev/null || true
+  [ -n "$_TC_PY" ] && rm -f "$_TC_PY"
 }
-trap cleanup_browsers EXIT
+trap cleanup_all EXIT
 
 mkdir -p "$DIR/transitions/ref" "$DIR/transitions/impl"
 
@@ -52,8 +59,8 @@ agent-browser --session "$SESSION_IMPL" open "$IMPL_URL" 2>&1 | head -1
 agent-browser --session "$SESSION_REF" set viewport "$VIEW_W" "$VIEW_H" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" set viewport "$VIEW_W" "$VIEW_H" > /dev/null 2>&1
 
-agent-browser --session "$SESSION_REF" wait 8000 > /dev/null 2>&1
-agent-browser --session "$SESSION_IMPL" wait 6000 > /dev/null 2>&1
+agent-browser --session "$SESSION_REF" wait "$WAIT_REF" > /dev/null 2>&1
+agent-browser --session "$SESSION_IMPL" wait "$WAIT_IMPL" > /dev/null 2>&1
 
 # Remove overlays
 DISMISS='(() => {
@@ -67,6 +74,22 @@ DISMISS='(() => {
 })()'
 agent-browser --session "$SESSION_REF" eval "$DISMISS" 2>&1 > /dev/null
 agent-browser --session "$SESSION_IMPL" eval "$DISMISS" 2>&1 > /dev/null
+
+# Hide images to reduce AE noise from dynamic thumbnails
+HIDE_IMAGES_JS='(() => {
+  const style = document.createElement("style");
+  style.id = "__no_images__";
+  style.textContent = "img, picture, video, iframe { visibility: hidden !important; }";
+  document.head.appendChild(style);
+  document.querySelectorAll("*").forEach(el => {
+    if (el.style && el.style.backgroundImage) el.style.backgroundImage = "none";
+  });
+})()'
+if [ "$NO_IMAGES" = "1" ]; then
+  echo "▸ Hiding images (NO_IMAGES=1)..."
+  agent-browser --session "$SESSION_REF" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+  agent-browser --session "$SESSION_IMPL" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+fi
 
 # ── Step 1: Find elements with transitions on the original ──
 echo "▸ Detecting transition elements..."
@@ -141,7 +164,7 @@ DETECT_TRANSITIONS='(() => {
     });
   });
 
-  return results.slice(0, 30);
+  return results.slice(0, ${MAX_TRANSITIONS});
 })()'
 
 agent-browser --session "$SESSION_REF" eval "$DETECT_TRANSITIONS" > "$DIR/transitions/ref-elements.json" 2>&1
@@ -170,9 +193,18 @@ fi
 # ── Step 2: For each ref transition element, capture idle + hover states ──
 echo "▸ Capturing idle + hover states..."
 
-# Build the hover capture script
-HOVER_CAPTURE_SCRIPT='
-import json, subprocess, sys, time
+# Write hover capture script to a tmpfile — avoids bash quoting issues when
+# embedding Python code with single-quotes inside a double-quoted -c argument.
+_TC_PY=$(mktemp /tmp/tc-hover-XXXXXX.py)
+
+cat > "$_TC_PY" << 'PYEOF'
+import json, subprocess, sys, time, os
+
+SESSION_REF     = os.environ["_TC_SESSION_REF"]
+SESSION_IMPL    = os.environ["_TC_SESSION_IMPL"]
+DIR             = os.environ["_TC_DIR"]
+TRANSITION_WAIT = float(os.environ.get("TRANSITION_WAIT", "500")) / 1000  # ms → seconds
+SCROLL_WAIT     = float(os.environ.get("_TC_SCROLL_WAIT", "300")) / 1000
 
 def capture_hover_state(session, elements_file, side, out_dir):
     elements = json.loads(open(elements_file).read())
@@ -190,7 +222,7 @@ def capture_hover_state(session, elements_file, side, out_dir):
             return \\"scrolled\\";
         }})()" """
         subprocess.run(scroll_cmd, shell=True, capture_output=True)
-        time.sleep(0.3)
+        time.sleep(SCROLL_WAIT)
 
         # Capture idle screenshot
         ss_cmd = f"agent-browser --session {session} screenshot {out_dir}/{safe_name}-idle.png"
@@ -207,7 +239,7 @@ def capture_hover_state(session, elements_file, side, out_dir):
             return \\"hovered\\";
         }})()" """
         subprocess.run(hover_cmd, shell=True, capture_output=True)
-        time.sleep(0.5)  # Wait for transition to complete
+        time.sleep(TRANSITION_WAIT)  # Wait for transition to complete (TRANSITION_WAIT env var)
 
         # Capture hover screenshot
         ss_cmd = f"agent-browser --session {session} screenshot {out_dir}/{safe_name}-hover.png"
@@ -242,7 +274,7 @@ def capture_hover_state(session, elements_file, side, out_dir):
             return \\"left\\";
         }})()" """
         subprocess.run(leave_cmd, shell=True, capture_output=True)
-        time.sleep(0.3)
+        time.sleep(SCROLL_WAIT)
 
         try:
             hs = json.loads(hover_style.replace("\\\\", "\\\\\\\\")) if hover_style else {}
@@ -259,17 +291,16 @@ def capture_hover_state(session, elements_file, side, out_dir):
         sys.stdout.flush()
 
     return results
-'
 
-python3 -c "
-$HOVER_CAPTURE_SCRIPT
+ref_results  = capture_hover_state(SESSION_REF,  f"{DIR}/transitions/ref-elements.json",  "ref",  f"{DIR}/transitions/ref")
+impl_results = capture_hover_state(SESSION_IMPL, f"{DIR}/transitions/impl-elements.json", "impl", f"{DIR}/transitions/impl")
 
-ref_results = capture_hover_state('$SESSION_REF', '$DIR/transitions/ref-elements.json', 'ref', '$DIR/transitions/ref')
-impl_results = capture_hover_state('$SESSION_IMPL', '$DIR/transitions/impl-elements.json', 'impl', '$DIR/transitions/impl')
+json.dump({"ref": ref_results, "impl": impl_results}, open(f"{DIR}/transitions/hover-states.json", "w"), indent=2)
+PYEOF
 
-import json
-json.dump({'ref': ref_results, 'impl': impl_results}, open('$DIR/transitions/hover-states.json', 'w'), indent=2)
-" 2>&1
+_TC_SESSION_REF="$SESSION_REF" _TC_SESSION_IMPL="$SESSION_IMPL" _TC_DIR="$DIR" \
+  TRANSITION_WAIT="$TRANSITION_WAIT" \
+  python3 "$_TC_PY" 2>&1
 
 # ── Step 3: Diff transitions ──
 echo ""

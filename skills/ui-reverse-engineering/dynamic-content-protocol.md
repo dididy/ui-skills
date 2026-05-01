@@ -113,3 +113,46 @@ When implementing a site with dynamic content:
 - [ ] `dynamic-regions.json` created from `scroll-engine.json`
 - [ ] `batch-compare.sh` invoked with dynamic regions for threshold adjustment
 - [ ] Remaining FAIL positions diagnosed: is the FAIL from dynamic content or layout error?
+
+## Known pitfalls
+
+### batch-scroll.sh — external viewport settings ignored
+
+`batch-scroll.sh` opens its own sessions and navigates directly to the URL. Viewport settings from an external session are not inherited.
+
+**Wrong pattern:**
+```bash
+agent-browser --session X set viewport 375 812
+bash batch-scroll.sh mref mimpl X dir  # ← viewport from X is ignored
+```
+
+**Correct pattern (mobile comparison):**
+```bash
+# Manual session with direct capture, then single comparison
+agent-browser --session mobile-ref navigate https://m.example.com
+agent-browser --session mobile-ref set viewport 390 844
+agent-browser --session mobile-ref screenshot /tmp/ref.png
+# ... capture impl identically
+# Then use ae-compare.sh for single comparison
+```
+
+Verify viewport after capture:
+```bash
+agent-browser --session X evaluate "window.innerWidth + 'x' + window.innerHeight"
+```
+
+---
+
+### SPA skeleton height pitfall
+
+SPAs populate content after JS execution, so capture timing may only catch the skeleton height.
+
+Before diagnosing an AE FAIL, check the section's loading state first:
+
+```javascript
+// Check child count of the target section
+document.querySelector('.section-selector').children.length
+// If 0, still loading — do not conclude "structural FAIL" from AE
+```
+
+For sections still loading: wait and re-capture, or skip that section and compare only loaded sections.

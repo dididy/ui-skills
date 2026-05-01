@@ -1,0 +1,211 @@
+{
+  "skill_name": "visual-debug",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The implementation looks different from the original — run a quick visual check between https://example.com and http://localhost:3000",
+      "expected_output": "Quick mode: computed-diff → batch-scroll → AE comparison → DSSIM. All axes report PASS or specific FAIL positions identified with diff images.",
+      "files": [],
+      "expectations": [
+        "computed-diff.sh ran FIRST with CSS reset canaries (h1, h2, body, header, footer)",
+        "batch-scroll.sh captured both original and impl at 0–100% scroll positions",
+        "batch-compare.sh ran AE comparison on all captured pairs",
+        "dssim-compare.sh ran structural similarity comparison",
+        "FAIL positions identified with AE > 500 threshold",
+        "Only diff images were Read for FAIL positions — ref/impl images were NOT Read"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run full verification between https://example.com and http://localhost:3000 — I need to be sure everything matches before shipping",
+      "expected_output": "Full verification: Phase A (capture) → Phase C (AE+DSSIM+computed) → Phase D (pixel-perfect gate) → Phase E (LLM review). All phases pass.",
+      "files": [],
+      "expectations": [
+        "Phase A: reference and impl screenshots captured at matching scroll positions",
+        "Phase C: AE, DSSIM, and computed-diff all executed",
+        "Phase D: pixel-perfect-diff.json produced with result: pass and mismatches: 0",
+        "Phase E: LLM review read ref+impl pairs for ALL positions and judged PASS/PARTIAL/FAIL",
+        "Three-axis verification applied: pixel (AE) + perceptual (DSSIM) + semantic (LLM)",
+        "A position only marked PASS when all three axes agree"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The hero section AE diff fails but I can't tell what's wrong from the diff image. Run computed-diff to find the root cause.",
+      "expected_output": "computed-diff.sh identifies exact CSS property mismatches (e.g., fontWeight, padding, backgroundColor) with ref vs impl values. Root cause named before any code fix.",
+      "files": [],
+      "expectations": [
+        "computed-diff.sh ran with selectors targeting the hero section elements",
+        "Output shows per-property comparison: property, ref value, impl value, match/mismatch",
+        "Root cause identified as specific CSS property mismatch (not 'looks different')",
+        "No pixel comparison needed — computed-diff provided the diagnosis directly",
+        "Fix was targeted to the identified property, not a broad rewrite"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Run section-level comparison for my clone at http://localhost:3000 vs https://example.com — I need per-section pass/fail",
+      "expected_output": "section-compare.sh produces per-section AE + structure diff. Each section reports PASS or FAIL with specific issues.",
+      "files": [],
+      "expectations": [
+        "computed-diff.sh ran first with section-specific selectors",
+        "section-compare.sh ran with all 4 arguments including ref dir path",
+        "Per-section results reported: section name, AE score, structure match, status",
+        "SVG-as-text mismatches detected if present",
+        "Layout type mismatches (flex vs grid) detected if present",
+        "result.txt written to the correct ref dir path for the Stop gate to read"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "The batch comparison shows 3 FAIL positions at 30%, 50%, and 70% scroll. Diagnose and fix each one.",
+      "expected_output": "Each FAIL position diagnosed individually. Diff images read only for FAIL positions. Targeted fixes applied. Re-comparison passes.",
+      "files": [],
+      "expectations": [
+        "Only diff images for 30%, 50%, 70% were Read — not ref/impl images",
+        "Each FAIL diagnosed with a specific root cause before fixing",
+        "Fixes applied one at a time, not all at once",
+        "After each fix, re-comparison ran for the affected position",
+        "All 3 positions pass on re-comparison",
+        "PASS positions were not re-examined or re-captured"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "AE comparison passes but I suspect the colors are slightly off — run DSSIM to check perceptual similarity",
+      "expected_output": "dssim-compare.sh detects perceptual color/tone mismatches that AE missed. Specific positions flagged with DSSIM scores below threshold.",
+      "files": [],
+      "expectations": [
+        "dssim-compare.sh ran on all captured pairs",
+        "DSSIM scores reported per position",
+        "Positions below SSIM 0.995 threshold flagged as FAIL",
+        "Color/tone mismatches identified that AE comparison missed",
+        "Three-axis principle applied: AE PASS + DSSIM FAIL = overall FAIL"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Phase E LLM review — read all ref+impl pairs and judge each position",
+      "expected_output": "LLM reads every position's ref+impl pair. Each position judged PASS/PARTIAL/FAIL with specific observations. Missing sections or wrong content caught.",
+      "files": [],
+      "expectations": [
+        "Every position's ref AND impl images read as pairs",
+        "Each position explicitly judged: PASS, PARTIAL, or FAIL",
+        "Specific observations noted for each position (not just 'looks good')",
+        "Missing sections or structural differences caught that AE/DSSIM missed",
+        "PARTIAL positions explain what differs and whether it's acceptable",
+        "Overall summary aggregates all position judgments"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "The self-healing loop: AE fails at 50%, I fix it, but now 40% fails. Fix that too — max 3 iterations total.",
+      "expected_output": "Phase H self-healing: fix 50% → re-compare → 40% fails → fix 40% → re-compare → all pass. Completed within 3 iterations.",
+      "files": [],
+      "expectations": [
+        "Iteration 1: 50% FAIL diagnosed, fix applied, re-comparison ran",
+        "Iteration 1 re-compare: 50% now PASS, but 40% newly FAIL (regression detected)",
+        "Iteration 2: 40% FAIL diagnosed, fix applied without breaking 50%",
+        "Iteration 2 re-compare: both 40% and 50% PASS",
+        "Total iterations ≤ 3 (hard limit enforced)",
+        "If iteration 3 still had failures, escalated to user instead of continuing"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Compare hover transitions between original and implementation — the card hover timing feels different",
+      "expected_output": "transition-compare.sh captures idle/hover screenshots and computedStyle for each element. Timing diff identifies duration/easing mismatches.",
+      "files": [],
+      "expectations": [
+        "transition-compare.sh ran with original and impl URLs",
+        "Idle state screenshots captured for both original and impl",
+        "Hover state screenshots captured for both original and impl",
+        "computedStyle diff ran for transitioned properties (transform, opacity, box-shadow)",
+        "Duration and easing values compared between original and impl",
+        "Specific timing mismatches identified (e.g., 300ms vs 200ms, ease-out vs linear)"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "The implementation has a Lottie animation that causes AE false positives — every scroll position shows AE > 500 because the Lottie frame differs. Handle it.",
+      "expected_output": "Dynamic content threshold applied: AE bumped to 2000 for positions with Lottie. Lottie regions masked or threshold-adjusted. Remaining positions use standard AE ≤ 500.",
+      "files": [],
+      "expectations": [
+        "Lottie animation identified as source of AE false positives",
+        "AE threshold bumped to 2000 for affected positions (not globally)",
+        "Non-Lottie positions still use standard AE ≤ 500 threshold",
+        "batch-compare.sh ran with dynamic thresholds or region masks",
+        "Actual layout/style issues not masked by the threshold adjustment",
+        "User informed about the threshold adjustment and why"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Run layout-diff to check if the section bounding boxes match between original and implementation",
+      "expected_output": "layout-diff.sh compares section bounding boxes. Height/width/position mismatches identified per section.",
+      "files": [],
+      "expectations": [
+        "layout-diff.sh ran with session, original URL, and impl URL",
+        "Per-section bounding box comparison: top, height, width",
+        "Height mismatches flagged with exact pixel differences",
+        "Width mismatches flagged (especially for overflow issues)",
+        "Position drift detected (sections shifted vertically)",
+        "Results usable as pre-filter before detailed AE comparison"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "pixel-perfect-diff.json shows 2 mismatches: header padding-top (60px vs 40px) and footer font-size (14px vs 16px). Fix both.",
+      "expected_output": "Both mismatches fixed with targeted CSS edits. Re-measurement confirms exact match. pixel-perfect-diff.json updated to result: pass, mismatches: 0.",
+      "files": [],
+      "expectations": [
+        "Diff table shows ❌ for padding-top (60px vs 40px) and font-size (14px vs 16px)",
+        "CSS rules controlling both properties identified in implementation code",
+        "Targeted fix applied — only the affected properties changed",
+        "Re-measurement ran for both affected elements after fix",
+        "Both rows updated to ✅ in diff table",
+        "pixel-perfect-diff.json saved with result: pass and mismatches: 0"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "All automated checks pass but something still looks off at the hero section. Run Phase E to catch what AE/DSSIM missed.",
+      "expected_output": "Phase E LLM review catches semantic issue invisible to pixel metrics — e.g., wrong text content, missing icon, swapped image. Issue documented and fixed.",
+      "files": [],
+      "expectations": [
+        "Phase E ran even though AE and DSSIM both passed",
+        "LLM review identified a semantic issue (content, structure, or meaning) not pixel-level",
+        "Issue described with specific observation (not 'looks slightly different')",
+        "Fix applied for the semantic issue",
+        "Re-comparison confirmed the fix resolved the issue",
+        "Three-axis principle enforced: AE PASS + DSSIM PASS + LLM FAIL = overall FAIL"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "Run visual debug but the original site is behind Cloudflare bot detection — screenshots show a challenge page instead of content",
+      "expected_output": "Bot detection detected on reference screenshots. Retried with increased wait. On failure, reported to user with options.",
+      "files": [],
+      "expectations": [
+        "Bot detection detected on reference screenshot (challenge page, not content)",
+        "Retried capture with increased wait time (up to 2 retries)",
+        "If still blocked, reported to user with clear options: retry, manual capture, or provide screenshots",
+        "Did not proceed with comparison using bot-detection screenshots as reference",
+        "Did not crash or hang indefinitely"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "After all visual checks pass, make sure browser sessions are cleaned up before finishing",
+      "expected_output": "All agent-browser sessions opened during comparison are closed by name. No orphaned Chrome Helper processes.",
+      "files": [],
+      "expectations": [
+        "Every agent-browser session opened during this run is closed with --session <name> close",
+        "Cleanup runs before returning control to the user",
+        "Cleanup runs even on error or early exit",
+        "Never used close --all (would kill other sessions)",
+        "Only sessions owned by this comparison run are closed"
+      ]
+    }
+  ]
+}

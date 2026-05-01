@@ -220,7 +220,7 @@ agent-browser eval "
 
 **Save output to** `tmp/ref/<component>/em-conversion.json`
 
-**Gate check:** `validate-gate.sh` must verify this file exists when `typography.json` shows `scalingSystem !== 'px-fixed'`.
+**Gate check:** `python -m ui_clone.gate <ref-dir> pre-generate` must verify this file exists when `typography.json` shows `scalingSystem !== 'px-fixed'`.
 
 **How generation must use this:**
 1. In `globals.css`: `body { font-size: <bodyFontSizeRaw from typography.json>; }` (e.g., `0.83vw`, `clamp(12px, 0.83vw, 16px)`)

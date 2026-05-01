@@ -2,7 +2,7 @@
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 >
-> **After this step:** proceed to `bundle-analysis.md` (Step 6).
+> **After this step:** proceed to Step 5b (capture C3 if new interactions found), then `bundle-analysis.md` (Step 5c).
 
 ## Step 5: Detect Interactions
 
@@ -558,8 +558,10 @@ Save a summary to `tmp/ref/<component>/interactions-detected.json`. Include all 
 ### Capture idle + active states (MANDATORY for hover/click)
 
 > **Capture is delegated to `/ui-capture` Phase 2C.** Do not capture here — interaction-detection only detects. After saving `interactions-detected.json`, Step 5b triggers `/ui-capture` Phase 2B–2E which captures idle+active pairs for every detected interaction.
+>
+> **Re-capture trigger (SKILL.md Step 5b):** Re-run `/ui-capture` Phase 2B–2E if interaction detection found ANY hover, click, or scroll-triggered element that was not captured in the initial Phase 1 run — i.e., if `interactions-detected.json` contains elements not already in `regions.json`. If `interactions-detected.json` is `{ "interactions": [] }`, skip Step 5b entirely.
 
-**Gate:** `validate-gate.sh pre-generate` checks idle+active pairs exist (produced by ui-capture).
+**Gate:** `python -m ui_clone.gate <ref-dir> pre-generate` checks idle+active pairs exist (produced by ui-capture).
 
 ### Extract click-transition structure (MANDATORY for content-swap)
 

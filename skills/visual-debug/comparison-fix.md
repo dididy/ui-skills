@@ -101,7 +101,7 @@ done
 ### Fix protocol
 
 **For each ❌:**
-1. **Run 10-point score first** (see `style-audit.md` scoring section). This tells you what category to fix.
+1. **Run 10-point score first** (see `../ui-reverse-engineering/style-audit.md` scoring section). This tells you what category to fix.
 2. Write one sentence naming the root cause before touching any code: _"The gap exists because X"_
 3. Check if the property belongs to a design bundle (`design-bundles.json`). If yes, verify all sibling properties in the bundle (see `component-generation.md` covariance rules).
 4. If you cannot name the cause, run `agent-browser eval` to inspect computed styles at that moment
@@ -152,16 +152,16 @@ Phase D gate:
 
 > Runs automatically when Phase D fails. Classifies defects, applies targeted fixes, re-verifies. Max 3 iterations.
 
-**Prerequisite:** `compare-sections.sh` must have been run with JSON output (v0.2.0+). The defect list is in `<dir>/clips/comparison-output.json` under the `defects` array.
+**Prerequisite:** `section-compare.sh` must have been run (Step 8b). The defect list is in `<dir>/sections/result.txt`.
 
 #### H1: Defect Classification
 
-Read `comparison-output.json` and sort defects:
+Read `sections/result.txt` and parse defects:
 
 ```bash
 python3 -c "
 import json
-data = json.load(open('<dir>/clips/comparison-output.json'))
+data = json.load(open('<dir>/sections/result.txt'))
 defects = data.get('defects', [])
 severity_order = {'CRITICAL': 0, 'MAJOR': 1, 'MINOR': 2}
 defects.sort(key=lambda d: (severity_order.get(d.get('severity','MINOR'), 3), d.get('category','')))
@@ -197,7 +197,7 @@ For each defect, in priority order:
 After fixing all defects in the current batch:
 
 1. Re-capture implementation screenshots (Phase B)
-2. Re-run `compare-sections.sh` for fresh `comparison-output.json`
+2. Re-run `section-compare.sh <orig-url> <impl-url> <session> "$(pwd)/tmp/ref/<component>"` for fresh `sections/result.txt`
 3. Re-run Phase D (Visual Gate + Numerical Diagnosis)
 
 **Outcomes:**

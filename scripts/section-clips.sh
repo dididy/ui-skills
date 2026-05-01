@@ -50,7 +50,7 @@ SECTIONS_JSON=$(agent-browser --session "$SESSION" eval "(() => {
 
   // Collect all major sections
   const candidates = [
-    ...document.querySelectorAll('header, nav:not(header nav), section, footer, main > div, [class*=hero], [class*=showcase], [class*=feature], [class*=faq], [class*=newsletter], [class*=footer]')
+    ...document.querySelectorAll('header, nav:not(header nav), section, footer, main > div, [class*=hero], [class*=banner], [class*=showcase], [class*=product], [class*=feature], [class*=pricing], [class*=testimonial], [class*=gallery], [class*=faq], [class*=newsletter], [class*=cta], [class*=contact], [class*=footer]')
   ];
 
   // Deduplicate: if a child section is inside a parent section, keep both but mark parent
@@ -72,17 +72,18 @@ SECTIONS_JSON=$(agent-browser --session "$SESSION" eval "(() => {
     // Generate a descriptive name
     let name = el.id || '';
     if (!name) {
-      const cls = cn.trim().split(/\s+/)[0] || '';
-      if (cls.includes('hero')) name = 'hero';
-      else if (cls.includes('showcase') || cls.includes('product')) name = 'showcase';
-      else if (cls.includes('text-scroll') || cls.includes('text')) name = 'text';
-      else if (cls.includes('feature') || cls.includes('discover')) name = 'features';
-      else if (cls.includes('faq')) name = 'faq';
-      else if (cls.includes('newsletter')) name = 'newsletter';
-      else if (tag === 'header') name = 'header';
-      else if (tag === 'footer') name = 'footer';
-      else if (tag === 'nav') name = 'nav';
-      else name = tag + '-' + (sections.length + 1);
+      const combined = cn.toLowerCase();
+      const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['text-scroll','text-scroll'],['pricing','pricing'],['testimonial','testimonials'],['feature','features'],['discover','features'],['about','about'],['team','team'],['gallery','gallery'],['portfolio','portfolio'],['contact','contact'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['subscribe','subscribe'],['partner','partners'],['client','clients'],['stats','stats']];
+      let matched = false;
+      for (const [kw, n] of kwMap) {
+        if (combined.includes(kw)) { name = n; matched = true; break; }
+      }
+      if (!matched) {
+        if (tag === 'header') name = 'header';
+        else if (tag === 'footer') name = 'footer';
+        else if (tag === 'nav') name = 'nav';
+        else name = tag + '-' + (sections.length + 1);
+      }
     }
 
     sections.push({

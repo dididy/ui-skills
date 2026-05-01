@@ -52,16 +52,17 @@ RESULT=$(agent-browser --session "$SESSION" eval "(() => {
     // Generate name
     let name = id || '';
     if (!name) {
-      const c = cls.trim().split(/\s+/)[0] || '';
-      if (c.includes('hero')) name = 'hero';
-      else if (c.includes('showcase') || c.includes('product')) name = 'showcase';
-      else if (c.includes('text-scroll') || c.includes('text')) name = 'text-scroll';
-      else if (c.includes('feature') || c.includes('discover')) name = 'features';
-      else if (c.includes('faq')) name = 'faq';
-      else if (c.includes('newsletter') || c.includes('footer-section')) name = 'newsletter';
-      else if (tag === 'header') name = 'header';
-      else if (tag === 'footer') name = 'footer';
-      else name = tag + '-' + idx;
+      const combined = cls.toLowerCase();
+      const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['text-scroll','text-scroll'],['pricing','pricing'],['testimonial','testimonials'],['feature','features'],['discover','features'],['about','about'],['team','team'],['gallery','gallery'],['portfolio','portfolio'],['contact','contact'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['subscribe','subscribe'],['footer-section','newsletter'],['partner','partners'],['client','clients'],['stats','stats']];
+      let matched = false;
+      for (const [kw, n] of kwMap) {
+        if (combined.includes(kw)) { name = n; matched = true; break; }
+      }
+      if (!matched) {
+        if (tag === 'header') name = 'header';
+        else if (tag === 'footer') name = 'footer';
+        else name = tag + '-' + idx;
+      }
     }
     name = name.replace(/[^a-zA-Z0-9_-]/g, '-').substring(0, 40);
 

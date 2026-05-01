@@ -2,6 +2,36 @@
 
 > **Before writing ANY implementation code, measure ALL animated properties at 11 progress points (0%, 10%, 20%, …, 100%) on the original site. This is non-negotiable.**
 
+## agent-browser viewport setup — correct command format
+
+Viewport must be set using the `set viewport` format:
+
+```bash
+# ✅ Correct format
+agent-browser --session S set viewport 390 844
+
+# ❌ Wrong formats (do not work)
+agent-browser --session S resize 390 844
+agent-browser --session S viewport 390 844
+agent-browser --session S emulate mobile
+```
+
+Setting viewport before `navigate` renders at the correct size from the first load:
+
+```bash
+agent-browser --session mobile create
+agent-browser --session mobile set viewport 390 844
+agent-browser --session mobile navigate https://m.example.com
+```
+
+Verify the viewport was applied:
+```bash
+agent-browser --session mobile evaluate "window.innerWidth"
+# Should return 390
+```
+
+---
+
 ## Why
 
 Real animations use multi-phase timing (e.g., fast 0→50%, slow 50→100%), stepped opacity, or different properties animating in different phases. A linear interpolation between start and end is almost always wrong. The multi-point measurement catches this.

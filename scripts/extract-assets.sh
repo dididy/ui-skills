@@ -40,12 +40,15 @@ VIDEOS_JSON=$(agent-browser --session "$SESSION" eval "(() => {
     const currentSrc = v.currentSrc || v.src;
     // Determine which section this video is in
     let section = 'unknown';
+    const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['feature','features'],['discover','features'],['pricing','pricing'],['testimonial','testimonials'],['gallery','gallery'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['footer-section','newsletter']];
     let parent = v.parentElement;
     while (parent && parent !== document.body) {
-      const cls = typeof parent.className === 'string' ? parent.className : '';
-      if (cls.includes('hero')) { section = 'hero'; break; }
-      if (cls.includes('showcase')) { section = 'showcase'; break; }
-      if (cls.includes('feature')) { section = 'features'; break; }
+      const cls = (typeof parent.className === 'string' ? parent.className : '').toLowerCase();
+      let matched = false;
+      for (const [kw, name] of kwMap) {
+        if (cls.includes(kw)) { section = name; matched = true; break; }
+      }
+      if (matched) break;
       if (parent.tagName === 'SECTION') { section = 'section-' + i; break; }
       parent = parent.parentElement;
     }
@@ -202,23 +205,26 @@ if font_faces:
     print(f'\n  Generated: {css_path} ({len(font_faces)} @font-face rules)')
 " 2>/dev/null
 
-# ── 3. Also extract hero video frame as static fallback ──
+# ── 3. Extract first video frame as static fallback ──
 echo ""
-echo "── Extracting hero video frame ──"
+echo "── Extracting video poster frames ──"
 
-if [ -f "$PUBLIC/videos/hero-bg.mp4" ] || [ -f "$PUBLIC/videos/hero-bg.webm" ]; then
-  VIDEO_FILE=$(ls "$PUBLIC/videos/hero-bg."* 2>/dev/null | head -1)
-  if [ -n "$VIDEO_FILE" ]; then
-    ffmpeg -y -i "$VIDEO_FILE" -vframes 1 -ss 2 "$PUBLIC/images/hero-video-frame.jpg" 2>/dev/null
-    if [ -f "$PUBLIC/images/hero-video-frame.jpg" ]; then
-      echo "  ✅ hero-video-frame.jpg (frame at t=2s)"
-    else
-      echo "  ❌ Frame extraction failed"
-    fi
+mkdir -p "$PUBLIC/images"
+for VIDEO_FILE in "$PUBLIC/videos/"*.mp4 "$PUBLIC/videos/"*.webm; do
+  [ -f "$VIDEO_FILE" ] || continue
+  BASENAME=$(basename "$VIDEO_FILE" | sed 's/\.[^.]*$//')
+  POSTER="$PUBLIC/images/${BASENAME}-frame.jpg"
+  if [ -f "$POSTER" ]; then
+    echo "  ⏭️  ${BASENAME}-frame.jpg (already exists)"
+    continue
   fi
-else
-  echo "  ⏭️  No hero video downloaded"
-fi
+  ffmpeg -y -i "$VIDEO_FILE" -vframes 1 -ss 2 "$POSTER" 2>/dev/null
+  if [ -f "$POSTER" ]; then
+    echo "  ✅ ${BASENAME}-frame.jpg (frame at t=2s)"
+  else
+    echo "  ❌ ${BASENAME}-frame.jpg extraction failed"
+  fi
+done
 
 echo "" >&2
 echo "═══ Done ═══" >&2

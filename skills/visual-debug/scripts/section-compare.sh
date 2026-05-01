@@ -19,6 +19,11 @@ set -euo pipefail
 
 VIEW_W="${VIEW_W:-1440}"
 VIEW_H="${VIEW_H:-900}"
+NO_IMAGES="${NO_IMAGES:-0}"
+WAIT_REF="${WAIT_REF:-8000}"
+WAIT_IMPL="${WAIT_IMPL:-6000}"
+WAIT_LAZY_LOAD="${WAIT_LAZY_LOAD:-2}"
+WAIT_SCROLL_SETTLE="${WAIT_SCROLL_SETTLE:-0.5}"
 
 ORIG_URL="${1:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 IMPL_URL="${2:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
@@ -74,8 +79,8 @@ agent-browser --session "$SESSION_IMPL" open "$IMPL_URL" 2>&1 | head -1
 agent-browser --session "$SESSION_REF" set viewport "$VIEW_W" "$VIEW_H" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" set viewport "$VIEW_W" "$VIEW_H" > /dev/null 2>&1
 
-agent-browser --session "$SESSION_REF" wait 8000 > /dev/null 2>&1
-agent-browser --session "$SESSION_IMPL" wait 6000 > /dev/null 2>&1
+agent-browser --session "$SESSION_REF" wait "$WAIT_REF" > /dev/null 2>&1
+agent-browser --session "$SESSION_IMPL" wait "$WAIT_IMPL" > /dev/null 2>&1
 
 # Remove common overlays (cookie banners, newsletter popups)
 DISMISS_OVERLAYS='(() => {
@@ -132,6 +137,29 @@ if [ "${SKIP_PAUSE_ANIMATIONS:-0}" != "1" ]; then
   agent-browser --session "$SESSION_IMPL" eval "$PAUSE_ANIMATIONS" 2>&1 > /dev/null
 fi
 
+# Hide images to reduce AE noise from dynamic content (thumbnails, ads, etc.)
+HIDE_IMAGES_JS='(() => {
+  const style = document.createElement("style");
+  style.id = "__no_images__";
+  style.textContent = "img, picture, video, iframe { visibility: hidden !important; }";
+  document.head.appendChild(style);
+  document.querySelectorAll("*").forEach(el => {
+    if (el.style && el.style.backgroundImage) el.style.backgroundImage = "none";
+  });
+  new MutationObserver(muts => {
+    muts.forEach(m => m.addedNodes.forEach(n => {
+      if (n.style && n.style.backgroundImage) n.style.backgroundImage = "none";
+      if (n.querySelectorAll) n.querySelectorAll("[style*=background-image]").forEach(el => { el.style.backgroundImage = "none"; });
+    }));
+  }).observe(document.body, { childList: true, subtree: true });
+})()'
+
+if [ "$NO_IMAGES" = "1" ]; then
+  echo "▸ Hiding images (NO_IMAGES=1)..."
+  agent-browser --session "$SESSION_REF" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+  agent-browser --session "$SESSION_IMPL" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+fi
+
 sleep 1
 
 # ── Pre-scroll: trigger lazy-loaded content before fingerprint extraction ──
@@ -153,10 +181,10 @@ PRE_SCROLL_JS='(() => {
 })()'
 agent-browser --session "$SESSION_REF" eval "$PRE_SCROLL_JS" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" eval "$PRE_SCROLL_JS" > /dev/null 2>&1
-sleep 2  # Wait for lazy content to load and render after scroll
+sleep "$WAIT_LAZY_LOAD"  # Wait for lazy content to load and render after scroll
 agent-browser --session "$SESSION_REF" eval "window.scrollTo(0,0)" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" eval "window.scrollTo(0,0)" > /dev/null 2>&1
-sleep 0.5
+sleep "$WAIT_SCROLL_SETTLE"
 
 # ── Step 1: Enumerate sections on both sites ──
 echo "▸ Enumerating sections..."
@@ -652,33 +680,13 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
   exit 1
 fi
 
-# ── All sections passed: clear WIP marker so Stop hook no longer blocks ──
-# Only clear when FAIL=0 AND SKIP=0.
-# SKIP means an impl section is missing — that is a real gap, not a pass.
-#
-# IMPORTANT: Only remove the marker for THIS specific DIR, not all markers under tmp/ref/.
-# Multiple concurrent sessions each have their own .ui-re-active marker;
-# removing all markers when one session passes would unblock other in-progress sessions.
+# ── All sections passed ──
+# The Stop hook (section_gate.py) owns WIP marker cleanup — it removes .ui-re-active
+# after calling mark_passed("section-compare") and recording "done" in pipeline-state.json.
+# section-compare.sh intentionally does NOT remove the marker here, so the Stop hook
+# can still fire once more to record the completed state.
 if [ "$FAIL_COUNT" -eq 0 ] && [ "$SKIP_COUNT" -eq 0 ]; then
-  # Resolve the canonical absolute path of DIR to find its specific marker
-  ABS_DIR=$(cd "$DIR" 2>/dev/null && pwd || echo "$DIR")
-  SPECIFIC_MARKER="${ABS_DIR}/.ui-re-active"
-  if [ -f "$SPECIFIC_MARKER" ]; then
-    rm -f "$SPECIFIC_MARKER" 2>/dev/null || true
-    echo "  ✓ Section-compare passed — WIP marker cleared ($SPECIFIC_MARKER)"
-  else
-    # Marker may be at parent path; walk up one level (tmp/ref/<name>/ → marker at tmp/ref/<name>/.ui-re-active)
-    # The pre-generate hook writes marker as ${REF_DIR}.ui-re-active where REF_DIR ends with /
-    # so it is actually <dir>/.ui-re-active inside the dir. Check both locations.
-    PARENT_MARKER="$(dirname "$ABS_DIR")/.ui-re-active"
-    if [ -f "$PARENT_MARKER" ]; then
-      rm -f "$PARENT_MARKER" 2>/dev/null || true
-      echo "  ✓ Section-compare passed — WIP marker cleared ($PARENT_MARKER)"
-    else
-      echo "  ✓ Section-compare passed (no WIP marker found at $SPECIFIC_MARKER)"
-    fi
-  fi
+  echo "  ✓ Section-compare passed — Stop hook will record completion on next write."
 elif [ "$SKIP_COUNT" -gt 0 ]; then
-  echo "  ⚠  WIP marker NOT cleared — $SKIP_COUNT section(s) missing from impl."
-  echo "    Implement missing sections and re-run section-compare.sh."
+  echo "  ⚠  $SKIP_COUNT section(s) missing from impl — implement them and re-run section-compare.sh."
 fi

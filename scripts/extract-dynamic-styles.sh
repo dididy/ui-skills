@@ -90,27 +90,37 @@ RESULT=$(agent-browser --session "$SESSION" eval "(() => {
   });
 })()" 2>&1)
 
-# Parse and save
-python3 -c "
-import json, sys
-raw = '''$RESULT'''.strip()
-try:
-    data = json.loads(json.loads(raw)) if raw.startswith('\"') else json.loads(raw)
-except:
-    data = {'error': 'parse failed', 'raw': raw[:500]}
+# Write raw result to temp file to avoid heredoc injection from page content
+_RESULT_TMP=$(mktemp)
+printf '%s' "$RESULT" > "$_RESULT_TMP"
 
-with open('$DIR/dynamic-styles.json', 'w') as f:
+# Parse and save
+python3 - "$_RESULT_TMP" "$DIR/dynamic-styles.json" << 'PYEOF'
+import json, sys
+
+raw_file, out_file = sys.argv[1], sys.argv[2]
+with open(raw_file, encoding="utf-8", errors="replace") as f:
+    raw = f.read().strip()
+
+try:
+    data = json.loads(json.loads(raw)) if raw.startswith('"') else json.loads(raw)
+except Exception:
+    data = {"error": "parse failed", "raw": raw[:500]}
+
+with open(out_file, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 
-print(f'Total elements with inline styles: {data.get(\"total\", 0)}')
-print(f'  Layout values (KEEP): {data.get(\"layoutCount\", 0)}')
-print(f'  Animation values (REMOVE): {data.get(\"animationCount\", 0)}')
+print(f'Total elements with inline styles: {data.get("total", 0)}')
+print(f'  Layout values (KEEP): {data.get("layoutCount", 0)}')
+print(f'  Animation values (REMOVE): {data.get("animationCount", 0)}')
 print()
-print('Layout values to preserve:')
-for el in data.get('elements', [])[:10]:
-    if el.get('layout'):
-        print(f'  {el[\"selector\"]}: {el[\"layout\"]}')
-"
+print("Layout values to preserve:")
+for el in data.get("elements", [])[:10]:
+    if el.get("layout"):
+        print(f'  {el["selector"]}: {el["layout"]}')
+PYEOF
+
+rm -f "$_RESULT_TMP"
 
 echo ""
 echo "Saved to $DIR/dynamic-styles.json"

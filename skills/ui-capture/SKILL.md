@@ -1,6 +1,18 @@
 ---
 name: ui-capture
 description: Capture or record visual behavior from a website — scroll transitions, hover, mousemove/parallax, auto-timers. Also for side-by-side comparison between a reference site and a local clone. Triggers on "take baseline screenshots of <URL>", "record the hover effects", "capture scroll animations", "compare <ref> vs <localhost>". Works standalone or from ui-reverse-engineering / ralph workflows.
+metadata:
+  filePattern:
+    - "**/tmp/ref/**/regions.json"
+    - "**/tmp/ref/**/scroll-video/**"
+    - "**/tmp/ref/**/transitions/**"
+    - "**/tmp/ref/**/clips/**"
+  bashPattern:
+    - "agent-browser.*record"
+    - "agent-browser.*screenshot"
+    - "section-clips"
+    - "freeze-animations"
+  priority: 85
 ---
 
 # /ui-capture — Visual Capture & Comparison
@@ -28,11 +40,11 @@ Never let large JSON print to stdout — it wastes tokens.
 **If the user invoked this skill without providing `<reference-url>`:** stop immediately and reply with exactly:
 
 ```
-URL이 필요합니다. 다음 형식으로 입력해 주세요:
+A URL is required. Use the following format:
 
 /ui-capture <reference-url> [local-url]
 
-예시: /ui-capture https://www.naver.com http://localhost:3000
+Example: /ui-capture https://www.naver.com http://localhost:3000
 ```
 
 Do NOT proceed to any capture phase until `<reference-url>` is provided.
@@ -40,7 +52,7 @@ Do NOT proceed to any capture phase until `<reference-url>` is provided.
 ## Dependencies
 
 ```bash
-agent-browser --version   # npm i -g @anthropic-ai/agent-browser
+agent-browser --version   # npm i -g agent-browser
 ffmpeg -version           # brew install ffmpeg
 ```
 
@@ -106,7 +118,7 @@ ffmpeg -y -i full-scroll-raw.webm -ss 0.3 -t <activeDuration> -c:v libvpx-vp9 -b
 
 **Phase 3** (requires local-url): Identical capture sequences on `<local-url>` — same regions, trigger types, scroll speeds, wait times, hover durations, mouse patterns as Phase 1/2.
 
-**Phase 4A** (mandatory): `../visual-debug/verification.md` Phase D → `pixel-perfect-diff.json`. Proceed only when D1 pass AND D2 mismatches = 0.
+**Phase 4A** (mandatory): Run `../visual-debug/verification.md` **Phase D only** (D1 Visual Gate + D2 Numerical Diagnosis) → `pixel-perfect-diff.json`. **Do NOT run Phase A/B** — screenshots were already captured in Phases 1–3. Proceed only when D1 pass AND D2 mismatches = 0.
 
 **Phase 4B:** `comparison-page.md` → `compare.html` with diff table + side-by-side.
 

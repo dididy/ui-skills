@@ -16,7 +16,7 @@
 set -uo pipefail
 
 DIR="${1:?Usage: batch-compare.sh <dir> [threshold] [dynamic-regions.json]}"
-THRESHOLD="${2:-500}"
+THRESHOLD="${THRESHOLD:-${2:-500}}"  # env var overrides positional arg
 DYNAMIC_REGIONS="${3:-}"
 
 REF_DIR="$DIR/static/ref"
@@ -33,7 +33,7 @@ if [ ! -d "$IMPL_DIR" ]; then echo "ERROR: $IMPL_DIR not found"; exit 1; fi
 
 # Clean up resized temp files on exit
 TMPFILES=()
-cleanup() { rm -f "${TMPFILES[@]}" 2>/dev/null; }
+cleanup() { rm -f "${TMPFILES[@]+"${TMPFILES[@]}"}" 2>/dev/null; }
 trap cleanup EXIT
 
 mkdir -p "$DIFF_DIR"

@@ -1,4 +1,4 @@
-# Bundle Analysis — Step 6
+# Bundle Analysis — Step 5c
 
 > **This step is MANDATORY for ALL sites.** Most modern sites use JS to drive animations (GSAP, Framer Motion), smooth scroll (Lenis), intro sequences, and state transitions invisible to `getComputedStyle`.
 >

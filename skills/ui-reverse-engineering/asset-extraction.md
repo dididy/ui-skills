@@ -265,6 +265,55 @@ mkdir -p tmp/ref/<component>/fonts
 
 **Generation rule:** Copy font files to `public/fonts/` and register each with `@font-face` in CSS, matching the exact `font-family`, `font-weight`, and `font-style` from the extracted data. Without this, the browser falls back to system fonts with different metrics, causing every text element's width, height, and position to differ from the reference.
 
+#### When `document.styleSheets` returns empty (CORS-blocked or JS-injected fonts)
+
+Some sites (e.g. Naver services) inject `@font-face` rules via a separately-fetched CSS file that is CORS-blocked from `cssRules` access. The font-family name appears in `computedStyle` but the font never renders — it silently falls back to the system font.
+
+**Verify fonts are actually loaded** (always run this after implementing):
+
+```bash
+agent-browser --session <s> eval "
+var fonts = [];
+document.fonts.forEach(function(f) { fonts.push({ family: f.family, status: f.status }); });
+var byFamily = {};
+fonts.forEach(function(f) {
+  if (!byFamily[f.family]) byFamily[f.family] = { loaded: 0, total: 0 };
+  byFamily[f.family].total++;
+  if (f.status === 'loaded') byFamily[f.family].loaded++;
+});
+JSON.stringify(byFamily);
+"
+```
+
+Note: `status: 'unloaded'` means the font face is registered but its unicode-range hasn't been needed yet (lazy loading). This is normal for CJK fonts with 100+ subsets — not all subsets will be used. What matters is that at least some faces for the target family show `status: 'loaded'` after the page renders text in that font.
+
+A quick check: does the target font have *any* loaded face?
+
+```bash
+agent-browser --session <s> eval "document.fonts.check('16px \"Sandoll Nemony2\"', '가나다')"
+# Returns true if the font is available for those characters, false if falling back
+```
+
+If this returns `false` but `computedStyle.fontFamily` lists the font — no `@font-face` source was loaded. The name is in the cascade but the browser has no file to render it from.
+
+**Fix: extract `@font-face` rules directly from the CSS file via curl**
+
+```bash
+# 1. Find the CSS file URL (check <link> tags or network requests)
+agent-browser --session <s> eval "
+JSON.stringify(Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(function(l) { return l.href; }));
+"
+
+# 2. Grep the CSS for @font-face rules containing the font name
+curl -s "<css-url>" | grep -o '@font-face{[^}]*FontName[^}]*}' > /tmp/fontname-fontface.css
+
+# 3. Copy to public and link it in your layout
+cp /tmp/fontname-fontface.css public/css/fontname.css
+# In layout: <link rel="stylesheet" href="/css/fontname.css" />
+```
+
+For CJK fonts with 100+ unicode-range subsets, extracting just the `@font-face` rules and linking them from `/public` is faster to set up than downloading every woff2 file. The tradeoff: the font files themselves still load from the original CDN (not self-hosted), so this only works while the CDN URL remains stable. For a permanent clone, download the woff2 files too. For a dev/review clone, linking the CSS rules is sufficient.
+
 ### Download video backgrounds
 
 Sites with full-screen video backgrounds (hero videos, product videos) require the actual video file for accurate reproduction. Without it, implementations use a static image placeholder that will always fail SSIM comparison against the original.

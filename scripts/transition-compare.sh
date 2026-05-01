@@ -38,7 +38,7 @@ ACTION="${5:?}"
 
 RECORD_DURATION="${RECORD_DURATION:-5}"
 SSIM_THRESHOLD="${SSIM_THRESHOLD:-0.90}"
-FPS="${FPS:-10}"
+FPS="${FPS:-60}"
 PRE_ACTION_WAIT="${PRE_ACTION_WAIT:-3}"
 VIEW_W="${VIEW_W:-1440}"
 VIEW_H="${VIEW_H:-900}"
@@ -100,27 +100,16 @@ perform_action() {
 # ── Phase 1: Record original ──
 echo -e "${BOLD}▸ Recording original...${NC}"
 
-# For splash: need to dismiss modal first on same.energy
 if [[ "$ACTION" == "splash" ]]; then
-  # For splash: open site, dismiss any modal, then record the content area
   agent-browser open "$ORIG_URL" --session "${SESSION}-orig" 2>&1 | head -1
   sleep 3
   agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-orig" 2>&1 | head -1
-  # Start recording, then dismiss modal — this captures the splash behind the modal
   agent-browser record start "$OUT_DIR/ref-video/raw.webm" --session "${SESSION}-orig" 2>&1 | head -1
-  agent-browser eval '(() => {
-    var btn = document.querySelector("input[value=Enter]");
-    if (btn) { btn.click(); return "dismissed"; }
-    document.querySelectorAll("[class*=modal_background],[class*=stacked_modal]").forEach(el => el.remove());
-    return "removed";
-  })()' --session "${SESSION}-orig" 2>&1 | head -1
   sleep "$RECORD_DURATION"
 else
   agent-browser open "$ORIG_URL" --session "${SESSION}-orig" 2>&1 | head -1
   sleep "$PRE_ACTION_WAIT"
   agent-browser set viewport $VIEW_W $VIEW_H --session "${SESSION}-orig" 2>&1 | head -1
-  # Dismiss modal if present
-  agent-browser eval '(() => { var b=document.querySelector("input[value=Enter]"); if(b){b.click();return "dismissed"} return "no modal"; })()' --session "${SESSION}-orig" 2>&1 | head -1
   sleep 2
   agent-browser record start "$OUT_DIR/ref-video/raw.webm" --session "${SESSION}-orig" 2>&1 | head -1
   perform_action "${SESSION}-orig" "$ACTION"

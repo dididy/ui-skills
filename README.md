@@ -1,70 +1,88 @@
-# ui-skills — Clone any website into React + Tailwind
+# ui-clone-skills — Clone any website into React + Tailwind
 
 A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) plugin that reverse-engineers any live website into a production-ready React + Tailwind component.
 
 - **Uses the original CSS directly** — downloads stylesheets, keeps original class names. No re-implementing from extracted values.
-- **Zero vision tokens for verification** — AE/SSIM image diff instead of reading screenshots with the LLM.
+- **Near-zero vision tokens for verification** — AE/SSIM image diff instead of reading screenshots with the LLM. Vision tokens only used in Phase E (final LLM review) when automated checks pass but semantic verification is needed.
 - **Extracts real values from JS bundles** — GSAP timelines, Framer Motion springs, Lenis scroll params, scroll-driven keyframes. No guessing.
 - **Falls back to `getComputedStyle`** when CSS is obfuscated (Tailwind, CSS-in-JS). Auto-detects site type.
 
-> **vs. screenshot-to-code tools:** Those copy what's visible. `ui-skills` downloads the actual CSS, greps JS bundles for animation parameters, and uses the original class names — so the output matches the original's styles, transitions, and responsive behavior.
+> **vs. screenshot-to-code tools:** Those copy what's visible. `ui-clone-skills` downloads the actual CSS, greps JS bundles for animation parameters, and uses the original class names — so the output matches the original's styles, transitions, and responsive behavior.
 
 ## Design principles
 
 These are the decisions that shape how the plugin is structured. They aim to keep agent sessions focused and bounded.
 
 - **Real values, not guesses.** Every number — font-size, easing curve, scroll offset, stagger delay — comes from `getComputedStyle`, raw CSS, or a JS bundle grep. The plugin refuses to ship approximations.
-- **Zero vision tokens for comparison.** The LLM never reads reference vs implementation screenshots side-by-side. AE and SSIM CLI tools do the diff; the LLM only reads a single diff image when something fails.
-- **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules (~6.3K tokens total across 3 skills). Detailed procedures live in 32 focused sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
+- **Near-zero vision tokens for comparison.** AE and SSIM CLI tools handle pixel diff — the LLM never reads ref vs impl screenshots side-by-side. Vision tokens are only used when: (1) reading a single diff image on AE/SSIM failure, (2) Phase E final semantic review (~44K tokens, mandatory).
+- **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules (~5.9K tokens total across 3 skills). Detailed procedures live in 37 focused sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
 - **Single source of truth for transitions.** `transition-spec.json` is produced once from bundle analysis. Implementation reads the spec, never re-greps the bundle — avoiding wasted work and the risk of picking the wrong conditional branch.
-- **Automation over introspection.** Script-driven gates (`validate-gate.sh`, `run-pipeline.sh`, `auto-verify.sh`) decide whether a step is complete. Agents don't self-certify "looks good enough."
+- **Automation over introspection.** Python gates (`python -m ui_clone.gate`, `python -m ui_clone.pipeline`, `auto-verify.sh`) decide whether a step is complete. Agents don't self-certify "looks good enough."
 - **No judgment, data only.** Every decision must be backed by extracted data, captured screenshots, or script output. "Probably", "close enough", and "just a content difference" are forbidden — each has a documented failure case.
 
 ## Skills
 
 | Skill | Purpose |
 |---|---|
-| **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component. Includes Webflow IX2 detection (Step W), transition coverage audit (Step 6d), WAAPI/canvas/WebGL/Three.js extraction. |
+| **`ui-reverse-engineering`** | Full pipeline: URL → DOM/CSS/JS extraction → React + Tailwind component. Includes Webflow IX2 detection (Step W), transition coverage audit (Step 6d), canvas/WebGL/Three.js extraction. |
 | **`ui-capture`** | Baseline screenshots + transition capture + comparison page. Auto-detects custom scroll (Lenis, Locomotive). Classifies effects by trigger type. |
 | **`visual-debug`** | All visual comparison in one skill. Quick mode (AE/SSIM batch), full verification (Phase A→E with self-healing loop), section-level comparison, and transition behavior diff. |
 
 ## Requirements
 
 ```bash
-npm i -g agent-browser       # browser automation for AI agents (github.com/anthropics/agent-browser)
+npm i -g agent-browser       # browser automation for AI agents (github.com/vercel-labs/agent-browser)
 brew install imagemagick     # AE pixel comparison (apt: imagemagick, choco: imagemagick)
 brew install dssim           # structural visual similarity (cargo install dssim)
 brew install ffmpeg          # video capture + frame extraction (apt: ffmpeg, choco: ffmpeg)
+curl -LsSf https://astral.sh/uv/install.sh | sh  # Python package manager (gate/hook system)
 
 # verify
 agent-browser --version
 magick --version             # ImageMagick 7 (or: convert --version for v6)
 dssim --help
 ffmpeg -version
+uv --version
+python3 --version            # 3.11+ required (macOS default is sufficient)
 ```
+
+`uv` auto-creates a virtualenv and installs `scikit-image` + `Pillow` on first run — no manual `pip install` needed.
 
 ## Installation
 
 ```bash
 # npx skills (recommended)
-npx skills add dididy/ui-skills
+npx skills add voidmatcha/ui-clone-skills
 
 # Or clone directly
 mkdir -p ~/.claude/skills
-git clone https://github.com/dididy/ui-skills.git ~/.claude/skills/ui-skills
+git clone https://github.com/voidmatcha/ui-clone-skills.git ~/.claude/skills/ui-clone-skills
 ```
 
 ### Pipeline hooks (automatic)
 
-Hooks register automatically via `hooks/hooks.json` on plugin install — no manual setup needed.
+Hooks register automatically via `hooks/hooks.json` on plugin install — no manual setup needed. All hooks route through a single `hooks/shim.sh` that fast-skips when no `tmp/ref/` directory exists.
 
-| Hook | Event | Purpose |
+| Hook module | Event | Purpose |
 |------|-------|---------|
-| `ui-re-pre-generate-check.sh` | `PreToolUse` (Write/Edit) | Blocks component writes until extraction completes |
-| `ui-re-post-verify-check.sh` | `PostToolUse` (Bash) | Warns on completion signals if verification hasn't run |
-| `ui-re-section-compare-gate.sh` | `Stop` | Blocks finishing if `section-compare.sh` hasn't passed |
+| `ui_clone.hooks.pre_generate` | `PreToolUse` (Write/Edit) | Blocks component writes until extraction completes |
+| `ui_clone.hooks.post_verify` | `PostToolUse` (Bash) | Warns on completion signals if verification hasn't run |
+| `ui_clone.hooks.devtools_errors` | `PostToolUse` (Bash) | Checks browser devtools for console errors after each Bash call |
+| `ui_clone.hooks.section_gate` | `Stop` | Blocks finishing if section comparison hasn't passed |
 
-Hooks skip automatically when no `tmp/ref/` directory exists, so they won't interfere with non-ui-re projects.
+### Gate system (Python)
+
+The `ui_clone/` package (Python 3.11+, managed by `uv`) provides pipeline gates, dependency tracking (DAG-based staleness detection), multiscale SSIM comparison, and viewport-relative CSS severity scoring.
+
+```bash
+# Gate validation
+python -m ui_clone.gate <ref-dir> <gate> [--json]
+# Gates: reference | extraction | bundle | spec | pre-generate | post-implement | section-compare | all
+# Exit:  0=PASS  1=BLOCKED  2=usage error
+
+# Pipeline status
+python -m ui_clone.pipeline <url> <component> <session> status [--json]
+```
 
 ---
 
@@ -76,14 +94,14 @@ After installing (see [Installation](#installation)), give Claude a URL and a ta
 Clone the hero section from https://stripe.com/payments into React + Tailwind. Output to ./out/
 ```
 
-The pipeline runs automatically. `scripts/run-pipeline.sh` detects the current phase and prints the next action; you don't invoke phases manually.
+The pipeline runs automatically. `python -m ui_clone.pipeline` detects the current phase and prints the next action; you don't invoke phases manually.
 
 **What happens:**
 
 1. Reference capture → `tmp/ref/payments-hero/{full,desktop,tablet,mobile}.png` + scroll video
 2. DOM/CSS/JS extraction → `tmp/ref/payments-hero/{structure,styles,assets}.json` + `transition-spec.json`
 3. Component generation → `./out/PaymentsHero.tsx` (CSS-first, original class names)
-4. Visual verification → `scripts/auto-verify.sh` → D0 layout health + AE/SSIM diff
+4. Visual verification → `auto-verify.sh` → D0 layout health + AE/SSIM diff
 
 If verification fails, the pipeline iterates up to 3 rounds (Phase H self-healing loop) before asking for human review.
 
@@ -108,7 +126,7 @@ Turn this screen recording into a working component
 
 ```
 0.   Load existing analysis     — re-invoked? load transition-spec.json + bundle-map.json
-R.   Capture reference         — static screenshots + scroll video (60 fps)
+R.   Capture reference         — static screenshots + scroll video
 1.   Open & snapshot           — DOM tree, full-page screenshot. Session reuse for splash sites
 W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "Webflow".
                                  Extract hide-rule selector list + IX2 timeline JSON.
@@ -140,7 +158,7 @@ W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "
                                  SVG-as-text verbatim, RAF parallax for smooth scroll
 8.   Visual verification       — auto-verify.sh. ⛔ gate: post-implement
                                  (checks hover rule count, px fontSize leaks, scroll listeners)
-8b.  Section comparison        — section-compare.sh crops each section independently → AE + structure diff.
+8b.  Section comparison        — section-compare.sh (visual-debug/scripts/) crops each section independently → AE + structure diff.
                                  MANDATORY — replaces noisy full-page scroll comparison
 8c.  Transition comparison     — transition-compare.sh idle/hover state + timing + computedStyle diff
 9.   Interaction verification  — dispatch mouseenter for JS hovers, verify hover-css-rules match
@@ -150,12 +168,9 @@ W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "
 
 | Script | Purpose |
 |---|---|
-| `run-pipeline.sh` | State machine orchestrator — detects current phase, prints next action |
-| `validate-gate.sh` | Enforces gates (bundle, spec, pre-generate, post-implement). Exits 1 on failure |
 | `auto-verify.sh` | Single-command verification: D0 layout health → Phase C scroll AE → post-implement gate |
 | `extract-assets.sh` | Downloads video backgrounds, Typekit fonts, CDN fonts. Extracts video poster frames |
 | `extract-section-html.sh` | Per-section HTML + computed CSS + media element extraction |
-| `compare-sections.sh` | 3-layer comparison: section SSIM + element RMSE + getComputedStyle diff |
 | `download-chunks.sh` | Downloads ALL loaded chunks, detects animation libs, produces skeleton bundle-map.json |
 | `gsap-to-css.sh` | GSAP easing → CSS cubic-bezier (lookup, full table, or bundle scan) |
 | `extract-dynamic-styles.sh` | Classifies GSAP inline styles: layout (keep) vs animation (remove) |
@@ -173,7 +188,7 @@ W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "
 | `section-compare.sh` | Section-level visual + structural comparison (lazy pre-scroll for IntersectionObserver content, text fingerprint matching, per-section AE diff, DOM structure diff) |
 | `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation) |
 
-All visual-debug scripts support `VIEW_W`/`VIEW_H` env vars (default 1440×900) for custom viewport sizes. All scripts that open `agent-browser` sessions have `trap EXIT` cleanup.
+Visual-debug scripts that open browser sessions support `VIEW_W`/`VIEW_H` env vars (default 1440x900) for custom viewport sizes.
 
 **Input modes:**
 
@@ -207,13 +222,13 @@ Take a baseline of https://example.com before I start cloning
 Phase 1:  Full page capture        — section screenshots + full scroll video
                                      auto-detects custom scroll (Lenis, Locomotive)
 Phase 2:  Transition detection     — classify all effects by trigger type → regions.json
-Phase 2B–2E: Capture per trigger type:
+Phase 2B-2E: Capture per trigger type:
   2B scroll-driven   — exploration video → clip screenshot before/mid/after
   2C css-hover       — eval + clip screenshot: idle + active
      js-class        — eval classList.add + clip screenshot: idle + active
      intersection    — eval classList.add + clip screenshot: before + after
   2D mousemove       — raster-path sweep video
-  2E auto-timer      — passive recording for 2–3 cycles
+  2E auto-timer      — passive recording for 2-3 cycles
 
 local-url provided?
 ├── YES → Phase 3: Implementation capture
@@ -223,17 +238,6 @@ local-url provided?
 └── NO  → Phase R:  report.html (overlay-based analysis report)
           Phase 5:  User review
 ```
-
-**Trigger type classification:**
-
-| Trigger type | Detection | Activation |
-|---|---|---|
-| `css-hover` | `:hover` rule in stylesheet | eval + clip screenshot (idle + active) |
-| `js-class` | JS adds/removes a class | eval classList.add + clip screenshot (idle + active) |
-| `intersection` | `data-in-view`, IntersectionObserver | eval classList.add + clip screenshot (before + after) |
-| `scroll-driven` | `animation-timeline: scroll()`, sticky, willChange | exploration video → clips (before/mid/after) |
-| `mousemove` | `mousemove` listener, parallax/tilt/magnetic | raster-path sweep (video) |
-| `auto-timer` | setInterval, CSS animation, carousel/swiper | passive wait (video) |
 
 ---
 
@@ -246,38 +250,32 @@ The single source of truth for "is it done?" — covers automated AE/SSIM diff, 
 - **Quick comparison** — `auto-verify.sh` runs D0 layout health check → batch-scroll capture → AE comparison → post-implement gate in one command. Zero vision tokens (AE/SSIM only, no LLM screenshot reads).
 - **Full verification** — `verification.md` with Phase A/B capture → Phase C comparison → Phase D0 layout health → Phase D pixel-perfect gate → Phase H self-healing loop → Phase E LLM review. Phase E reads a single diff image when something fails, so full verification does use vision tokens.
 
-**Phase D — pixel-perfect gate:**
-
-```
-Phase D1: Visual Gate (always runs)
-  V1: Define elements + states  — idle for all; active for css-hover/js-class/intersection;
-                                  before/mid/after for scroll-driven
-  V2: Measure rect + activate   — scrollIntoView, eval to apply state, re-measure rect
-  V3: Clip screenshot           — ref and impl, per element per state
-  V4: Pixel diff                — ImageMagick AE or ffmpeg SSIM
-  V5: Pass/fail                 — AE=0 or SSIM≥0.995 = pass
-
-Phase D2: Numerical Diagnosis (always runs — regardless of Phase D1 result)
-  P1–P2: getComputedStyle on ref and impl, per state
-  P3:    Diff table — flag per property + state, exact values (e.g. "24px → 16px")
-  P4:    Fix mismatches → re-run both phases
-
-Phase H: Self-healing loop
-  Classify defects (LAYOUT/COLOR/TYPOGRAPHY/ANIMATION/CONTENT) by severity,
-  fix in priority order. Max 3 cycles before escalation.
-```
-
-**Gate:**
-
-```
-□ Phase D1 all elements "status": "pass" (per triggerType states)
-□ Phase D2 mismatches = 0
-
-Both required. "approximately same" = FAIL.
-Phase D2 catches what D1 misses (font-size 15px vs 16px, letter-spacing micro-diffs, etc.).
-```
-
 ---
+
+## Token management
+
+UI cloning sessions are token-intensive — DOM trees, computed styles, and JS bundles can blow through context fast. The plugin includes several built-in mitigations, plus integrates with external tools.
+
+**Built-in:**
+
+| Strategy | How |
+|---|---|
+| Zero vision tokens for verification | AE/SSIM CLI tools diff screenshots. LLM only reads a single diff image on FAIL |
+| Progressive-disclosure sub-docs | SKILL.md ~6K tokens. 37 sub-docs load only when their step runs |
+| Pipe-to-file rule | Large `eval` output goes to `tmp/ref/*.json`, then `Read`/`Grep` specific lines |
+| Single source of truth | `transition-spec.json` produced once — implementation reads it, never re-greps bundles |
+| Bash loop breaker | After 10+ consecutive Bash calls, stop and analyze before continuing |
+
+**External — [rtk](https://github.com/rtk-ai/rtk) (Rust Token Killer):**
+
+`rtk` is a CLI proxy that intercepts shell commands (`git status`, `ls`, `cat`, etc.) and filters verbose output before it reaches the LLM. Saves 60–90% tokens on dev operations.
+
+```bash
+brew install rtk
+rtk gain             # show token savings analytics
+```
+
+When installed alongside this plugin, `rtk` automatically reduces token cost of `git`, `ls`, `find`, and other shell commands issued during the pipeline. No configuration needed — Claude Code hooks rewrite commands transparently.
 
 ## Security
 
@@ -291,6 +289,26 @@ All skills process untrusted external content (DOM, CSS, JS bundles, screenshots
 - **Cleanup** — `tmp/ref/` (may contain PII-bearing screenshots) is removed after verification.
 
 See each skill's `SKILL.md` for full details.
+
+## Responsible use
+
+This tool downloads and reproduces CSS, fonts, images, and design patterns from third-party websites. Users are responsible for:
+
+- **Copyright** — CSS, fonts, images, and SVGs are copyrightable. Use for learning, prototyping, or internal tools. Do not ship cloned designs as your own product without permission.
+- **Terms of Service** — Many sites prohibit automated scraping or reproduction. Check the target site's ToS before cloning.
+- **Font licensing** — Downloaded fonts (Typekit, Google Fonts, CDN) have their own licenses. Verify your usage rights before including them in production.
+- **Trademarks** — Logos, brand names, and distinctive design elements may be trademarked. Do not reproduce these for commercial use.
+
+**When NOT to use this tool:**
+- Cloning a competitor's site for commercial deployment
+- Reproducing copyrighted designs without authorization
+- Bypassing paywalled or authenticated content
+
+**Intended use cases:**
+- Learning how a site is built (CSS architecture, animation techniques)
+- Rapid prototyping with a reference design (to be restyled before shipping)
+- Rebuilding your own site from a previous version
+- Internal tools and demos
 
 ## Evals
 

@@ -149,7 +149,8 @@ agent-browser --session <impl> eval "document.querySelector('.target').getAnimat
 grep -E "gsap|Lenis|ScrollTrigger|requestAnimationFrame|transition" tmp/ref/<c>/bundles/*.js | head -20
 
 # 4. Compare timing
-SCRIPTS="$HOME/Documents/ui-skills/skills/visual-debug/scripts"
+SCRIPTS="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
+SCRIPTS="${SCRIPTS:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
 bash "$SCRIPTS/transition-compare.sh" <orig-url> <impl-url> <session> tmp/ref/<c>
 ```
 
@@ -162,3 +163,76 @@ bash "$SCRIPTS/transition-compare.sh" <orig-url> <impl-url> <session> tmp/ref/<c
 - **Card stack height not pre-fixed** → `height: auto → 64px` not CSS-animatable; must set `item.style.height = item.offsetHeight + 'px'` before scroll handler runs
 
 **Fix:** Check `transition-spec.json` for expected easing + duration. Run `transition-compare.sh`. Rule: **RAF drives transform values** (parallax progress); **scroll events drive class changes** (toggle animations). Never mix.
+
+---
+
+## Root Cause F: Legacy JS Bundle Conflict
+
+**Symptoms:** Animation/scroll behavior broken *and* React component logic looks correct; class-toggle fires immediately instead of after delay (or never fires); no JS errors in console
+
+**Trigger:** `layout.tsx` loads a `*.min.js` / `vendor.js` bundle alongside the React app.
+
+**Diagnosis:**
+```bash
+# 1. Does the page load a legacy bundle?
+grep -rn '\.min\.js\|vendor\.js\|bundle\.js' src/app/layout.tsx
+
+# 2. What globals does the bundle expose? (its init classes / scroll engines)
+agent-browser --session <s> eval "
+  Object.keys(window).filter(k => /scroll|nav|swiper|lottie|animation|player/i.test(k))
+"
+
+# 3. What class selectors does the bundle querySelector?
+grep -o "querySelector('[^']*')\|querySelector(\"[^\"]*\")" public/js/*.min.js \
+  | grep -oE "['\"][.#][^'\"]+['\"]" | sort -u | head -30
+
+# 4. Does the bundle define page-scoped init objects with hardcoded selectors?
+# Look for patterns like: { el: '.page-wrap', mainEl: '.container', containerEl: '.inner' }
+grep -o 'el:[[:space:]]*"[^"]*"\|el:[[:space:]]*'"'"'[^'"'"']*'"'"'' public/js/*.min.js | sort -u | head -20
+```
+
+**Common patterns:**
+- **React component + bundle both manage the same DOM class** → bundle adds `is-active` on `window.load`, React component also adds it after a timeout → double-fire, wrong timing, or race condition. **Fix: remove the React component; let the bundle own it.**
+- **Renamed class breaks bundle querySelector** → class renamed to avoid a CSS framework conflict (e.g. `.container` → `.nc-container`) → bundle's `querySelector('.container')` returns `null` → entire page init fails silently; all animations/scroll broken. **Fix: keep the original class, add the override class alongside** (`className="nc-override container"`), then use CSS to neutralize only the conflicting property.
+- **Bundle init fails silently** → no console error, no warning; page just doesn't animate. Diagnose: check that the bundle's expected globals are populated after `window.load` (step 2 above).
+- **CSS framework utility collides with bundle selector** → class names like `.container`, `.sticky` mean something in both Tailwind and the bundle. Renaming the Tailwind class away breaks the bundle. See `common-selectors.md` → "Tailwind Utility Class Collision Canaries".
+
+**Fix:**
+1. If `layout.tsx` loads a bundle: **the bundle owns class-toggle logic**. Do not re-implement scroll/reveal/sticky in React for the same elements.
+2. When a CSS framework conflicts with a class the bundle queries: keep the original class, add the override class alongside, override only the conflicting CSS property with `!important`.
+3. Rule: **one owner per DOM class**. If the bundle toggles it, React doesn't. If React toggles it, remove it from the bundle scope (or don't load the bundle on that page).
+
+## Root Cause G: Pseudo-element Indicator Not Detected by computed-diff
+
+**Symptoms:** Active tab/nav indicator visually wrong (wrong position, missing, or extra) even though `computedStyle` on the element looks correct. `computed-diff.sh` reports no mismatch.
+
+**Root cause:** `computed-diff.sh` compares `getComputedStyle(el)` only — it does NOT check `::before` / `::after`. Sites often use pseudo-elements for active indicators (underline bars, dots, highlights).
+
+**Diagnosis:**
+```bash
+# Check ::before and ::after on the suspicious element
+agent-browser --session <s> eval "
+var el = document.querySelector('[class*=tab_item], [class*=nav_item], [role=tab]');
+['::before', '::after'].map(function(pseudo) {
+  var s = window.getComputedStyle(el, pseudo);
+  return { pseudo: pseudo, content: s.content, display: s.display, h: s.height, bg: s.backgroundColor, position: s.position, bottom: s.bottom, left: s.left, right: s.right, borderRadius: s.borderRadius };
+});
+"
+```
+
+**Common pattern (tab active indicator):**
+```
+::before {
+  content: "";
+  display: block;
+  position: absolute;
+  bottom: 0px;
+  left: 5px;
+  right: 5px;
+  height: 3px;
+  background-color: <brand-color>;
+  border-radius: 2px;
+}
+```
+
+**Fix:** In React, implement as a child `<span>` with `position: absolute` matching the pseudo-element's geometry. Ensure the parent has `position: relative`. Use the **measured** `bottom`, `left`, `right`, `height`, `border-radius` values exactly — do not guess or adjust visually.

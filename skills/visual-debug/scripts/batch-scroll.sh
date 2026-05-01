@@ -10,6 +10,13 @@
 # converts percentage to absolute scroll position.
 #
 # Output: <dir>/static/ref/*.png and <dir>/static/impl/*.png
+#
+# Options (env vars):
+#   VIEW_W=1440        Viewport width (default: 1440)
+#   VIEW_H=900         Viewport height (default: 900)
+#   NO_IMAGES=1        Hide all images/video via CSS + Blink flag — reduces AE noise from dynamic content (default: 0)
+#   WAIT_INIT=6000     Page settle wait in ms after open (default: 6000)
+#   WAIT_SCROLL=500    Wait in ms between scroll and screenshot (default: 500)
 
 set -euo pipefail
 
@@ -20,9 +27,16 @@ DIR="${4:-tmp/ref/visual-debug}"
 
 VIEW_W="${VIEW_W:-1440}"
 VIEW_H="${VIEW_H:-900}"
+NO_IMAGES="${NO_IMAGES:-0}"
+WAIT_INIT="${WAIT_INIT:-6000}"
+WAIT_SCROLL="${WAIT_SCROLL:-500}"
 
 SESSION_REF="${SESSION}-ref"
 SESSION_IMPL="${SESSION}-impl"
+BROWSER_ARGS=""
+if [ "${NO_IMAGES:-0}" = "1" ]; then
+  BROWSER_ARGS="--blink-settings=imagesEnabled=false"
+fi
 
 cleanup_browsers() {
   agent-browser --session "$SESSION_REF" close 2>/dev/null || true
@@ -49,15 +63,37 @@ else
 fi
 
 echo "▸ Opening both sites..."
-agent-browser --session "$SESSION_REF" open "$ORIG_URL_CB" 2>&1 | head -1
-agent-browser --session "$SESSION_IMPL" open "$IMPL_URL" 2>&1 | head -1
+agent-browser --session "$SESSION_REF" ${BROWSER_ARGS:+--args "$BROWSER_ARGS"} open "$ORIG_URL_CB" 2>&1 | head -1
+agent-browser --session "$SESSION_IMPL" ${BROWSER_ARGS:+--args "$BROWSER_ARGS"} open "$IMPL_URL" 2>&1 | head -1
 
 agent-browser --session "$SESSION_REF" set viewport $VIEW_W $VIEW_H 2>&1 > /dev/null
 agent-browser --session "$SESSION_IMPL" set viewport $VIEW_W $VIEW_H 2>&1 > /dev/null
 
+# Block images to reduce AE noise from dynamic content differences
+# Injected after page load: hides all img elements and background-image CSS
+# (network route can't intercept already-loaded images, so we use CSS instead)
+HIDE_IMAGES_JS='(() => {
+  // 1. CSS rule: hide all img and picture elements
+  const style = document.createElement("style");
+  style.id = "__no_images__";
+  style.textContent = "img, picture, video, iframe { visibility: hidden !important; }";
+  document.head.appendChild(style);
+  // 2. Strip inline background-image from all elements
+  document.querySelectorAll("*").forEach(el => {
+    if (el.style && el.style.backgroundImage) el.style.backgroundImage = "none";
+  });
+  // 3. MutationObserver to catch dynamically added elements
+  new MutationObserver(muts => {
+    muts.forEach(m => m.addedNodes.forEach(n => {
+      if (n.style && n.style.backgroundImage) n.style.backgroundImage = "none";
+      if (n.querySelectorAll) n.querySelectorAll("[style*=background-image]").forEach(el => { el.style.backgroundImage = "none"; });
+    }));
+  }).observe(document.body, { childList: true, subtree: true });
+})()'
+
 # Wait for page JS to fully initialize (GSAP sets section heights, ScrollTrigger binds).
-agent-browser --session "$SESSION_REF" wait 6000 2>&1 > /dev/null
-agent-browser --session "$SESSION_IMPL" wait 6000 2>&1 > /dev/null
+agent-browser --session "$SESSION_REF" wait "$WAIT_INIT" 2>&1 > /dev/null
+agent-browser --session "$SESSION_IMPL" wait "$WAIT_INIT" 2>&1 > /dev/null
 
 # Smart carousel freeze: find and pause only carousel/auto-rotation timers.
 # Approach: intercept setInterval calls ≥2s (carousel-like), without killing existing GSAP intervals.
@@ -116,9 +152,21 @@ SMART_FREEZE='(() => {
 agent-browser --session "$SESSION_REF" eval "$SMART_FREEZE" 2>&1 | sed 's/^/  Ref: /'
 agent-browser --session "$SESSION_IMPL" eval "$SMART_FREEZE" 2>&1 | sed 's/^/  Impl: /'
 
-# Get total heights
-ORIG_HEIGHT=$(agent-browser --session "$SESSION_REF" eval "(() => document.documentElement.scrollHeight)()" 2>&1 | tr -d '"')
-IMPL_HEIGHT=$(agent-browser --session "$SESSION_IMPL" eval "(() => document.documentElement.scrollHeight)()" 2>&1 | tr -d '"')
+if [ "${NO_IMAGES:-0}" = "1" ]; then
+  echo "▸ Hiding images (NO_IMAGES=1, CSS fallback for dynamic images)..."
+  agent-browser --session "$SESSION_REF" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+  agent-browser --session "$SESSION_IMPL" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+fi
+
+# Get total heights — use python for safe JSON unwrapping (agent-browser wraps string output in quotes)
+_get_height() {
+  local session="$1"
+  local raw
+  raw=$(agent-browser --session "$session" eval "(() => document.documentElement.scrollHeight)()" 2>&1)
+  python3 -c "import sys, json; v=sys.argv[1]; print(json.loads(v) if v.startswith('\"') else int(v))" "$raw" 2>/dev/null || echo ""
+}
+ORIG_HEIGHT=$(_get_height "$SESSION_REF")
+IMPL_HEIGHT=$(_get_height "$SESSION_IMPL")
 
 if ! [[ "$ORIG_HEIGHT" =~ ^[0-9]+$ ]] || ! [[ "$IMPL_HEIGHT" =~ ^[0-9]+$ ]]; then
   echo "ERROR: Failed to extract page heights (orig=$ORIG_HEIGHT, impl=$IMPL_HEIGHT)"
@@ -128,20 +176,18 @@ fi
 echo "  Ref height:  ${ORIG_HEIGHT}px"
 echo "  Impl height: ${IMPL_HEIGHT}px"
 
-# Height ratio check
-if command -v bc &>/dev/null; then
-  RATIO=$(echo "scale=2; $IMPL_HEIGHT / $ORIG_HEIGHT" | bc 2>/dev/null || echo "1.00")
-  if (( $(echo "$RATIO > 1.30" | bc -l 2>/dev/null || echo 0) )); then
-    echo ""
-    echo "  ⛔ HEIGHT MISMATCH: impl is ${RATIO}x taller than ref"
-    echo "  Run: bash \"\$(dirname \"\$0\")/layout-health-check.sh\" $SESSION $ORIG_URL $IMPL_URL"
-    echo ""
-  elif (( $(echo "$RATIO < 0.70" | bc -l 2>/dev/null || echo 0) )); then
-    echo ""
-    echo "  ⛔ HEIGHT MISMATCH: impl is ${RATIO}x shorter than ref"
-    echo "  Run: bash \"\$(dirname \"\$0\")/layout-health-check.sh\" $SESSION $ORIG_URL $IMPL_URL"
-    echo ""
-  fi
+# Height ratio check — use awk (always available), no bc dependency
+RATIO=$(awk "BEGIN { printf \"%.2f\", $IMPL_HEIGHT / $ORIG_HEIGHT }")
+if awk "BEGIN { exit ($RATIO > 1.30) ? 0 : 1 }"; then
+  echo ""
+  echo "  ⛔ HEIGHT MISMATCH: impl is ${RATIO}x taller than ref"
+  echo "  Run: bash \"\$(dirname \"\$0\")/layout-health-check.sh\" $SESSION $ORIG_URL $IMPL_URL"
+  echo ""
+elif awk "BEGIN { exit ($RATIO < 0.70) ? 0 : 1 }"; then
+  echo ""
+  echo "  ⛔ HEIGHT MISMATCH: impl is ${RATIO}x shorter than ref"
+  echo "  Run: bash \"\$(dirname \"\$0\")/layout-health-check.sh\" $SESSION $ORIG_URL $IMPL_URL"
+  echo ""
 fi
 
 echo ""
@@ -149,14 +195,14 @@ echo ""
 # Interleaved capture: ref N% → impl N% for each position
 echo "▸ Capturing (interleaved)..."
 for PCT in "${POSITIONS[@]}"; do
-  Y_REF=$(echo "$ORIG_HEIGHT * $PCT / 100" | bc 2>/dev/null || echo "0")
-  Y_IMPL=$(echo "$IMPL_HEIGHT * $PCT / 100" | bc 2>/dev/null || echo "0")
+  Y_REF=$(awk "BEGIN { printf \"%d\", $ORIG_HEIGHT * $PCT / 100 }")
+  Y_IMPL=$(awk "BEGIN { printf \"%d\", $IMPL_HEIGHT * $PCT / 100 }")
 
   # Scroll both
   agent-browser --session "$SESSION_REF" eval "(() => { window.scrollTo(0, $Y_REF); return $Y_REF; })()" 2>&1 > /dev/null
   agent-browser --session "$SESSION_IMPL" eval "(() => { window.scrollTo(0, $Y_IMPL); return $Y_IMPL; })()" 2>&1 > /dev/null
 
-  sleep 0.5
+  sleep "$(awk "BEGIN { printf \"%.3f\", $WAIT_SCROLL / 1000 }")"
 
   # Screenshot both
   agent-browser --session "$SESSION_REF" screenshot "$DIR/static/ref/${PCT}pct.png" 2>&1 > /dev/null

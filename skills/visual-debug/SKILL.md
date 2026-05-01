@@ -60,7 +60,8 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 | `batch-compare.sh <dir> [threshold]` | Compare all pairs. Supports dynamic thresholds |
 | `dssim-compare.sh <dir> [threshold]` | Structural similarity (catches what AE misses) |
 | `layout-diff.sh <session> <orig> <impl>` | Section bounding box comparison |
-| `section-compare.sh <orig> <impl> <session> [dir]` | **Section-level comparison** — crops each section, AE + structure diff. Catches SVG-as-text, layout mismatches |
+| `section-compare.sh <orig> <impl> <session> <dir>` | **Section-level comparison** — crops each section, AE + structure diff. Catches SVG-as-text, layout mismatches. **`<dir>` is required** — pass `"$(pwd)/tmp/ref/<component>"` |
+| `layout-health-check.sh <session> <orig> <impl> <dir>` | Section height/total height structural check before pixel diff |
 | `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
 
 **Reference selectors:** `common-selectors.md` — ready-to-use selector sets (typography, CSS reset canaries, Tailwind preflight issues, Naver.com specific, general e-commerce)
@@ -72,7 +73,7 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 **Always run computed-diff before pixel comparison.** AE catches *that* something is wrong; computed-diff catches *why* — and fixes the root cause immediately without hunting through diff images.
 
 ```bash
-SCRIPTS="$HOME/Documents/ui-skills/skills/visual-debug/scripts"
+SCRIPTS="$SCRIPTS_DIR"
 
 # Broad sweep: CSS reset canaries + page structure
 bash "$SCRIPTS/computed-diff.sh" <session> <orig> <impl> \
@@ -104,8 +105,10 @@ See `common-selectors.md` for ready-to-use selector sets by domain.
 ### Section-level comparison (precise — preferred for post-gen verification)
 ```
 0. computed-diff  computed-diff.sh (CSS reset canaries + section selectors)  ← NEW FIRST STEP
-1. Section compare  section-compare.sh <orig> <impl> <session>
+1. Section compare  section-compare.sh <orig> <impl> <session> "$(pwd)/tmp/ref/<component>"
    → Per-section AE + structure diff (SVG-as-text, layout type, height)
+   ⚠️  The 4th argument (ref dir path) is MANDATORY — the Stop gate reads result.txt from that
+       exact path. Omitting it writes result.txt to the wrong location and the gate never clears.
 2. Transition compare  transition-compare.sh <orig> <impl> <session>
    → Per-element idle/hover style + timing diff
 3. Fix          Targeted code change per failing section/element

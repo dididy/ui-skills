@@ -74,8 +74,10 @@ Read this when you feel a temptation to shortcut. Find your thought in the table
 | "The project already has CSS/styles, so animations work" | CSS defines animation rules. JS triggers them. `typeof gsap !== 'undefined'` in browser — if false, all scroll transitions are missing. |
 | "The hero renders so the page works" | `window.scrollTo(0, document.body.scrollHeight * 0.4)` + screenshot. Hero ≠ page. Often 300–500vh with sticky effects. |
 | "I'm done — it matches the reference" | Run `section-compare.sh` against live ref. Declare done only after script passes. |
-| "I'll use dangerouslySetInnerHTML" | ⛔ NEVER. Inspect actual DOM, convert to proper JSX. Skips understanding the structure. |
+| "I'll use dangerouslySetInnerHTML" | ⛔ NEVER for standard JSX components. **Exception:** `site-detection.md` Raw HTML Injection approach only — when `cssModuleRatio > 0.3` OR `jsInlineStyles > 20` OR `hasGSAP + hasLottie + hasCanvas > 1`. Run the approach detection gate in `site-detection.md` first. If that gate does not fire, convert to proper JSX. |
 | "I'll use a hardcoded placeholder div" | ⛔ NEVER. `<div style={{height:"594px"}}/>` is not an implementation. Extract and implement real DOM. |
 | "The scroll animation works — I used RAF" | RAF is correct for progress-based transforms (parallax). Wrong for CSS class-toggle transitions (card stack). RAF cancels the CSS transition every frame. |
 | "I'll use a placeholder" | No placeholders. Extract real asset or leave unimplemented. |
 | "The scraped HTML has correct initial state" | GSAP-baked inline styles (`visibility:hidden`, `opacity:0`) are animation init states, NOT defaults. Reset them. |
+| "I'll verify the CSS change via curl on the compiled chunk" | ⛔ NEVER. Next.js HMR may not have recompiled yet — `curl` on chunk URLs returns stale cached content. Always use `agent-browser eval "getComputedStyle(document.querySelector('.target')).propertyName"` to verify CSS changes in a live browser. |
+| "I'll use Puppeteer MCP / Playwright MCP for this" | ⛔ NEVER. All browser automation MUST use `agent-browser` CLI via Bash. Puppeteer/Playwright MCP tools are prohibited — they bypass session management and conflict with `agent-browser` sessions. This rule survives context compaction. |

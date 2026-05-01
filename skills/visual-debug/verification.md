@@ -356,6 +356,20 @@ ffmpeg -i tmp/ref/<component>/impl-transition-carousel.webm -vf fps=60 tmp/ref/<
 ---
 
 
+## AE/SSIM threshold guidelines
+
+### Handling AE FAIL on dynamic content sites
+
+High AE does not necessarily mean layout mismatch. **Always read the diff image first.**
+
+Decision criteria:
+1. Red regions in the diff image are concentrated in **image/thumbnail card areas** → dynamic content difference, layout is PASS
+2. Red regions in the diff image cover **header, navbar, margins, text areas** → actual layout mismatch, fix required
+
+Live services (streaming, news feeds, etc.) change thumbnail URLs frequently. Do not judge by AE numbers alone.
+
+---
+
 ## Phase D: Pixel-Perfect Diff
 
 > **This step separates "looks similar" from "pixel-perfect".** Both phases always run.

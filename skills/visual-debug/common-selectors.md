@@ -6,10 +6,10 @@ These are **framework-agnostic** — they work on any site using class-based or 
 ## Usage
 
 ```bash
-SCRIPTS="$HOME/Documents/ui-skills/skills/visual-debug/scripts"
+SCRIPTS="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
+SCRIPTS="${SCRIPTS:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
 bash "$SCRIPTS/computed-diff.sh" <session> <orig-url> <impl-url> \
-  $(grep -v '^#' "$HOME/Documents/ui-skills/skills/visual-debug/common-selectors.md" \
-    | grep '^  - ' | awk '{print $2}' | head -20)
+  "h1" "h2" "h3" "h4" "body" "header" "main" "footer"
 ```
 
 Or paste selector groups directly:
@@ -134,3 +134,65 @@ IGNORE_FONT_SIZE=1 bash computed-diff.sh <session> <orig> <impl> <selectors>
 
 If mismatches drop to 0 → it's OS scaling. No fix needed.
 If mismatches remain → real CSS differences exist.
+
+---
+
+## CSS Framework / Legacy Bundle Class Collision Canaries
+
+Use when a CSS framework (Tailwind, Bootstrap, etc.) is loaded alongside a legacy JS bundle.
+Some class names carry meaning in **both** the framework and the bundle's `querySelector` calls — renaming them to fix a style issue silently breaks the bundle's init.
+
+**High-risk collisions (framework utility + common bundle querySelector target):**
+| Class | Framework effect | Why bundles use it | Risk when renamed |
+|-------|-----------------|-------------------|-------------------|
+| `.container` | Tailwind: `max-width` via `@media`; Bootstrap: same | Page-scope init root | Bundle `querySelector` returns null → entire page init fails silently |
+| `.sticky` | Tailwind: `position: sticky` | Sticky nav/header toggle | Position forced, nav broken |
+| `.wrapper` / `.inner` / `.wrap` | No framework utility | Very common bundle container selector | Hierarchy queries break |
+
+**Low-risk:** `.hidden`, `.block`, `.flex`, `.grid` — JS toggles *onto* these, doesn't *query* for init. Usually safe to rename.
+
+**Diagnostic:**
+```bash
+# Extract all class selectors the bundle queries
+grep -o "querySelector('[^']*')\|querySelector(\"[^\"]*\")" public/js/*.min.js \
+  | grep -oE "'[.][^']+'" | sort -u | head -30
+# Does any result match a class you've renamed or that the framework overrides?
+```
+
+**Fix pattern:**
+```jsx
+// ❌ Renames away → bundle querySelector('.container') returns null, init fails
+<main className="nc-override">
+
+// ✅ Keep original so bundle finds it; add override class to target with CSS
+<main className="nc-override container">
+```
+```css
+/* Override only the conflicting property */
+.nc-override { max-width: none !important; }
+```
+
+---
+
+## Pseudo-element Selectors (computed-diff blind spot)
+
+`computed-diff.sh` only checks `getComputedStyle(el)` — it never checks `::before` / `::after`. Active indicators, decorative underlines, and hover effects are often implemented as pseudo-elements and will not appear in any diff output.
+
+**Run this separately after computed-diff when indicators look wrong:**
+
+```bash
+agent-browser --session <s> eval "
+var sel = '[class*=tab_item], [class*=nav_item], [role=tab], [aria-selected]';
+var els = Array.from(document.querySelectorAll(sel)).slice(0, 3);
+JSON.stringify(els.map(function(el) {
+  return ['::before', '::after'].map(function(pseudo) {
+    var s = window.getComputedStyle(el, pseudo);
+    return { el: el.className.slice(0,30), pseudo: pseudo, content: s.content, h: s.height, bg: s.backgroundColor, position: s.position, bottom: s.bottom };
+  });
+}));
+"
+```
+
+**Skip if:** `content: none` or `display: none` — pseudo-element is not rendered.
+
+**Act if:** `content: ""` + `position: absolute` + non-transparent background → this is an active indicator. Measure `bottom`, `left`, `right`, `height`, `border-radius` and replicate as a child `<span>` in React.

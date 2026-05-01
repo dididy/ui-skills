@@ -1,6 +1,6 @@
 # Transition Coverage Audit — Step 6d
 
-**Step 6d runs AFTER `section-audit.md` (Step 6c) and BEFORE `validate-gate.sh pre-generate`.** It produces `transition-coverage.json` — the canonical inventory of every element that animates and the measured curve of its animation. The pre-generate gate fails unless coverage is non-empty.
+**Step 6d runs AFTER `section-audit.md` (Step 6c) and BEFORE `python -m ui_clone.gate <ref-dir> pre-generate`.** It produces `transition-coverage.json` — the canonical inventory of every element that animates and the measured curve of its animation. The pre-generate gate fails unless coverage is non-empty.
 
 > **Why this step exists.** Pixel screenshots are static. DOM inspection at one scroll position is static. Bundle grep finds the *intent* of animation but not whether it actually applied to a given element. The only way to confirm "this element animates" is to **measure its computed style at multiple scroll positions and detect change**.
 
@@ -160,7 +160,7 @@ The skipped/static lists exist for transparency — pre-generate gate inspects `
 
 ## Pre-generate gate enforcement
 
-`validate-gate.sh tmp/ref/<c> pre-generate` MUST verify:
+`python -m ui_clone.gate tmp/ref/<c> pre-generate` MUST verify:
 
 ```bash
 test -f tmp/ref/<c>/transition-coverage.json

@@ -402,7 +402,7 @@ console.log(JSON.stringify(expressions, null, 2));
 | `linear` | Use the generated `calc()` expression |
 | `breakpoint-jump` | Use Tailwind responsive prefixes (e.g., `w-full md:w-[704px] lg:w-[1376px]`) |
 
-⛔ **Gate:** If `sizing-expressions.json` does not exist, `validate-gate.sh pre-generate` MUST fail. Generation without this file will produce hardcoded px values that break at other viewports.
+⛔ **Gate:** If `sizing-expressions.json` does not exist, `python -m ui_clone.gate <ref-dir> pre-generate` MUST fail. Generation without this file will produce hardcoded px values that break at other viewports.
 
 ## Step 4-D: Capture Per-Breakpoint Screenshots + Styles
 

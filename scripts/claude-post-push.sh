@@ -11,7 +11,12 @@ fi
 
 # Check if push succeeded (exit_code 0 in tool output)
 if echo "$input" | grep -q '"exit_code":0'; then
-  npx skills add dididy/ui-skills -gy 2>/dev/null
+  npx skills add voidmatcha/ui-clone-skills -gy 2>/dev/null
+
+  # Run automated review
+  REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  bash "$REPO_ROOT/scripts/review.sh" --quiet 2>/dev/null || \
+    echo "⚠️ review.sh found issues — run 'bash scripts/review.sh' for details" >&2
 fi
 
 exit 0

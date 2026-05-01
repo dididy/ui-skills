@@ -389,9 +389,9 @@ agent-browser --session <project> eval "(() => {
 })()"
 ```
 
-## Save: `animations-detected.json`
+## Save: `animations-detected.json` → merge into `extracted.json` at Step 6b
 
-Combine findings from A + B + C:
+Combine findings from A + B + C into `animations-detected.json`. This file is consumed by Step 6b (assemble `extracted.json`) — the pipeline gates check `extracted.json`, not this file directly.
 
 ```json
 {

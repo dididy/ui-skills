@@ -1,5 +1,5 @@
 {
-  "description": "ui-skills pipeline enforcement hooks",
+  "description": "ui-clone-skills pipeline enforcement hooks",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ui-re-pre-generate-check.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/shim.sh\" ui_clone.hooks.pre_generate"
           }
         ]
       }
@@ -18,7 +18,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ui-re-post-verify-check.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/shim.sh\" ui_clone.hooks.post_verify"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/shim.sh\" ui_clone.hooks.devtools_errors"
           }
         ]
       }
@@ -28,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ui-re-section-compare-gate.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/shim.sh\" ui_clone.hooks.section_gate"
           }
         ]
       }

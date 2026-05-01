@@ -8,7 +8,7 @@ From **Step 2**: `structure.json`, `portal-candidates.json`, `sticky-elements.js
 From **Step 2.5**: `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`
 From **Step 3**: `styles.json`, `advanced-styles.json`, `body-state.json`, `design-bundles.json`, `decorative-svgs.json`
 From **Step 4**: detected breakpoints + per-breakpoint styles
-From **Step 5**: `interactions-detected.json`, `scroll-engine.json`, `scroll-library.json` (if custom scroll detected)
+From **Step 5**: `interactions-detected.json`, `scroll-engine.json`, `scroll-library.json` (if custom scroll detected — produced by `js-animation-extraction.md` during Step 5c)
 From **Step 2.6**: `animation-init-styles.json`, `state-coupling.json`
 From **Step 5b/A-C3**: `transitions/ref/<name>-idle.png` + `transitions/ref/<name>-active.png` for every hover/click interaction
 From **Step 6b**: `transition-spec.json`, `bundle-map.json`
@@ -18,7 +18,7 @@ Optional: keyframes or `extracted.json` from transition extraction pipeline (Ste
 
 **HARD BLOCK on `transition-spec.json`.** Without it you'll re-grep bundles during implementation, waste tokens, and risk applying values from the wrong conditional branch — the #1 source of implementation errors in real sessions.
 
-**HARD BLOCK on interaction captures.** Every hover/click interaction must have idle + active screenshots. Run `validate-gate.sh pre-generate` to check. See SKILL.md rule 12 for why guessing layout is always wrong.
+**HARD BLOCK on interaction captures.** Every hover/click interaction must have idle + active screenshots. Run `python -m ui_clone.gate <ref-dir> pre-generate` to check. See SKILL.md rule 12 for why guessing layout is always wrong.
 
 ## Screenshot-first rule (diagnosis improvement C + E)
 
@@ -258,12 +258,12 @@ For each section in `component-map.json`:
    )
    ```
 
-3. Each builder produces `src/components/<SectionName>/<SectionName>.tsx` + local sub-components. Passes `validate-gate.sh post-implement` independently.
+3. Each builder produces `src/components/<SectionName>/<SectionName>.tsx` + local sub-components. Passes `python -m ui_clone.gate <ref-dir> post-implement` independently.
 
 **Fallback:** if Agent tool unavailable, generate sequentially with the same spec + rules.
 
 **Phase 3C — Assembly (sequential):**
-Collect section components from worktree branches → wire imports in `page.tsx` → add cross-section wiring (scroll context, Lenis wrapper) in `component-map.json` order → `pnpm tsc --noEmit` → `validate-gate.sh post-implement`.
+Collect section components from worktree branches → wire imports in `page.tsx` → add cross-section wiring (scroll context, Lenis wrapper) in `component-map.json` order → `pnpm tsc --noEmit` → `python -m ui_clone.gate <ref-dir> post-implement`.
 
 ## Before writing ANY section — READ section HTML + ref screenshot (HARD RULE)
 

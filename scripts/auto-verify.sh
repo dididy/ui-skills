@@ -155,7 +155,7 @@ fi
 
 # ── Post-implement gate ──
 run_check "Gate: post-implement" \
-  bash "$SCRIPT_DIR/validate-gate.sh" "$REF_DIR" post-implement
+  uv run --project "$(cd "$SCRIPT_DIR/.." && pwd)" python -m ui_clone.gate "$REF_DIR" post-implement
 
 # ── Summary ──
 echo -e "\n${BOLD}═══ RESULT ═══${NC}"
