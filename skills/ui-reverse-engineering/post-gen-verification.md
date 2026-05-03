@@ -76,8 +76,11 @@ agent-browser --session <impl> eval "(() => {
 | `fontsLoaded > 0` but wrong family on elements | Font loaded but CSS selector not reaching element | Body scoping: copy `font-family` to `[data-project]` selector, not just `body {}` |
 | Font loads on ref but not impl | CORS-blocked CDN font | Download font file, self-host in `public/fonts/`, update `@font-face` |
 | `@theme` font silently ignored | Embedded project: `@theme` only works in file with `@import "tailwindcss"` | Use plain CSS vars on `[data-project]` scope |
+| Text on impl looks "thinner / lighter" but font-family, size, weight all match ref | `[data-project] { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility }` was added to host CSS, but ref uses browser defaults (`auto` / `auto`). On macOS Retina, `antialiased` is grayscale-AA — visibly *lighter* than ref's subpixel rendering. | Compare BOTH properties on ref body: `getComputedStyle(document.body)` → `webkitFontSmoothing` and `textRendering`. If ref returns `auto`/`auto`, remove these declarations from impl host CSS. Never set `antialiased` reflexively — match the ref. |
 
 ⛔ **Gate:** If `fontsLoaded: 0` or all elements show body fallback font, fix before proceeding to visual comparison — every screenshot will be wrong otherwise.
+
+⛔ **Gate (rendering parity):** Run on BOTH ref and impl: `getComputedStyle(document.body).webkitFontSmoothing` + `.textRendering`. If they don't match, fix before pixel comparison — the entire page renders at a different perceived weight otherwise, and AE/SSIM diffs will be noisy across every text region.
 
 ## Silent failure checks (MANDATORY — run after font verification)
 
@@ -489,7 +492,7 @@ If the site uses `overflow: hidden` + `translate3d` wrapper:
 ### Run
 
 ```bash
-SCRIPTS_DIR="$(find ~/.claude/skills -name 'section-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
+SCRIPTS_DIR="$(find -L ~/.claude/skills -name 'section-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
 bash "$SCRIPTS_DIR/section-compare.sh" <original-url> <impl-url> <session> tmp/ref/<component>
 ```
 
@@ -528,7 +531,7 @@ bash "$SCRIPTS_DIR/section-compare.sh" <original-url> <impl-url> <session> tmp/r
 ### Run
 
 ```bash
-SCRIPTS_DIR="$(find ~/.claude/skills -name 'transition-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
+SCRIPTS_DIR="$(find -L ~/.claude/skills -name 'transition-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)"
 bash "$SCRIPTS_DIR/transition-compare.sh" <original-url> <impl-url> <session> tmp/ref/<component>
 ```
 

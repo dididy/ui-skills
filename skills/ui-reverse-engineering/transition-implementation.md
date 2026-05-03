@@ -284,6 +284,53 @@ chars.forEach((char, i) => {
 
 **When to use:** Any site with `SplitText.create()` in the bundle.
 
+### SplitText mask wrapper CSS — strict rules
+
+When implementing splitText (chars, words, OR lines) with a mask wrapper for the `translateY(100%) → 0` reveal, the mask CSS is load-bearing. Get it wrong and the host element grows taller than ref by ~5-50% per text line.
+
+**Mask span MUST be exactly:**
+
+```css
+position: relative;
+display: inline-block;  /* or `block` for line-masks */
+overflow: clip;          /* or `hidden`, but `clip` doesn't establish a scroll container */
+```
+
+**NEVER set on the mask:**
+
+| Property | Why it breaks |
+|---|---|
+| `line-height` | The mask is `inline-block`, so its line-box height is `line-height × font-size`. Any explicit value (incl. `0.95em`, `1`, `normal`) overrides the parent's intended typography and makes each line taller/shorter than ref. |
+| `vertical-align` (`bottom`, `middle`, etc.) | Shifts the baseline → descenders clip differently, line-box positioning changes. Default `baseline` is the only safe value. |
+| `font-size` | Resets the cap-height; child characters render at correct size but mask line-box is wrong. |
+| `padding` / `margin` (top/bottom) | Adds to line-box height. Even 1px breaks pixel-match. |
+
+**Why this matters:** the mask is a clipping container — its sole purpose is to crop the translated child during the reveal. ALL typographic properties must inherit from the host element verbatim. The animated child (`<span class="split-line">` or `<span class="split-letter">`) is what carries the visible typography.
+
+**Verification — before declaring split-text done, measure:**
+
+```js
+agent-browser eval "(() => {
+  const ref = document.querySelector('.hero-section'); // your textHost on ref
+  const impl = document.querySelector('.hero-section'); // same on impl
+  return { refH: ref.getBoundingClientRect().height, implH: impl.getBoundingClientRect().height };
+})()"
+```
+
+Heights must match within 1px. A 30-60px gap is the mask line-height bug — fix the mask CSS before moving on.
+
+### GSAP `stagger` semantics — number vs object
+
+```ts
+gsap.to(targets, { y: 0, stagger: 0.1 })            // PER-target step: 100ms between each
+gsap.to(targets, { y: 0, stagger: { each: 0.1 } })  // Same as above (object form, `each` key)
+gsap.to(targets, { y: 0, stagger: { amount: 0.1 } }) // TOTAL spread: 100ms across ALL targets
+```
+
+For `stagger.amount`, the per-target step is `amount / (N - 1)`, NOT `amount`. The last target finishes at `delay + duration + amount`, NOT `delay + duration + (N-1)×amount`.
+
+**Common bug:** mistaking `amount` for `each` writes per-target step = `amount`. With N=14 lines and `amount: 0.1`, you compute step = 0.1 instead of step = 0.1/13 ≈ 0.0077. Last line's delay is 1.3 instead of 0.1, pushing it past the timeline end. **It never reveals.** Cross-check: with correct semantics, all targets must finish by `base + amount + duration`.
+
 ### MorphSVG → Manual SVG path interpolation or rx/ry animation
 
 GSAP's MorphSVG morphs between SVG path shapes. Without the plugin:

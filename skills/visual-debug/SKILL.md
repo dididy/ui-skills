@@ -50,7 +50,8 @@ which agent-browser
 
 ```bash
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
-SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
+# -L follows symlinks (~/.claude/skills/visual-debug is often a symlink to a real path).
+SCRIPTS_DIR="${SCRIPTS_DIR:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
 ```
 
 | Script | Purpose |
@@ -64,26 +65,36 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec 
 | `section-compare.sh <orig> <impl> <session> <dir>` | **Section-level comparison** — crops each section, AE + structure diff. Catches SVG-as-text, layout mismatches. **`<dir>` is required** — pass `"$(pwd)/tmp/ref/<component>"` |
 | `auto-diagnose.sh <session> <orig> <impl> <diff.png>` | **Auto-find mismatched elements** from AE diff image → elementFromPoint → computed-diff with severity |
 | `layout-health-check.sh <session> <orig> <impl> <dir>` | Section height/total height structural check before pixel diff |
+| `stray-absolute-check.sh <session> <impl-url> [w] [h]` | **Catches the "footer disappeared" bug class** — flags `position: absolute` elements with no positioned ancestor (offset resolves against `<body>`). Single URL, no ref needed. See `diagnosis.md` → Root Cause H. |
 | `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
+| `tree-diff.sh <session> <orig> <impl> [dir]` | **Exhaustive per-element CSS diff** — walks every visible impl element (≥ MIN_SIZE px), pairs with ref via `elementFromPoint`, runs computed-style diff per pair. Catches mismatches AE misses (wrong font that renders identically, same-box different-style). |
+| `layout-tree-diff.sh <session> <orig> <impl> [dir]` | **Geometry diff via signature-based pairing** — pairs impl ↔ ref by stable signature (text + tag + class hash + size class), reports geometry deltas (top/left/w/h) regardless of where elements moved. Catches what tree-diff misses (right element, wrong position). |
+| `hover-tree-diff.sh <session> <orig> <impl> [dir]` | **Per-element hover/transition diff** — for each hover-capable element pair, captures idle → CDP `:hover` → settled style. Diffs timing (property/duration/easing/delay) + idle→hover delta. Catches missing hover rules, wrong easing, different deltas. |
+| `keyframes-diff.sh <session> <orig> <impl> [dir]` | **`@keyframes` declaration diff** — extracts all keyframe rules from both pages, reports keyframes only on one side and same-name rules with different steps. Catches missing entrance animations, wrong timing curves baked into keyframes. |
 
 **Reference selectors:** `common-selectors.md` — ready-to-use selector sets (typography, CSS reset canaries, Tailwind preflight issues, Naver.com specific, general e-commerce)
 
 ## Workflow
 
-### Step 0: computed-diff FIRST (before AE)
+### Step 0: structural checks FIRST (before AE)
 
-**Always run computed-diff before pixel comparison.** AE catches *that* something is wrong; computed-diff catches *why* — and fixes the root cause immediately without hunting through diff images.
+**Always run structural checks before pixel comparison.** AE catches *that* something is wrong; structural checks catch *why* — and fix the root cause immediately without hunting through diff images.
 
 ```bash
 SCRIPTS="$SCRIPTS_DIR"
 
-# Broad sweep: CSS reset canaries + page structure
+# 0a. Stray absolute positioning — catches the "footer disappeared" bug class.
+#     Run on EVERY viewport you care about; the bug often only manifests on shorter pages.
+bash "$SCRIPTS/stray-absolute-check.sh" <session>-stray <impl> 375 812
+bash "$SCRIPTS/stray-absolute-check.sh" <session>-stray <impl> 1280 800
+
+# 0b. Broad sweep: CSS reset canaries + page structure
 bash "$SCRIPTS/computed-diff.sh" <session> <orig> <impl> \
   "h1" "h2" "h3" "h4" \
   "img" "button" "a" \
   "body" "header" "main" "footer"
 
-# Domain-specific selectors from common-selectors.md
+# 0c. Domain-specific selectors from common-selectors.md
 # IGNORE_FONT_SIZE=1 to skip OS text-scaling false positives
 IGNORE_FONT_SIZE=1 bash "$SCRIPTS/computed-diff.sh" <session> <orig> <impl> \
   "[class*=title]" "[class*=logo]" "[class*=search]" "[class*=nav]"
@@ -93,7 +104,7 @@ See `common-selectors.md` for ready-to-use selector sets by domain.
 
 ### Full-page comparison (broad sweep)
 ```
-0. computed-diff  computed-diff.sh (CSS reset canaries + page structure)
+0. Structural    stray-absolute-check.sh + computed-diff.sh (CSS reset canaries + page structure)
 1. Capture        batch-scroll.sh <orig> <impl> <session>
 2. AE diff        batch-compare.sh <dir>
 3. DSSIM          dssim-compare.sh <dir>
@@ -108,7 +119,7 @@ See `common-selectors.md` for ready-to-use selector sets by domain.
 
 ### Section-level comparison (precise — preferred for post-gen verification)
 ```
-0. computed-diff  computed-diff.sh (CSS reset canaries + section selectors)
+0. Structural    stray-absolute-check.sh + computed-diff.sh (CSS reset + section selectors)
 1. Section compare  section-compare.sh <orig> <impl> <session> "$(pwd)/tmp/ref/<component>"
    → Per-section AE + severity (critical/major/minor) + structure diff
    ⚠️  The 4th argument (ref dir path) is MANDATORY — the Stop gate reads result.txt from that
@@ -123,6 +134,26 @@ See `common-selectors.md` for ready-to-use selector sets by domain.
 ```
 
 **Use section-level for ui-reverse-engineering Step 8b/8c.** Use full-page for standalone `/visual-debug` invocations.
+
+## Escalation diagnostics (when the standard workflow misses the bug)
+
+The standard workflow (AE + DSSIM + `auto-diagnose.sh` + `computed-diff.sh`) catches most mismatches. When AE keeps reporting failures but `auto-diagnose` returns clean — escalate to the **tree-diff family**. These walk *every* element on the page rather than a fixed selector list, so they catch what targeted diagnostics miss.
+
+| Symptom | Escalate to | Why |
+|---|---|---|
+| AE fails repeatedly but `auto-diagnose` finds nothing | `tree-diff.sh` | Exhaustive computed-style diff — pairs every visible impl element with ref via `elementFromPoint`. Catches wrong fonts that render identically, same-box different-style overrides. |
+| Element appears at wrong position but `tree-diff` says style matches | `layout-tree-diff.sh` | Geometry diff via signature-based pairing — pairs by stable signature (text + tag + class hash + size class), reports `top/left/w/h` deltas regardless of where the element moved on screen. |
+| Hover/transition feels off but `transition-compare.sh` reports PASS | `hover-tree-diff.sh` | Per-element CDP `:hover` capture for *every* hover-capable pair (not just the predefined set). Diffs idle→hover delta + timing. |
+| Entrance/scroll animation runs but timing or curve is subtly different | `keyframes-diff.sh` | Diffs `@keyframes` declarations directly. Catches missing rules, wrong steps, wrong easing baked into the keyframe definition rather than the animation shorthand. |
+
+```bash
+bash "$SCRIPTS/tree-diff.sh"        <session> <orig> <impl>   # full-element style diff
+bash "$SCRIPTS/layout-tree-diff.sh" <session> <orig> <impl>   # geometry deltas
+bash "$SCRIPTS/hover-tree-diff.sh"  <session> <orig> <impl>   # hover style + timing
+bash "$SCRIPTS/keyframes-diff.sh"   <session> <orig> <impl>   # @keyframes declarations
+```
+
+These are diagnostic, not gate-blocking. Use them when `section-compare` / `transition-compare` keep failing without a clear cause — they produce a markdown report (severity-sorted) that names the culprit elements and properties. **Do not run all four by default** — they are slower and more expensive than the standard workflow.
 
 ## Three-axis verification (ALL required)
 

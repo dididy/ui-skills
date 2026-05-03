@@ -154,6 +154,10 @@ grep -oE 'repeat\s*:\s*-1\|repeatDelay\s*:\s*[0-9.]+' tmp/ref/<c>/bundles/*.js |
 | 3D tilt | `perspective(Npx) rotateX() rotateY()` |
 | Stagger children | `transition-delay` per child (50-150ms gap) |
 | Character stagger | `splitText` → per-char WAAPI, continuous delay (10-20ms gap), blur+opacity+transform |
+| Webflow centered container | `width: 97vw; margin: 0 auto` (NOT a fixed `margin-left/right` in rem). Replicate the rule, not the computed px value |
+| Two-line nav border | `display: flex; flex-direction: column; gap: 0.5rem` containing two `<div>` elements with `height: 1px`. NOT a `border-bottom` — the gap scales with viewport (rem) where `border-bottom` would be a single fixed line |
+| Decoration image inside wider button | `<img>` has `position: absolute; height: 100%; width: auto` centered via `left/right` insets — wrapper anchor is wider than the visual decoration to enlarge the click target. Do NOT use `inset-0 w-full h-full` |
+| Webflow fluid root font-size | `html { font-size: calc(<base>rem + <coef>vw) }` where coef = (font_to − font_from)/(vw_to − vw_from). At 1440 viewport for ordrhealth pattern, 1rem ≈ 12.03px (NOT 16px). All rem-based measurements must scale linearly between the two breakpoints. Expect non-integer computed-px values |
 
 ## Canvas/WebGL Patterns
 
@@ -259,3 +263,5 @@ Use inline styles, not CSS classes, for initial hidden state.
 | Re-capturing reference wastes time | Capture ONCE. Compare against saved files. |
 | `--selector` screenshot times out | Use full-page `agent-browser screenshot` + sips crop. |
 | `window.__scrub` missing mid-loop | Page reloaded. Re-inject before continuing. |
+| Hover/transform transition silently dropped on element with reveal class | Later utility class (e.g. `.reveal { transition: opacity 0.6s }`) declared after the component class with `transition: transform 0.5s, opacity 0.6s` — the later rule's `transition` shorthand resets transform back to default. Boost specificity by doubling the selector (`.card.card { transition: ... }`) or move the reveal opacity to a separate property-only declaration (`transition-property: opacity; transition-duration: 0.6s`) so it doesn't shadow the multi-property shorthand. |
+| `agent-browser screenshot --clip-x/-y/-width/-height` produces wrong file | Those flags aren't supported by the current `screenshot` subcommand — they end up parsed as the output path. Always do full-viewport capture, then crop with ImageMagick: `magick full.png -crop 1440x90+0+0 +repage cropped.png`. |

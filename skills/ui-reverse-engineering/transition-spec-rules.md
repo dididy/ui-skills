@@ -1,4 +1,4 @@
-# transition-spec.json — Format, Verification, and External SDKs
+# transition-spec.json — Step 5d
 
 > This file defines how to produce, verify, and maintain the single most important artifact for implementation.
 

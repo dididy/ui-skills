@@ -73,7 +73,7 @@ SECTIONS_JSON=$(agent-browser --session "$SESSION" eval "(() => {
     let name = el.id || '';
     if (!name) {
       const combined = cn.toLowerCase();
-      const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['text-scroll','text-scroll'],['pricing','pricing'],['testimonial','testimonials'],['feature','features'],['discover','features'],['about','about'],['team','team'],['gallery','gallery'],['portfolio','portfolio'],['contact','contact'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['subscribe','subscribe'],['partner','partners'],['client','clients'],['stats','stats']];
+      const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['text-scroll','text-scroll'],['pricing','pricing'],['testimonial','testimonials'],['feature','features'],['discover','features'],['about','about'],['team','team'],['gallery','gallery'],['portfolio','portfolio'],['contact','contact'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['subscribe','subscribe'],['footer-section','newsletter'],['partner','partners'],['client','clients'],['stats','stats']];
       let matched = false;
       for (const [kw, n] of kwMap) {
         if (combined.includes(kw)) { name = n; matched = true; break; }

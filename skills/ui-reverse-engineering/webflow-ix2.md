@@ -218,7 +218,23 @@ For each IX2 target found:
 - [ ] `webflow-ix2.json` saved (from `pages/<id>.json` OR `Webflow.require('ix2')`)
 - [ ] At least 10 scroll-position snapshots in `scroll-pos-*.json`
 - [ ] `transition-spec.json` includes a `webflowIx2` block listing each target's selector + actionTypeId + trigger + value range
+- [ ] **Action count parity**: for each timeline, `transition-spec.json` impl-action count === `actionItems.length` from the timeline JSON. Off-by-one = a target that never animates.
 - [ ] Component generation imports the IX2 mapping table (Step W-5) and uses `useScroll` + `useTransform` for continuous effects, NOT `useScrollTrigger`
+
+### Action enumeration completeness check
+
+IX3 timelines bundle multiple targets per timeline. Visually-obvious targets (image translate, line draw) are easy to spot; per-line text reveals via `splitText.mask='lines'` look identical to static text in a screenshot. **Enumerate every entry in `actionItems[]` from the timeline JSON, not just what looks animated.**
+
+```bash
+# After Step W-3, verify every action has a target in your impl
+jq '.actionItems[] | { actionTypeId, target: .config.target.selector, splitText: .config.splitText }' \
+  tmp/ref/<c>/timeline-t-<id>.json
+```
+
+Common missed actions:
+- `actionTypeId: "STYLE_OPACITY"` with `splitText: { type: "lines", mask: "lines" }` — wraps each line in a mask + animates per-line. Looks identical to static text in a frame.
+- `actionTypeId: "TRANSFORM_MOVE"` on `* within .grid-cell` — `*` selector targets every descendant; easy to miss when scanning by class name.
+- Any action whose `config.target.selector` is `*` or contains `within` — these are wildcard/scope selectors, not single elements.
 
 ## Common Webflow IX2 misses (real failures from juanmora.co)
 

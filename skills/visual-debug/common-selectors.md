@@ -7,7 +7,7 @@ These are **framework-agnostic** — they work on any site using class-based or 
 
 ```bash
 SCRIPTS="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
-SCRIPTS="${SCRIPTS:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
+SCRIPTS="${SCRIPTS:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
 bash "$SCRIPTS/computed-diff.sh" <session> <orig-url> <impl-url> \
   "h1" "h2" "h3" "h4" "body" "header" "main" "footer"
 ```

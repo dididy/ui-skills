@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# transition-compare.sh — Video-based transition comparison
+# video-transition-compare.sh — Video-based transition comparison
 # Records the same interaction on original + implementation, extracts frames at 60fps,
 # runs SSIM batch comparison, outputs pass/fail table.
 #
 # Usage:
-#   bash transition-compare.sh <session> <orig-url> <impl-url> <output-dir> <action-script>
+#   bash video-transition-compare.sh <session> <orig-url> <impl-url> <output-dir> <action-script>
 #
 # Arguments:
 #   session      — agent-browser session name
@@ -17,7 +17,7 @@
 #                     "click:<selector>" — click an element and record transition
 #
 # Example:
-#   bash transition-compare.sh same-energy https://same.energy/ http://localhost:4001/same-energy \
+#   bash video-transition-compare.sh same-energy https://same.energy/ http://localhost:4001/same-energy \
 #     tmp/ref/same-energy/transitions "click:[class*=image_container]"
 #
 # Output:
@@ -30,7 +30,7 @@
 
 set -euo pipefail
 
-SESSION="${1:?Usage: transition-compare.sh <session> <orig> <impl> <outdir> <action>}"
+SESSION="${1:?Usage: video-transition-compare.sh <session> <orig> <impl> <outdir> <action>}"
 ORIG_URL="${2:?}"
 IMPL_URL="${3:?}"
 OUT_DIR="${4:?}"
@@ -219,7 +219,7 @@ else
     SSIM=$(ffmpeg -i "$REF_FRAME" -i "$IMPL_FRAME" -lavfi "ssim" -f null - 2>&1 | grep -oE 'All:[0-9.]+' | cut -d: -f2 || echo "0")
     [[ -z "$SSIM" ]] && SSIM="0"
 
-    IS_PASS=$(echo "$SSIM >= $SSIM_THRESHOLD" | bc -l 2>/dev/null || echo "0")
+    IS_PASS=$(awk -v a="$SSIM" -v b="$SSIM_THRESHOLD" 'BEGIN{print (a+0 >= b+0) ? 1 : 0}')
 
     if [[ "$IS_PASS" -eq 1 ]]; then
       PASS=$((PASS + 1))

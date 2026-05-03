@@ -945,6 +945,42 @@ class TestCompletionPatternWordBoundary:
 
         assert _is_completion_command("finish the work")
 
+    def test_merge_word_matched(self):
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert _is_completion_command("git merge feature-branch")
+
+    def test_push_word_matched(self):
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert _is_completion_command("git push origin main")
+
+    def test_complete_word_matched(self):
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert _is_completion_command("mark task complete")
+
+    def test_looks_good_phrase_matched(self):
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert _is_completion_command("LGTM, looks good to me")
+
+    def test_all_pass_phrase_matched(self):
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert _is_completion_command("tests all pass now")
+
+    def test_unrelated_command_not_matched(self):
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert not _is_completion_command("npm run dev")
+
+    def test_pushup_substring_not_matched(self):
+        """Word-boundary check: 'pushup' must not match the 'push' alternation."""
+        from ui_clone.hooks.post_verify import _is_completion_command
+
+        assert not _is_completion_command("schedule pushups for tomorrow")
+
 
 class TestGateSubprocessTimeout:
     """Verifies that gate subprocess calls fail-open on TimeoutExpired."""

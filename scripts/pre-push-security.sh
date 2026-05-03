@@ -60,7 +60,8 @@ section "Code injection"
 eval_count=$(grep -rEn '(^|[[:space:];&|])eval[[:space:]"'"'"']' \
   --include='*.sh' --exclude="$SELF" --exclude-dir=.git . 2>/dev/null | \
   grep -v 'agent-browser' | \
-  grep -v "^[^:]*:[0-9]*:[[:space:]]*echo " | wc -l | tr -d ' ')
+  grep -v "^[^:]*:[0-9]*:[[:space:]]*echo " | \
+  grep -vE "^[^:]*:[0-9]+:[[:space:]]*#" | wc -l | tr -d ' ')
 [ "$eval_count" -eq 0 ] && ok "no bash eval()" || err "bash eval() found ($eval_count occurrences)"
 
 # CWE-377: insecure use of fixed temporary file paths (race / symlink attack)

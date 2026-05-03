@@ -72,7 +72,13 @@ Do NOT proceed to the pipeline or any extraction until `<url>` is provided.
 ## First action — always
 
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find ~/.claude/skills -path '*/ui-clone/pipeline.py' 2>/dev/null | head -1 | xargs -I{} dirname "$(dirname "{}")")}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find -L ~/.claude/skills -path '*/ui_clone/pipeline.py' 2>/dev/null | head -1 | xargs -I{} dirname "$(dirname "{}")")}"
+# Fallback: when only skills/* are symlinked (ui_clone/ lives as a sibling of skills/, outside ~/.claude/skills),
+# derive plugin root by resolving the skill symlink and walking up two levels.
+if [ -z "$PLUGIN_ROOT" ] && [ -L ~/.claude/skills/ui-reverse-engineering ]; then
+  candidate=$(dirname "$(dirname "$(readlink -f ~/.claude/skills/ui-reverse-engineering)")")
+  [ -f "$candidate/ui_clone/pipeline.py" ] && PLUGIN_ROOT=$candidate
+fi
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.pipeline <url> <component-name> <session> status
 ```
 
@@ -112,7 +118,7 @@ brew install imagemagick dssim ffmpeg
 | | 2.6-pre | **Dual-snapshot** → `dom-state-diff.json`. ⛔ MANDATORY if site has preloader. |
 | | 2.6 | `animation-init-styles.json`, `state-coupling.json` |
 | | 3 | `style-extraction.md` → `styles.json`, `advanced-styles.json`, `body-state.json`, `decorative-svgs.json`, `design-bundles.json`. ⛔ If `scalingSystem !== 'px-fixed'` → `em-conversion.json` MUST exist. |
-| | 4 | `responsive-detection.md` → `detected-breakpoints.json`. **Step 4-C2 MANDATORY** → `sizing-expressions.json`. |
+| | 4 | `responsive-detection.md` → `detected-breakpoints.json`. **Step 4-C1b MANDATORY** → `mobile-swap.json` (mobile-only sibling sections). **Step 4-C2 MANDATORY** → `sizing-expressions.json`. |
 | | 5 | `interaction-detection.md` → `interactions-detected.json`, `scroll-transitions.json`, `hover-deltas.json`, `hover-timing.json`, `hover-css-rules.json`. |
 | | 5b | If new interactive elements found → re-run `/ui-capture` Phase 2B–2E |
 | | 5c | `bundle-analysis.md` — Download ALL JS chunks → `scroll-engine.json`. If custom scroll detected → `js-animation-extraction.md` → `scroll-library.json`. ⛔ Gate: `bundle` |
@@ -123,7 +129,8 @@ brew install imagemagick dssim ffmpeg
 | | 6c | `section-audit.md` — → `element-roles.json`, `element-groups.json`, `layout-decisions.json`, `component-map.json`. **Never skip.** |
 | | 6d | `transition-coverage.md` — → `transition-coverage.json`. ⛔ Gate: `pre-generate`. |
 | **3** | 7 | Read `site-detection.md` FIRST, then `component-generation.md` + `transition-implementation.md`. |
-| **4** | 8 | `auto-verify.sh`. ⛔ MANDATORY — must run before 8b. |
+| **4** | 8-pre | `stray-absolute-check.sh <session>-stray <impl> <w> <h>` (visual-debug/scripts/) — run for each viewport you support (e.g. 375×812, 1280×800). Catches Root Cause H (footer/sticky elements with `position: absolute` and no positioned ancestor — silently anchors to `<body>`, often only manifests on shorter pages). Cheap (one page load); runs before AE so you fix structure before chasing pixels. See `diagnosis.md` → Root Cause H. |
+| | 8 | `auto-verify.sh`. ⛔ MANDATORY — must run before 8b. |
 | | 8b | `section-compare.sh <orig-url> <impl-url> <session> "$(pwd)/tmp/ref/<component>"` (visual-debug/scripts/) ⛔ MANDATORY — runs IN ADDITION to Step 8, not instead. 4th arg required for Stop gate |
 | | 8c | `transition-compare.sh` ⛔ MANDATORY if `interactions-detected.json` exists. |
 | | 9 | Test every interaction. Dispatch `mouseenter` for JS hovers. 100% ✅. |
@@ -235,7 +242,7 @@ Run the classifier eval from `js-animation-extraction.md` Step T1 to detect type
 | File | Step | Role |
 |---|---|---|
 | `skip-zones.md` | — | **Read when gate fails** — 5 zones of commonly skipped steps with per-zone gate checks |
-| `diagnosis.md` | — | **Read when visual mismatch** — Root Cause A–E with diagnosis commands + fix patterns |
+| `diagnosis.md` | — | **Read when visual mismatch** — Root Cause A–G with diagnosis commands + fix patterns |
 | `no-judgment.md` | — | **Read when "looks right to me"** — decision framework for measurement vs assumption |
 | `site-detection.md` | 1 | Auto-detect stack; pick CSS-First vs Extract-Values |
 | `dom-extraction.md` | 1–2 | DOM hierarchy, semantic section enumeration, hidden element extraction |

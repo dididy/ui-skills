@@ -181,6 +181,7 @@ agent-browser eval "
 - **Phase boundaries**: Properties that stay constant for some range then change → multi-phase animation
 - **Different phase timings per property**: e.g., wrapper shrinks 0→50%, opacity changes 50→100%, scales change 50→100% → each needs its own phase logic
 - **Stepped values**: Property jumps from 0 to non-zero at a specific point → use conditional, not continuous interpolation
+- **Sub-pixel offsets are signals, not noise**: log `getBoundingClientRect()` with 2-3 decimals (`+r.x.toFixed(3)`). A 0.4px x-offset across many elements is a centering/margin rule mismatch, not AA rounding. A 0.06px height delta = 0.005rem at fluid root = the element uses a different rem value (e.g. `2.74rem` vs ref's `2.75rem`). On Webflow fluid-root sites where `1rem ≠ 16px`, computed-px is non-integer; matching the px exactly reveals the source rule (`97vw`, `9rem`, etc.). Round to integers and you lose the trail.
 
 Save the raw measurement data to `tmp/ref/<effect-name>/measurements.json` before proceeding.
 

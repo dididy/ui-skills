@@ -150,7 +150,7 @@ bash "$SCRIPTS_DIR/layout-health-check.sh" <session> <orig-url> <impl-url> tmp/r
 
 ### Phase D: Pixel-Perfect Visual Gate (MANDATORY)
 
-> **Read and execute the Phase D section below Phase 1 (Visual Gate) AND Phase 2 (Numerical Diagnosis) before declaring any section done — both always run.**
+> **Read and execute `verification.md` Phase D1 (Visual Gate) AND Phase D2 (Numerical Diagnosis) before declaring any section done — both always run.**
 
 C1–C3 use pixel-level diff (AE/SSIM) to catch visual mismatches. Phase D goes deeper with per-element clip screenshots and getComputedStyle to catch sub-pixel numerical differences that full-page AE/SSIM may miss:
 - `font-size: 15px` vs `16px` (passes full-page SSIM, caught by per-element clip + getComputedStyle)
@@ -161,8 +161,8 @@ Phase D runs **in parallel with C1** (both use the static loaded page). Phase D1
 
 **For each major section of the component:**
 
-1. Follow the Phase D section below Phase 1 — clip screenshot per element per state (idle / active / before / mid / after — by triggerType; for click-toggle: idle + active; for click-cycle: state-0, state-1, ..., state-N), AE/SSIM diff
-2. Follow the Phase D section below Phase 2 — getComputedStyle all properties, build diff table
+1. Follow `verification.md` Phase D1 — clip screenshot per element per state (idle / active / before / mid / after — by triggerType; for click-toggle: idle + active; for click-cycle: state-0, state-1, ..., state-N), AE/SSIM diff
+2. Follow `verification.md` Phase D2 — getComputedStyle all properties, build diff table
 3. Produce `tmp/ref/<component>/pixel-perfect-diff.json`
 
 Phase D gate:

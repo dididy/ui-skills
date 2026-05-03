@@ -5,7 +5,7 @@
 # 3. pre-push-security.sh finds blockers (secrets, eval, insecure /tmp, etc).
 
 input=$(cat)
-echo "$input" | grep -qE '"command":"[^"]*git\s+push' || exit 0
+echo "$input" | grep -qE '"command":"[^"]*git[[:space:]]+push' || exit 0
 
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
@@ -18,12 +18,16 @@ if [ -f scripts/pre-push-security.sh ]; then
   fi
 fi
 
-# Version sync check: plugin.json and marketplace.json must match
+# Version sync check: plugin.json, marketplace.json, pyproject.toml, and ui_clone/__init__.py must all match
 plugin_v=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])" 2>/dev/null || echo "")
 market_v=$(python3 -c "import json; print(json.load(open('.claude-plugin/marketplace.json'))['plugins'][0]['version'])" 2>/dev/null || echo "")
-if [ -n "$plugin_v" ] && [ -n "$market_v" ] && [ "$plugin_v" != "$market_v" ]; then
-  echo "⚠️ Version mismatch: plugin.json=$plugin_v vs marketplace.json=$market_v" >&2
-  echo "Both must be bumped together. decision: block" >&2
+pyproj_v=$(python3 -c "import re; m=re.search(r'^version\s*=\s*\"([^\"]+)\"', open('pyproject.toml').read(), re.M); print(m.group(1) if m else '')" 2>/dev/null || echo "")
+init_v=$(python3 -c "import re; m=re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('ui_clone/__init__.py').read()); print(m.group(1) if m else '')" 2>/dev/null || echo "")
+versions="plugin.json=$plugin_v marketplace.json=$market_v pyproject.toml=$pyproj_v ui_clone/__init__.py=$init_v"
+unique=$(printf '%s\n' "$plugin_v" "$market_v" "$pyproj_v" "$init_v" | sort -u | grep -v '^$' | wc -l | tr -d ' ')
+if [ "$unique" != "1" ]; then
+  echo "⚠️ Version mismatch: $versions" >&2
+  echo "All four must be bumped together. decision: block" >&2
   exit 2
 fi
 

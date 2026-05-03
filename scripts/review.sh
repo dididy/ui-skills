@@ -11,8 +11,8 @@ set -uo pipefail
 QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)" || { echo "review.sh: cannot resolve repo root" >&2; exit 1; }
+cd "$REPO_ROOT" || { echo "review.sh: cannot cd to $REPO_ROOT" >&2; exit 1; }
 
 ERRORS=0
 WARNINGS=0
@@ -164,11 +164,11 @@ else
 fi
 
 # FPS default
-FPS_DEFAULT=$(grep -oE 'FPS="\$\{FPS:-[0-9]+\}"' scripts/transition-compare.sh | grep -oE '[0-9]+')
+FPS_DEFAULT=$(grep -oE 'FPS="\$\{FPS:-[0-9]+\}"' scripts/video-transition-compare.sh | grep -oE '[0-9]+')
 if [ "$FPS_DEFAULT" = "60" ]; then
-  ok "transition-compare.sh FPS default is 60"
+  ok "video-transition-compare.sh FPS default is 60"
 else
-  err "transition-compare.sh FPS default is $FPS_DEFAULT (should be 60)"
+  err "video-transition-compare.sh FPS default is $FPS_DEFAULT (should be 60)"
 fi
 
 # ── 8. Hardcoded paths ──
@@ -182,7 +182,21 @@ else
   err "hardcoded absolute paths found in: $HARDCODED"
 fi
 
-# ── 9. Language consistency ──
+# ── 9. Shell syntax ──
+section "Shell syntax"
+
+SH_BAD=""
+while IFS= read -r f; do
+  bash -n "$f" 2>/dev/null || SH_BAD="$SH_BAD $f"
+done < <(find scripts skills -name '*.sh' -type f 2>/dev/null)
+if [ -z "$SH_BAD" ]; then
+  SH_COUNT=$(find scripts skills -name '*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')
+  ok "all $SH_COUNT shell scripts pass bash -n"
+else
+  err "shell syntax errors in:$SH_BAD"
+fi
+
+# ── 10. Language consistency ──
 section "Language"
 
 # SKILL.md and sub-docs should be English only

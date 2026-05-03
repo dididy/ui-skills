@@ -66,9 +66,11 @@ class Gate:
         size = path.stat().st_size
         if size < 10:
             if allow_empty_array and size >= 2:
-                content = path.read_text().strip()
-                if content in ("[]", "[ ]"):
-                    return CheckResult(label, "pass", f"{label} (empty array — no elements found)")
+                try:
+                    if json.loads(path.read_text()) == []:
+                        return CheckResult(label, "pass", f"{label} (empty array — no elements found)")
+                except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+                    pass
             return CheckResult(label, "fail", f"{label} — exists but empty ({size} bytes)", fix=fix)
         return CheckResult(label, "pass", f"{label}")
 
@@ -169,15 +171,6 @@ class Gate:
                         f"em-conversion.json (REQUIRED: scalingSystem={scaling})",
                     )
                 )
-
-        # transition-coverage.json is produced at Step 6d — check early so failures
-        # are surfaced at extraction gate rather than only at pre-generate gate.
-        results.append(
-            self.check_file(
-                self.ref_dir / "transition-coverage.json",
-                "transition-coverage.json (Step 6d multi-position scroll measurement)",
-            )
-        )
 
         return results
 

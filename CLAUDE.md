@@ -7,7 +7,7 @@ ui_clone/          Python package (gates, hooks, pipeline, DAG, metrics)
 skills/            3 Claude Code skills (ui-reverse-engineering, ui-capture, visual-debug)
 scripts/           Bash automation (extraction, verification, git hooks)
 hooks/             Plugin hook registration (hooks.json + shim.sh)
-tests/             pytest suite (189 tests)
+tests/             pytest suite (226 tests)
 .claude-plugin/    Plugin manifest (plugin.json, marketplace.json)
 ```
 
@@ -76,7 +76,7 @@ If you add an artifact check to a gate, ensure the sub-doc that produces it runs
 When adding new keywords, update all 3.
 
 ### FPS
-All video frame extraction uses 60fps. `transition-compare.sh` defaults to `FPS=60`.
+All video frame extraction uses 60fps. `video-transition-compare.sh` defaults to `FPS=60`.
 
 ### Token management
 - Large eval output → pipe to file, then Read/Grep specific lines
@@ -88,8 +88,8 @@ All video frame extraction uses 60fps. `transition-compare.sh` defaults to `FPS=
 Run before push — `scripts/review.sh` automates this:
 
 ```
-[] Tests pass (189+)
-[] Security gate passes (10 checks)
+[] Tests pass (226+)
+[] Security gate passes (11 checks)
 [] Sub-doc step numbers match SKILL.md pipeline
 [] Gate artifact checks match sub-doc output timing
 [] No stale refs to deleted files (validate-gate.sh, run-pipeline.sh, ui_skills.*)

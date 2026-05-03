@@ -40,7 +40,7 @@ VIDEOS_JSON=$(agent-browser --session "$SESSION" eval "(() => {
     const currentSrc = v.currentSrc || v.src;
     // Determine which section this video is in
     let section = 'unknown';
-    const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['feature','features'],['discover','features'],['pricing','pricing'],['testimonial','testimonials'],['gallery','gallery'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['footer-section','newsletter']];
+    const kwMap = [['hero','hero'],['banner','banner'],['showcase','showcase'],['product','product'],['text-scroll','text-scroll'],['pricing','pricing'],['testimonial','testimonials'],['feature','features'],['discover','features'],['about','about'],['team','team'],['gallery','gallery'],['portfolio','portfolio'],['contact','contact'],['cta','cta'],['faq','faq'],['blog','blog'],['newsletter','newsletter'],['subscribe','subscribe'],['footer-section','newsletter'],['partner','partners'],['client','clients'],['stats','stats']];
     let parent = v.parentElement;
     while (parent && parent !== document.body) {
       const cls = (typeof parent.className === 'string' ? parent.className : '').toLowerCase();

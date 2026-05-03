@@ -253,6 +253,40 @@ console.log(JSON.stringify(clustered, null, 2));
 " > tmp/ref/<component>/responsive/detected-breakpoints.json
 ```
 
+## Step 4-C1b: Mobile-only sibling section detection (MANDATORY for Webflow / breakpoint-swap sites)
+
+⛔ **Skip this and the entire mobile experience disappears.** Webflow (and many bespoke designs) hide a section at `<479px` and show a separate `.<name>-mobile` element with a different DOM tree (different layout, sometimes different copy, often hand-broken via `<br>`). If you only clone the desktop section, your mobile viewport renders an empty section — `display: none` cascades through all your impl markup.
+
+**Detection eval — run at the smallest target viewport (typically 375px), against ref:**
+
+```bash
+agent-browser --session <s> set viewport 375 812
+agent-browser --session <s> open <ref-url>
+agent-browser --session <s> wait 3000
+agent-browser --session <s> eval "(() => {
+  const hidden = [...document.querySelectorAll('section, div, header, footer, main, aside')]
+    .filter(el => el.className && getComputedStyle(el).display === 'none');
+  const mobiles = [...document.querySelectorAll('[class*=\"-mobile\"], [class*=\"mob\"]')]
+    .filter(el => el.className && getComputedStyle(el).display !== 'none')
+    .map(el => ({ cls: el.className, w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height }));
+  return { hiddenAtMobile: hidden.map(el => el.className), mobileSiblings: mobiles };
+})()" > tmp/ref/<c>/responsive/mobile-swap.json
+```
+
+**Required impl rule:**
+- Every desktop section that is `display: none` at the smallest breakpoint MUST have a paired `*-mobile` sibling element in the impl
+- Both elements stay in the JSX — CSS gates visibility per breakpoint
+- Mobile section is a sibling, NOT a child (nesting it inside the hidden desktop section means CSS `display: none` cascades and hides the mobile too)
+- Use `<>...</>` (React.Fragment) when a component returns both — never wrap in a single `<section>` because (a) `<section>` cannot legally nest, (b) the parent's display rule kills the mobile child
+
+**Common pitfall — extracting body text:** Mobile-only sections often hand-break copy with `<br>` for tighter line widths. `el.textContent` flattens these — you lose visible line breaks AND can introduce typos when adjacent text nodes concatenate without whitespace ("Research and idea" + "scurated into practical" → "ideascurated"). **Always extract via `el.childNodes`** and emit JSX that preserves the `<br>` boundaries verbatim:
+
+```js
+[...p.childNodes].map(n => n.nodeType === 3 ? { text: n.textContent } : { br: true })
+```
+
+Pixel-match means matching ref's hand-breaks (and ref typos) verbatim, not "fixing" them.
+
 ## Step 4-C2: Multi-Viewport Element Sizing Comparison (MANDATORY)
 
 ⛔ **This step recovers original CSS expressions (`calc()`, `vw`, `%`) from computed px values.** `getComputedStyle` always returns resolved px — without this step, `width: calc(100vw - 64px)` becomes `width: 1376px` which breaks at every other viewport.

@@ -21,38 +21,33 @@ import sys
 from ui_clone.hooks._common import find_project_root as _find_project_root
 from ui_clone.hooks._common import find_ref_dir as _find_ref_dir
 
-# JS snippet that collects errors from window.__uiSkillsErrors (injected earlier)
-# AND captures any unhandled promise rejections / console.error calls.
+# Single-call snippet: idempotently install error listeners (first call) and
+# collect accumulated errors. Folds the previous inject + collect pair into one
+# eval so each PostToolUse(Bash) costs at most one subprocess round-trip.
 _COLLECT_ERRORS_JS = """
 (function() {
-  var errs = (window.__uiSkillsErrors || []).slice(0, 20); // collect 20, display 10 in Python
+  if (!window.__uiSkillsErrors) {
+    window.__uiSkillsErrors = [];
+    window.addEventListener('error', function(e) {
+      window.__uiSkillsErrors.push({
+        type: 'uncaught', message: e.message || String(e),
+        source: e.filename || '', line: e.lineno || 0
+      });
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      window.__uiSkillsErrors.push({
+        type: 'promise', message: String(e.reason || e)
+      });
+    });
+    var _orig = console.error;
+    console.error = function() {
+      var msg = Array.prototype.slice.call(arguments).join(' ');
+      window.__uiSkillsErrors.push({ type: 'console.error', message: msg });
+      _orig.apply(console, arguments);
+    };
+  }
+  var errs = window.__uiSkillsErrors.slice(0, 20); // collect 20, display 10 in Python
   return JSON.stringify({ errors: errs, count: errs.length });
-})()
-""".strip()
-
-# JS snippet injected once to start capturing — safe to call multiple times (idempotent).
-_INJECT_CAPTURE_JS = """
-(function() {
-  if (window.__uiSkillsErrors) return 'already_injected';
-  window.__uiSkillsErrors = [];
-  window.addEventListener('error', function(e) {
-    window.__uiSkillsErrors.push({
-      type: 'uncaught', message: e.message || String(e),
-      source: e.filename || '', line: e.lineno || 0
-    });
-  });
-  window.addEventListener('unhandledrejection', function(e) {
-    window.__uiSkillsErrors.push({
-      type: 'promise', message: String(e.reason || e)
-    });
-  });
-  var _orig = console.error;
-  console.error = function() {
-    var msg = Array.prototype.slice.call(arguments).join(' ');
-    window.__uiSkillsErrors.push({ type: 'console.error', message: msg });
-    _orig.apply(console, arguments);
-  };
-  return 'injected';
 })()
 """.strip()
 
@@ -135,7 +130,7 @@ def _run_agent_browser(session: str, js: str) -> str | None:
             ["agent-browser", "--session", session, "eval", js],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=5,
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -156,9 +151,7 @@ def _fix_hint(msg: str) -> str:
 
 
 def _collect_errors(session: str) -> list[dict[str, str]]:
-    """Inject capture script then collect errors. Returns list of error dicts."""
-    # Inject idempotently (no-op if already injected)
-    _run_agent_browser(session, _INJECT_CAPTURE_JS)
+    """Inject capture (idempotent) and collect errors in one eval round-trip."""
     raw = _run_agent_browser(session, _COLLECT_ERRORS_JS)
     if not raw:
         return []

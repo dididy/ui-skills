@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.4.2] - 2026-05-03
+
+Field-iteration release. New diagnostic scripts (tree-diff family, stray-absolute, video-transition), `section-compare.sh` accuracy improvements, security hardening of `transition-compare.sh`, gate ordering bugfix, hook performance improvement, and a new diagnostic Root Cause (H — Stray Absolute Positioning).
+
+### Added
+
+- **Root Cause H: Stray Absolute Positioning** (`diagnosis.md`) — catches the "footer disappeared" bug class where `position: absolute` elements have no positioned ancestor and resolve their offsets against `<body>`. Often manifests only on shorter viewports.
+- **`stray-absolute-check.sh`** (`skills/visual-debug/scripts/`) — single-URL detector for Root Cause H. No ref needed. Now the first thing run in `visual-debug` Step 0 (Structural).
+- **`tree-diff.sh`** — exhaustive per-element computed-style diff. Walks every visible impl element ≥ MIN_SIZE px, pairs with ref via `elementFromPoint`, runs computed-style diff per pair. Catches mismatches AE misses (wrong font that renders identically, same-box different-style overrides).
+- **`layout-tree-diff.sh`** — geometry diff via signature-based pairing (text + tag + class hash + size class). Reports top/left/w/h deltas regardless of where elements moved. Catches "right element, wrong position" bugs.
+- **`hover-tree-diff.sh`** — per-element hover/transition diff. Captures idle → CDP `:hover` → settled style for each pair. Diffs timing (property/duration/easing/delay) + idle→hover delta. Catches missing hover rules, wrong easing, mismatched deltas. Uses CDP-level `:hover` because synthetic events do not fire `:hover`.
+- **`keyframes-diff.sh`** — `@keyframes` declaration diff. Extracts all keyframe rules from both pages and reports keyframes only on one side or same-name rules with different steps. Catches missing entrance animations and wrong timing curves baked into keyframes.
+- **`video-transition-compare.sh`** (`scripts/`) — video-based transition comparison. Records the same interaction on orig + impl, extracts frames at 60fps, runs SSIM batch diff. Replaces the deleted `scripts/transition-compare.sh` for video flows; the in-skill `skills/visual-debug/scripts/transition-compare.sh` (idle/hover style + timing) remains.
+
+### Improved
+
+- **`section-compare.sh` accuracy** (field-iteration findings, ordrhealth clone session). Existing thresholds and gate semantics preserved; new behavior reduces false-fails and false-passes:
+  - **Auto-cleanup of stale section outputs.** Each run deletes prior PNGs in `sections/{ref,impl,diff}/` before capturing. Previously, deleted/renamed sections left orphan PNGs (e.g. `container.png`, `impl-section-5.png`) that the AE loop's glob picked up as ghost sections.
+  - **STRUCTURAL_WRAPPER classification.** Ref sections with empty fingerprint and `childCount <= 1` (sticky-image holders, layout-only wrappers) are flagged `wrapper: true` in `matches.json` and skipped in the AE loop with `⏭️ SKIP (structural wrapper)`.
+  - **CHILD_COUNT_MISMATCH severity downgrade on strong fingerprint match.** When matched fingerprint similarity ≥ 0.85, child-count differences drop from `major` to `minor` — visible content matches, child-count divergence is almost always harmless DOM nesting variation.
+  - **AE normalization by pixel area (`AE/Mpx` column).** Severity tiers operate on AE-per-megapixel, so a 1200px-tall section isn't unfairly penalized vs a 600px-tall one with identical defect density. `result.txt` shows both `AE` (raw) and `AE/Mpx` (normalized).
+- **`visual-debug` Step 0 restructured** — renamed `computed-diff` → `Structural`. Now runs `stray-absolute-check.sh` (per viewport) before the existing `computed-diff.sh` sweep. Workflow steps in both Full-page and Section-level modes updated accordingly.
+- **`devtools_errors.py` performance.** PostToolUse(Bash) error collection folded inject + collect into a single idempotent snippet. Halves agent-browser round-trips per check.
+- **`__init__.py` version drift fixed.** `ui_clone/__init__.py` was stuck at `0.4.0` even on v0.4.1 (release commit missed it). Now correctly bumped along with `plugin.json` / `marketplace.json` / `pyproject.toml`.
+- **`pre-push-security.sh` eval scanner** no longer false-positives on comment lines that mention the word "eval" — added `^[^:]*:[0-9]+:[[:space:]]*#` exclusion to the pipeline.
+- **`review.sh` shell syntax gate.** New section runs `bash -n` over every `scripts/**/*.sh` and `skills/**/*.sh`. Catches typos in the new tree-diff family before push, since shell scripts are otherwise uncovered by `pytest`.
+- **`devtools_errors.py` timeout** raised from 3s to 5s. Single-eval round-trip is fast enough that the previous over-aggressive cap risked false-empty error reports under transient browser slowness.
+
+### Security
+
+- **`transition-compare.sh` shell-injection hardening.** Selectors were previously interpolated into shell via Python f-strings. A malicious or unusual selector value could break out of the surrounding `agent-browser eval "..."` literal. Selectors are now JSON-encoded as JS string literals and `agent-browser` is invoked via `subprocess.run([...], shell=False)`. Filenames derived from selectors are also sanitized via a single `[A-Za-z0-9._-]` regex (capped at 30 chars) instead of ad-hoc string `.replace()` chains.
+
+### Fixed
+
+- **`gate.py`: `transition-coverage.json` no longer false-fails the extraction gate.** The artifact is produced at Step 6d, but the previous extraction gate checked it before 6d ran. Moved to `gate_pre_generate` only (where it is correctly produced before the gate fires).
+- **`gate.py` empty-array detection** uses proper `json.loads(...) == []` instead of string-comparing `"[]"`/`"[ ]"` — handles whitespace, newlines, and decoder errors safely.
+
+### Compatibility
+
+- `section-compare.sh` `result.txt` adds an `AE/Mpx` column. `gate_section_compare` only inspects emoji markers (`❌`, `⚠️ MISSING impl`), not column count — unaffected.
+- New `⏭️` SKIP rows are not counted as fail or missing by the gate.
+
+### Docs
+
+- `diagnosis.md` decision tree updated for 8 root causes (A–H). Added Root Cause H + cross-references to `stray-absolute-check.sh`.
+- `responsive-detection.md`, `transition-implementation.md`, `transition-spec-rules.md`, `webflow-ix2.md`, `bundle-verification.md`, `patterns.md`, `post-gen-verification.md`, `generation-pitfalls.md`, `measurement.md` — incremental clarifications from field-iteration sessions.
+- `visual-debug/SKILL.md` script catalog now lists all four tree-diff scripts.
+
 ## [0.4.1] - 2026-05-01
 
 Test coverage hardening — 18 new tests covering previously untested hook integration paths and pipeline extraction phase.

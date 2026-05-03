@@ -99,7 +99,10 @@ done
 | `delay` | `delay: 0.5` | `500ms` |
 | `trigger` | `ScrollTrigger.create({trigger: el})` | scroll position |
 | `repeat` / `yoyo` | `repeat: -1, yoyo: true` | carousel auto-rotation |
-| `stagger` | `stagger: 0.1` | `100ms` between children |
+| `stagger` (number) | `stagger: 0.1` | `100ms` PER-target step (last child = base + (N-1)×100ms) |
+| `stagger.amount` | `stagger: { amount: 0.1 }` | `100ms` TOTAL spread distributed across N targets → per-target step = `amount / (N-1)`. Last child completes at `base + amount`, NOT `base + N×amount`. **Mistaking total-spread for per-target pushes late targets past timeline end → they never reveal.** |
+| `stagger.each` | `stagger: { each: 0.1 }` | Same as number shorthand — per-target step |
+| IX3 ease values | `ease: 0` / `ease: 1` | `0` = LINEAR (NOT easeIn). `1` = easeIn (t²). Check `easeMode` field too |
 
 ### Auto-rotation detection patterns
 

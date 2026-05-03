@@ -66,6 +66,11 @@ trap cleanup_browsers EXIT
 
 mkdir -p "$DIR/sections/ref" "$DIR/sections/impl" "$DIR/sections/diff"
 
+# Clean stale outputs from prior runs. Without this, deleted/renamed sections
+# leave orphan PNGs that get picked up by the AE loop (REF_IMGS glob) and
+# inflate the section count with stale entries that never re-render.
+rm -f "$DIR/sections/ref/"*.png "$DIR/sections/impl/"*.png "$DIR/sections/diff/"*.png 2>/dev/null || true
+
 echo "═══ Section-Level Comparison ═══"
 echo "Original: $ORIG_URL"
 echo "Implementation: $IMPL_URL"
@@ -209,7 +214,18 @@ ENUMERATE_SECTIONS='(() => {
       const isPageWrapper = h > document.documentElement.scrollHeight * 0.8;
 
       if (isSemantic) {
-        containers.push({ el, tag, rect });
+        // Descend only when this element directly wraps other structural sections
+        // (e.g., <main> with <section> children, or <section> wrapping nested <section>s).
+        // Do NOT descend on content semantics like <article>/<figure> nested inside a section.
+        const hasStructuralChild = Array.from(el.children).some(c => {
+          const t = c.tagName.toLowerCase();
+          return t === "section" || t === "main" || t === "header" || t === "footer" || t === "nav" || t === "aside";
+        });
+        if (hasStructuralChild) {
+          collect(el, depth + 1);
+        } else {
+          containers.push({ el, tag, rect });
+        }
       } else if (isLargeDiv) {
         // If this div wraps most of the page, descend into it instead
         if (isPageWrapper) {
@@ -378,12 +394,20 @@ for r in ref:
     if best_impl and best_score > 0.05:
         used_impl.add(best_impl['index'])
         name = dedup_name(make_name(r, 'section'), used_names)
-        matches.append({
+        # STRUCTURAL_WRAPPER: ref section is an empty container (sticky-image holder,
+        # spacer wrapper, etc) — its visible content lives in nested children that
+        # match other sections. Pixel-AE comparison is meaningless here because the
+        # ref renders nothing of its own.
+        is_wrapper = (not r.get('fingerprint', '').strip()) and r.get('childCount', 0) <= 1
+        entry = {
             'name': name,
             'score': round(best_score, 3),
             'ref': r,
             'impl': best_impl,
-        })
+        }
+        if is_wrapper:
+            entry['wrapper'] = True
+        matches.append(entry)
     else:
         name = dedup_name(make_name(r, 'section'), used_names)
         matches.append({
@@ -432,9 +456,9 @@ if [ "$MATCH_COUNT" -eq 0 ]; then
   # Write a FAIL result.txt so the Stop gate gives a useful message instead of "not run"
   mkdir -p "$DIR/sections"
   {
-    echo "| Section | AE | Severity | Status |"
-    echo "|---------|-----|----------|--------|"
-    echo "| (none) | — | — | ❌ |"
+    echo "| Section | AE | AE/Mpx | Severity | Status |"
+    echo "|---------|-----|--------|----------|--------|"
+    echo "| (none) | — | — | — | ❌ |"
     echo ""
     echo "**Result: 0 PASS, 1 FAIL, 0 SKIP**"
     echo ""
@@ -507,6 +531,14 @@ PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
 
+# Build a lookup of wrapper-only sections so the AE loop can skip them.
+# These have no ref content of their own (sticky-image holders, spacer wrappers).
+WRAPPER_NAMES=$(python3 -c "
+import json
+m = json.loads(open('$DIR/sections/matches.json').read())
+print(' '.join(x['name'] for x in m if x.get('wrapper')))
+" 2>/dev/null || echo "")
+
 # Guard: nullglob — if no ref PNGs were captured, the glob expands to a literal string
 shopt -s nullglob
 REF_IMGS=("$DIR/sections/ref/"*.png)
@@ -521,7 +553,16 @@ for REF_IMG in "${REF_IMGS[@]}"; do
   IMPL_IMG="$DIR/sections/impl/${NAME}.png"
 
   if [ ! -f "$IMPL_IMG" ]; then
-    RESULTS="${RESULTS}| ${NAME} | — | — | ⚠️ MISSING impl |\n"
+    RESULTS="${RESULTS}| ${NAME} | — | — | — | ⚠️ MISSING impl |\n"
+    SKIP_COUNT=$((SKIP_COUNT + 1))
+    continue
+  fi
+
+  # Skip strict AE for STRUCTURAL_WRAPPER sections (ref has no visible content
+  # of its own — pixel comparison would always fail against the impl that
+  # actually renders something).
+  if echo " $WRAPPER_NAMES " | grep -q " ${NAME} "; then
+    RESULTS="${RESULTS}| ${NAME} | — | — | wrapper | ⏭️ SKIP (structural wrapper) |\n"
     SKIP_COUNT=$((SKIP_COUNT + 1))
     continue
   fi
@@ -535,25 +576,38 @@ for REF_IMG in "${REF_IMGS[@]}"; do
   fi
 
   DIFF_IMG="$DIR/sections/diff/${NAME}.png"
-  AE=$(magick compare -metric AE "$REF_IMG" "$IMPL_IMG" "$DIFF_IMG" 2>&1 || true)
-  AE=$(echo "$AE" | grep -oE '^[0-9]+' | head -1)
+  # -fuzz tolerance: pixels with color diff <= fuzz% are considered identical.
+  # Filters sub-pixel AA noise, font hinting, paper-texture/JPEG grain — keeping AE on structural divergence.
+  FUZZ="${SECTION_FUZZ:-8%}"
+  AE=$(magick compare -metric AE -fuzz "$FUZZ" "$REF_IMG" "$IMPL_IMG" "$DIFF_IMG" 2>&1 || true)
+  # AE may be scientific notation (e.g. "1.0e+06") for large diffs.
+  AE=$(echo "$AE" | head -1 | awk '{ if ($1 ~ /^[0-9.eE+-]+$/) printf "%.0f\n", $1 }')
 
   if [ -z "$AE" ]; then
-    RESULTS="${RESULTS}| ${NAME} | ERROR | — | ⚠️ |\n"
+    RESULTS="${RESULTS}| ${NAME} | ERROR | — | — | ⚠️ |\n"
     SKIP_COUNT=$((SKIP_COUNT + 1))
     continue
   fi
 
-  THRESHOLD="${SECTION_THRESHOLD:-2000}"  # Override: SECTION_THRESHOLD=50000 for dynamic-content sites
-  if [ "$AE" -le 500 ]; then
+  # Normalize AE by section pixel area (per megapixel) so a 1200px-tall section
+  # isn't unfairly penalized vs a 600px-tall one with identical defect density.
+  # Severity tiers below use this normalized value, not raw AE.
+  REF_W=$(echo "$REF_SIZE" | cut -dx -f1)
+  REF_H=$(echo "$REF_SIZE" | cut -dx -f2)
+  AE_PER_MPX=$(awk -v ae="$AE" -v w="$REF_W" -v h="$REF_H" 'BEGIN { area = (w*h)/1000000; if (area > 0) printf "%.0f", ae/area; else print "0" }')
+
+  # Thresholds operate on AE/Mpx (defect density). Default 2000 still works for
+  # static content; use SECTION_THRESHOLD=50000 for image/animation-rich pages.
+  THRESHOLD="${SECTION_THRESHOLD:-2000}"
+  if [ "$AE_PER_MPX" -le 500 ]; then
     STATUS="✅"
     SEV="ok"
     PASS_COUNT=$((PASS_COUNT + 1))
-  elif [ "$AE" -le "$THRESHOLD" ]; then
+  elif [ "$AE_PER_MPX" -le "$THRESHOLD" ]; then
     STATUS="✅"
     SEV="minor"
     PASS_COUNT=$((PASS_COUNT + 1))
-  elif [ "$AE" -le $((THRESHOLD * 10)) ]; then
+  elif [ "$AE_PER_MPX" -le $((THRESHOLD * 10)) ]; then
     STATUS="❌"
     SEV="major"
     FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -563,24 +617,26 @@ for REF_IMG in "${REF_IMGS[@]}"; do
     FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 
-  RESULTS="${RESULTS}| ${NAME} | ${AE} | ${SEV} | ${STATUS} |\n"
+  RESULTS="${RESULTS}| ${NAME} | ${AE} | ${AE_PER_MPX} | ${SEV} | ${STATUS} |\n"
 done
 
 echo ""
-echo "| Section | AE | Severity | Status |"
-echo "|---------|-----|----------|--------|"
+echo "| Section | AE | AE/Mpx | Severity | Status |"
+echo "|---------|-----|--------|----------|--------|"
 echo -e "$RESULTS"
 echo ""
 echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
+echo "(Severity is based on AE/Mpx — defect density per megapixel — not raw AE.)"
 
 # ── Auto-save result for Stop gate hook ──
 mkdir -p "$DIR/sections"
 {
-  echo "| Section | AE | Severity | Status |"
-  echo "|---------|-----|----------|--------|"
+  echo "| Section | AE | AE/Mpx | Severity | Status |"
+  echo "|---------|-----|--------|----------|--------|"
   echo -e "$RESULTS"
   echo ""
   echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
+  echo "(Severity is based on AE/Mpx — defect density per megapixel — not raw AE.)"
 } > "$DIR/sections/result.txt"
 
 # ── Step 5: Structure diff per section ──
@@ -631,18 +687,26 @@ for m in matches:
     rh = ref['rect']['height']
     ih = impl['rect']['height']
     h_ratio = ih / rh if rh > 0 else 1.0
+    # When fingerprint similarity is high (>=0.85), the visible content matches
+    # closely — child-count differences usually reflect harmless DOM nesting
+    # variations (semantic <article> wrappers, extra grid containers) rather
+    # than real divergence. Downgrade those to minor.
+    score = m.get('score', 0)
+    fingerprint_strong = score >= 0.85
     sev = 'ok'
     if any('SVG_TEXT_MISSING' in i or 'LAYOUT_MISMATCH' in i for i in issues):
         sev = 'critical'
     elif h_ratio < 0.3 or h_ratio > 3.0:
         sev = 'critical'
-    elif any('HEIGHT_MISMATCH' in i or 'CHILD_COUNT_MISMATCH' in i or 'DISPLAY_MISMATCH' in i for i in issues):
+    elif any('HEIGHT_MISMATCH' in i or 'DISPLAY_MISMATCH' in i for i in issues):
         sev = 'major'
+    elif any('CHILD_COUNT_MISMATCH' in i for i in issues):
+        sev = 'minor' if fingerprint_strong else 'major'
     elif issues:
         sev = 'minor'
 
     if issues:
-        diffs.append({'section': m['name'], 'issues': issues, 'severity': sev})
+        diffs.append({'section': m['name'], 'issues': issues, 'severity': sev, 'score': score})
 
 json.dump(diffs, open('$DIR/sections/structure-diff.json', 'w'), indent=2)
 

@@ -1,6 +1,6 @@
 # Diagnosis → Fix: Root Cause Patterns
 
-When a visual mismatch occurs, one of 5 root causes applies. **Identify the category first** — then apply the targeted fix. Random code tweaking without diagnosis wastes 10+ minutes.
+When a visual mismatch occurs, one of 8 root causes (A–H) applies. **Identify the category first** — then apply the targeted fix. Random code tweaking without diagnosis wastes 10+ minutes.
 
 ---
 
@@ -11,12 +11,20 @@ computed-diff shows diff?
   → YES: color/font/weight → Root Cause B (CSS Cascade)
   → YES: display/height/position → Root Cause C (Missing Wrapper) or A (DOM Mismatch)
   → NO: element renders but wrong shape/behavior → Root Cause D (Wrong Element Type)
+  → NO: but ::before/::after pseudo missing → Root Cause G (Pseudo-element)
 
 Animation doesn't animate?
   → Root Cause E (Animation)
 
+Animation/scroll broken AND layout.tsx loads a *.min.js bundle?
+  → Root Cause F (Legacy JS Bundle)
+
 Layout looks structurally wrong (items in wrong order / missing container)?
   → Root Cause A (DOM Mismatch)
+
+Element appears missing / overlapping unrelated content despite being in the DOM
+(footer, sticky bar, badge), and computed `position: absolute`?
+  → Root Cause H (Stray Absolute Positioning)
 ```
 
 ---
@@ -150,7 +158,7 @@ grep -E "gsap|Lenis|ScrollTrigger|requestAnimationFrame|transition" tmp/ref/<c>/
 
 # 4. Compare timing
 SCRIPTS="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
-SCRIPTS="${SCRIPTS:-$(find ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
+SCRIPTS="${SCRIPTS:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
 bash "$SCRIPTS/transition-compare.sh" <orig-url> <impl-url> <session> tmp/ref/<c>
 ```
 
@@ -236,3 +244,50 @@ var el = document.querySelector('[class*=tab_item], [class*=nav_item], [role=tab
 ```
 
 **Fix:** In React, implement as a child `<span>` with `position: absolute` matching the pseudo-element's geometry. Ensure the parent has `position: relative`. Use the **measured** `bottom`, `left`, `right`, `height`, `border-radius` values exactly — do not guess or adjust visually.
+
+---
+
+## Root Cause H: Stray Absolute Positioning
+
+**Symptoms:** An element appears "missing" (footer, watermark, sticky CTA) — or, conversely, is unexpectedly visible overlapping unrelated content. AE/SSIM/section-compare may not catch it because the element does render *somewhere* on the page; just not where DOM order suggests. Especially common after porting a site where the original CSS assumed the element was a descendant of a positioned wrapper, but the port made it a sibling.
+
+**Root cause:** `position: absolute` with any offset (`top`/`bottom`/`left`/`right`) resolves against the **nearest non-static ancestor**. When no ancestor is positioned, the offset resolves against `<body>` — parking the element near the document origin where it overlaps unrelated content (or scrolls out of view on shorter pages).
+
+**Pattern:** original CSS sets `top: <large-px>` on an element that was authored as a descendant of `position: relative` wrapper; the port restructures the tree so the element is a sibling (or top-level) of that wrapper, leaving the offset to resolve against `<body>`. Shorter viewports amplify the visible breakage because the rendered y-coordinate falls further outside the visible scroll range.
+
+**Diagnosis:**
+```bash
+# Run the dedicated check (one-shot, single URL — no ref needed):
+bash "$SCRIPTS/stray-absolute-check.sh" <session> <impl-url> <viewport-w> <viewport-h>
+# Exit 0 = clean. Exit 1 = stray absolutes found, table printed.
+
+# Or inline:
+agent-browser --session <s> eval "
+[...document.querySelectorAll('*')].filter(el => {
+  if (getComputedStyle(el).position !== 'absolute') return false;
+  let p = el.parentElement;
+  while (p && p !== document.documentElement) {
+    if (getComputedStyle(p).position !== 'static') return false;
+    p = p.parentElement;
+  }
+  return true;
+}).map(el => ({ tag: el.tagName, cls: el.className, top: getComputedStyle(el).top }))
+"
+```
+
+**Smoking-gun signals:**
+- The flagged element is the **last child** in its DOM parent but is rendered *above* its prior sibling.
+- A footer/sticky bar reports `top: NNNpx` with `parent.position: static`.
+- Page total height < expected (because the absolute element doesn't contribute to flow).
+
+**Fix patterns:**
+1. **Move the element inside the intended positioned ancestor** so the original offset resolves correctly. Best when the original CSS was authored against a specific wrapper.
+2. **Convert to natural flow:** change `position: absolute` to `position: relative` (or remove positioning) so the element flows after its DOM siblings. Best when the element should genuinely be at the document end.
+3. **Pin to viewport:** `position: fixed; bottom: 0` if the element should stick to the viewport regardless of scroll.
+4. **Add `position: relative` to the intended ancestor** if you can't restructure the tree but just need to establish positioning context.
+
+**Don't:**
+- Don't add a hardcoded large-pixel offset to "push the element to the bottom" — that breaks at every viewport size and on every content change.
+- Don't wrap with a fake fixed-height `position: relative` container just to anchor a stray absolute — that's CSS-by-accident; pick option 1 or 2 instead.
+
+**Prevention:** Run `stray-absolute-check.sh` as part of Phase 4 / Step 8 verification. Cost is one page load — far cheaper than catching the bug later via screenshot review.

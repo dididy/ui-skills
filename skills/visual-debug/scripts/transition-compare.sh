@@ -198,7 +198,8 @@ echo "▸ Capturing idle + hover states..."
 _TC_PY=$(mktemp /tmp/tc-hover-XXXXXX.py)
 
 cat > "$_TC_PY" << 'PYEOF'
-import json, subprocess, sys, time, os
+import json, re, subprocess, sys, time, os
+from pathlib import Path
 
 SESSION_REF     = os.environ["_TC_SESSION_REF"]
 SESSION_IMPL    = os.environ["_TC_SESSION_IMPL"]
@@ -206,79 +207,106 @@ DIR             = os.environ["_TC_DIR"]
 TRANSITION_WAIT = float(os.environ.get("TRANSITION_WAIT", "500")) / 1000  # ms → seconds
 SCROLL_WAIT     = float(os.environ.get("_TC_SCROLL_WAIT", "300")) / 1000
 
+# Strip every char outside [A-Za-z0-9._-] so selector-derived filenames cannot
+# escape into surrounding shell or path components. Also collapse to ≤30 chars.
+_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_name(selector: str) -> str:
+    s = selector.replace("#", "id-").replace(".", "cls-")
+    s = _SAFE_NAME_RE.sub("_", s)
+    return s[:30] or "el"
+
+
+def _ab_eval(session: str, js: str) -> subprocess.CompletedProcess:
+    """Run agent-browser eval with argv (shell=False) — safe against selector injection."""
+    return subprocess.run(
+        ["agent-browser", "--session", session, "eval", js],
+        capture_output=True,
+        text=True,
+    )
+
+
 def capture_hover_state(session, elements_file, side, out_dir):
-    elements = json.loads(open(elements_file).read())
+    elements = json.loads(Path(elements_file).read_text())
     results = []
 
     for el in elements[:20]:  # Cap at 20 elements
         selector = el["selector"]
-        safe_name = selector.replace("#", "id-").replace(".", "cls-").replace(":", "-").replace(" ", "_")[:30]
+        safe_name = _safe_name(selector)
+        # JSON-encode the selector so it embeds safely as a JS string literal —
+        # quotes, backslashes, and unicode all survive without breaking the JS.
+        sel_lit = json.dumps(selector)
 
         # Scroll to element
-        scroll_cmd = f"""agent-browser --session {session} eval "(() => {{
-            const el = document.querySelector(\\"{selector}\\");
-            if (!el) return \\"not found\\";
-            el.scrollIntoView({{ block: \\"center\\" }});
-            return \\"scrolled\\";
-        }})()" """
-        subprocess.run(scroll_cmd, shell=True, capture_output=True)
+        _ab_eval(session, (
+            "(() => {"
+            f"const el = document.querySelector({sel_lit});"
+            "if (!el) return 'not found';"
+            "el.scrollIntoView({ block: 'center' });"
+            "return 'scrolled';"
+            "})()"
+        ))
         time.sleep(SCROLL_WAIT)
 
-        # Capture idle screenshot
-        ss_cmd = f"agent-browser --session {session} screenshot {out_dir}/{safe_name}-idle.png"
-        subprocess.run(ss_cmd, shell=True, capture_output=True)
+        idle_path = Path(out_dir) / f"{safe_name}-idle.png"
+        subprocess.run(
+            ["agent-browser", "--session", session, "screenshot", str(idle_path)],
+            capture_output=True,
+        )
 
-        # Dispatch mouseenter + wait for transition
-        hover_cmd = f"""agent-browser --session {session} eval "(() => {{
-            const el = document.querySelector(\\"{selector}\\");
-            if (!el) return \\"not found\\";
-            el.dispatchEvent(new MouseEvent(\\"mouseenter\\", {{ bubbles: true }}));
-            el.dispatchEvent(new MouseEvent(\\"mouseover\\", {{ bubbles: true }}));
-            // Also try CSS :hover via focus trick
-            el.focus?.();
-            return \\"hovered\\";
-        }})()" """
-        subprocess.run(hover_cmd, shell=True, capture_output=True)
-        time.sleep(TRANSITION_WAIT)  # Wait for transition to complete (TRANSITION_WAIT env var)
+        _ab_eval(session, (
+            "(() => {"
+            f"const el = document.querySelector({sel_lit});"
+            "if (!el) return 'not found';"
+            "el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));"
+            "el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));"
+            "el.focus?.();"
+            "return 'hovered';"
+            "})()"
+        ))
+        time.sleep(TRANSITION_WAIT)  # Wait for transition (TRANSITION_WAIT env var)
 
-        # Capture hover screenshot
-        ss_cmd = f"agent-browser --session {session} screenshot {out_dir}/{safe_name}-hover.png"
-        subprocess.run(ss_cmd, shell=True, capture_output=True)
+        hover_path = Path(out_dir) / f"{safe_name}-hover.png"
+        subprocess.run(
+            ["agent-browser", "--session", session, "screenshot", str(hover_path)],
+            capture_output=True,
+        )
 
-        # Capture hover computedStyle
-        style_cmd = f"""agent-browser --session {session} eval "(() => {{
-            const el = document.querySelector(\\"{selector}\\");
-            if (!el) return JSON.stringify({{ error: \\"not found\\" }});
-            const cs = getComputedStyle(el);
-            return JSON.stringify({{
-                opacity: cs.opacity,
-                transform: cs.transform,
-                backgroundColor: cs.backgroundColor,
-                color: cs.color,
-                scale: cs.scale || \\"none\\",
-                filter: cs.filter,
-                boxShadow: cs.boxShadow,
-                borderColor: cs.borderColor,
-            }});
-        }})()" """
-        result = subprocess.run(style_cmd, shell=True, capture_output=True, text=True)
+        result = _ab_eval(session, (
+            "(() => {"
+            f"const el = document.querySelector({sel_lit});"
+            "if (!el) return JSON.stringify({ error: 'not found' });"
+            "const cs = getComputedStyle(el);"
+            "return JSON.stringify({"
+            "opacity: cs.opacity,"
+            "transform: cs.transform,"
+            "backgroundColor: cs.backgroundColor,"
+            "color: cs.color,"
+            "scale: cs.scale || 'none',"
+            "filter: cs.filter,"
+            "boxShadow: cs.boxShadow,"
+            "borderColor: cs.borderColor,"
+            "});"
+            "})()"
+        ))
         hover_style = result.stdout.strip().strip('"')
 
-        # Dispatch mouseleave to reset
-        leave_cmd = f"""agent-browser --session {session} eval "(() => {{
-            const el = document.querySelector(\\"{selector}\\");
-            if (!el) return \\"not found\\";
-            el.dispatchEvent(new MouseEvent(\\"mouseleave\\", {{ bubbles: true }}));
-            el.dispatchEvent(new MouseEvent(\\"mouseout\\", {{ bubbles: true }}));
-            el.blur?.();
-            return \\"left\\";
-        }})()" """
-        subprocess.run(leave_cmd, shell=True, capture_output=True)
+        _ab_eval(session, (
+            "(() => {"
+            f"const el = document.querySelector({sel_lit});"
+            "if (!el) return 'not found';"
+            "el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));"
+            "el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));"
+            "el.blur?.();"
+            "return 'left';"
+            "})()"
+        ))
         time.sleep(SCROLL_WAIT)
 
         try:
             hs = json.loads(hover_style.replace("\\\\", "\\\\\\\\")) if hover_style else {}
-        except:
+        except json.JSONDecodeError:
             hs = {}
 
         results.append({
@@ -295,7 +323,8 @@ def capture_hover_state(session, elements_file, side, out_dir):
 ref_results  = capture_hover_state(SESSION_REF,  f"{DIR}/transitions/ref-elements.json",  "ref",  f"{DIR}/transitions/ref")
 impl_results = capture_hover_state(SESSION_IMPL, f"{DIR}/transitions/impl-elements.json", "impl", f"{DIR}/transitions/impl")
 
-json.dump({"ref": ref_results, "impl": impl_results}, open(f"{DIR}/transitions/hover-states.json", "w"), indent=2)
+with open(f"{DIR}/transitions/hover-states.json", "w") as f:
+    json.dump({"ref": ref_results, "impl": impl_results}, f, indent=2)
 PYEOF
 
 _TC_SESSION_REF="$SESSION_REF" _TC_SESSION_IMPL="$SESSION_IMPL" _TC_DIR="$DIR" \

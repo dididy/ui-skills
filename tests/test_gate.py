@@ -3,6 +3,15 @@ from pathlib import Path
 
 from ui_clone.gate import VALID_GATES, Gate
 
+
+def test_gate_keys_match_dispatch(tmp_path: Path):
+    """_gate_keys() must stay in sync with _make_dispatch() — drift would
+    make the import-time validator (used without instantiation) silently lie
+    about which gates exist."""
+    gate = Gate(tmp_path)
+    assert frozenset(gate._make_dispatch().keys()) == Gate._gate_keys()
+
+
 # ── check_file ──
 
 
@@ -306,14 +315,20 @@ def test_gate_pre_generate_fails_when_hover_timing_unknown(tmp_path: Path):
     assert timing_failures, "timingSource='unknown' must produce a fail result"
 
 
-# ── gate_extraction — transition-coverage.json ──
+# ── gate_extraction must NOT require Step 6d artifacts ──
 
 
-def test_gate_extraction_fails_when_transition_coverage_missing(tmp_path: Path):
-    """gate_extraction must fail when transition-coverage.json is absent."""
+def test_gate_extraction_does_not_require_transition_coverage(tmp_path: Path):
+    """gate_extraction must pass without transition-coverage.json.
+
+    transition-coverage.json is produced at Step 6d, after bundle (5c) and spec (5d).
+    Requiring it at the extraction gate (which runs after Step 2-3) would deadlock
+    the pipeline — extraction can never advance until 6d, but 6d depends on bundle,
+    which depends on extraction having passed. Coverage of transition-coverage.json
+    belongs to gate_pre_generate (see test_gate_pre_generate_*).
+    """
     ref = tmp_path / "ref"
     ref.mkdir()
-    # Provide all required extraction artifacts except transition-coverage.json
     for fname in [
         "structure.json",
         "head.json",
@@ -334,38 +349,9 @@ def test_gate_extraction_fails_when_transition_coverage_missing(tmp_path: Path):
     results = gate.gate_extraction()
     failures = [r for r in results if r.status == "fail"]
     labels = [r.label for r in failures]
-    assert any("transition-coverage" in lbl for lbl in labels), (
-        "gate_extraction must fail when transition-coverage.json is missing"
+    assert not any("transition-coverage" in lbl for lbl in labels), (
+        "gate_extraction must not require transition-coverage.json (Step 6d artifact)"
     )
-
-
-def test_gate_extraction_passes_with_transition_coverage(tmp_path: Path):
-    """gate_extraction must pass the transition-coverage check when the file exists."""
-    ref = tmp_path / "ref"
-    ref.mkdir()
-    for fname in [
-        "structure.json",
-        "head.json",
-        "styles.json",
-        "fonts.json",
-        "visible-images.json",
-        "inline-svgs.json",
-        "body-state.json",
-        "design-bundles.json",
-    ]:
-        (ref / fname).write_text(json.dumps({}))
-    css_dir = ref / "css"
-    css_dir.mkdir()
-    (css_dir / "variables.txt").write_text(":root {}")
-    (ref / "transition-coverage.json").write_text(
-        json.dumps({"animatedElements": [], "staticElements": []})
-    )
-
-    gate = Gate(ref)
-    results = gate.gate_extraction()
-    tc_results = [r for r in results if "transition-coverage" in r.label]
-    assert tc_results, "transition-coverage check must appear in gate_extraction results"
-    assert all(r.status == "pass" for r in tc_results)
 
 
 # ── gate_bundle ──
