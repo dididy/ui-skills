@@ -27,7 +27,7 @@ from ui_clone.hooks._common import NC as _NC
 from ui_clone.hooks._common import RED as _RED
 from ui_clone.hooks._common import YELLOW as _YELLOW
 from ui_clone.hooks._common import find_project_root, load_json_safe
-from ui_clone.state import PipelineState
+from ui_clone.state import GATE_ORDER, PipelineState
 
 # Required CLI tools and install hints
 _REQUIRED_TOOLS: list[tuple[str, str]] = [
@@ -458,7 +458,7 @@ class Pipeline:
 
         # Pipeline state header
         state = PipelineState.load(self.ref_dir)
-        total_gates = 7
+        total_gates = len(GATE_ORDER)
         completed = len(state.completed_steps)
         print(f"{_BOLD}\u2501\u2501\u2501 Pipeline State \u2501\u2501\u2501{_NC}")
         print(f"  Component  : {state.component or self.component}")
@@ -541,7 +541,7 @@ class Pipeline:
             "ref_dir": str(self.ref_dir),
             "current_gate": state.current_gate,
             "completed_steps": len(state.completed_steps),
-            "total_steps": 7,
+            "total_steps": len(GATE_ORDER),
             "next_phase": self.next_phase or None,
             "next_step": self.next_step or None,
         }

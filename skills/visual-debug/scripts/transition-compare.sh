@@ -22,6 +22,9 @@ WAIT_REF="${WAIT_REF:-8000}"
 WAIT_IMPL="${WAIT_IMPL:-6000}"
 TRANSITION_WAIT="${TRANSITION_WAIT:-500}"   # ms to wait after hover before screenshot
 MAX_TRANSITIONS="${MAX_TRANSITIONS:-30}"    # max elements to compare
+# CSS selector(s) to exclude from ref detection (e.g. third-party SDK overlays not in the clone).
+# Default skips Finsweet Cookie Consent (`.fs-cc_*`) — the clone never replicates the consent SDK.
+EXCLUDE_SELECTORS="${EXCLUDE_SELECTORS:-[class*=fs-cc], [id*=cookie], [class*=cookie-banner], [class*=consent]}"
 
 ORIG_URL="${1:?Usage: transition-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 IMPL_URL="${2:?Usage: transition-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
@@ -98,8 +101,10 @@ DETECT_TRANSITIONS='(() => {
   const results = [];
   const seen = new Set();
   const allEls = document.querySelectorAll("a, button, [role=button], img, .product-card, [class*=card], [class*=link], [class*=hover], [class*=btn], nav a, footer a, h1, h2, h3");
+  const EXCLUDE = ${EXCLUDE_SELECTORS_JSON};
 
   allEls.forEach(el => {
+    if (EXCLUDE && el.closest(EXCLUDE)) return;
     const cs = getComputedStyle(el);
     const hasTrans = cs.transitionDuration !== "0s" && cs.transitionProperty !== "none";
     const hasAnim = cs.animationName !== "none";
@@ -166,6 +171,14 @@ DETECT_TRANSITIONS='(() => {
 
   return results.slice(0, ${MAX_TRANSITIONS});
 })()'
+
+# Substitute ${MAX_TRANSITIONS} and ${EXCLUDE_SELECTORS_JSON} into the JS body
+# (single-quoted heredoc above blocks bash expansion).
+# EXCLUDE_SELECTORS is JSON-encoded so it embeds as a JS string literal safely —
+# matches the v0.4.2 hardening discipline that JSON-encodes selectors before eval.
+EXCLUDE_SELECTORS_JSON=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$EXCLUDE_SELECTORS")
+DETECT_TRANSITIONS="${DETECT_TRANSITIONS/\$\{MAX_TRANSITIONS\}/$MAX_TRANSITIONS}"
+DETECT_TRANSITIONS="${DETECT_TRANSITIONS/\$\{EXCLUDE_SELECTORS_JSON\}/$EXCLUDE_SELECTORS_JSON}"
 
 agent-browser --session "$SESSION_REF" eval "$DETECT_TRANSITIONS" > "$DIR/transitions/ref-elements.json" 2>&1
 agent-browser --session "$SESSION_IMPL" eval "$DETECT_TRANSITIONS" > "$DIR/transitions/impl-elements.json" 2>&1
@@ -389,9 +402,18 @@ for ref_el in ref_els:
         entry['issues'].append(f'EASING_MISMATCH: ref={ref_ease}, impl={impl_ease}')
 
     # Compare idle styles
+    def normalize_transform(v):
+        # matrix(1, 0, 0, 1, 0, 0) is the identity transform — semantically equivalent to "none"
+        if v.replace(' ', '') == 'matrix(1,0,0,1,0,0)':
+            return 'none'
+        return v
+
     for prop in ['opacity', 'transform', 'backgroundColor', 'color']:
         ref_val = ref_el['idleStyle'].get(prop, '')
         impl_val = impl_el['idleStyle'].get(prop, '')
+        if prop == 'transform':
+            ref_val = normalize_transform(ref_val)
+            impl_val = normalize_transform(impl_val)
         if ref_val != impl_val and ref_val and impl_val:
             # Allow minor color differences
             if prop in ['backgroundColor', 'color']:

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.4.3] - 2026-05-04
+
+Field-iteration release. New diagnostic Root Cause (I — Tailwind v3/v4 transform conflict), inner-scroll-container detection for Lenis/locomotive-style sites, transition-detection exclude-selector support, splash anti-pattern, decision table for the visual-debug diff family, step-numbering anchor split (5c → 5c-a/5c-b), and Python single-source-of-truth fixes for pipeline gate enumeration.
+
+### Added
+
+- **Root Cause I: Tailwind v3/v4 Transform Conflict** (`diagnosis.md`). Catches the "double-translated / double-rotated / double-scaled element" bug class that fires when the host app and the cloned project use different Tailwind majors. v3 emits a composed `transform:`; v4 emits individual `translate:` / `rotate:` / `scale:` properties on the same utility class. Both rules apply simultaneously, compounding the effect. Includes the v4-minifier gotcha (overriding the resolved property gets collapsed; override CSS variables instead) and the SVG `transform-box` view-box vs bounding-box quirk.
+- **`tailwindMajor` site-detection probe** (`site-detection.md`). Probes `translate-x-1` on the live page to determine the Tailwind major (3 or 4). When it differs from the host app's major, `site-detection.md` directs the agent to pre-emptively add the scoped `[data-project="<name>"] :is(...) { translate|rotate|scale: none !important }` block at scaffolding time — cheaper than chasing visual regressions one-by-one later.
+- **Inner scroll-container detection** in `batch-scroll.sh`, `section-compare.sh`, and documented in `verification.md`. Lenis / locomotive-scroll / `body { overflow: hidden }` sites move the document scrollbar to an inner wrapper, so `window.scrollTo` silently no-ops and every `<n>pct.png` looks identical. The detection finds the largest scrollable element on the page; subsequent scroll commands target it via `wrapper.scrollTop = Y; wrapper.dispatchEvent(new Event('scroll'))`. The synthetic scroll event is required so Lenis/IntersectionObserver listeners re-evaluate.
+- **`EXCLUDE_SELECTORS` env var** in `transition-compare.sh`. Default skips Finsweet Cookie Consent (`.fs-cc_*`), `[id*=cookie]`, `[class*=cookie-banner]`, `[class*=consent]` — third-party SDK overlays the clone never replicates, which previously polluted `ref-elements.json` with elements that have no impl counterpart.
+- **Post-splash reveal-all anti-pattern** (`splash-extraction.md`). Documents the failure mode where the splash-finish handler unconditionally adds `.is-visible` to *every* reveal element on the page (including ones far below the viewport), so subsequent scroll-triggered reveals never animate in. Fix gates the bulk reveal by viewport visibility — only reveal elements whose `getBoundingClientRect().top < window.innerHeight` and let the IntersectionObserver pick up the rest.
+- **"Pick the right diff tool" decision table** (`visual-debug/SKILL.md`). Five computed-style/geometry diff tools (`computed-diff`, `auto-diagnose`, `tree-diff`, `layout-tree-diff`, `hover-tree-diff`, `keyframes-diff`) now indexed by what question each answers, with cost classification and escalation order. Prevents running all five by default.
+
+### Improved
+
+- **Identity-matrix transform normalization** in `transition-compare.sh`. `matrix(1, 0, 0, 1, 0, 0)` is the identity transform — semantically equivalent to `none` — but they string-compare unequal. Normalization eliminates a noise class where ref reports `none` and impl reports `matrix(1,0,0,1,0,0)` (or vice versa) for elements that have no transform applied.
+- **Step-numbering anchor split** across `SKILL.md`, `CLAUDE.md`, and 15 sub-docs. `Step 5c` is now `5c-a` (download + grep — `bundle-analysis.md`) and `5c-b` (numerical comparison — `bundle-verification.md`). The Step 7-related sub-docs (`generation-pitfalls.md`, `style-audit.md`, `post-gen-verification.md`, `transition-implementation.md`) and the T-prefix transition sub-docs (`measurement.md` → `T-1`, `element-capture.md` → `T0`, `css-extraction.md` → `T2a`, `js-animation-extraction.md` → `T2b`, `canvas-webgl-extraction.md` → `T2c`) have title formats that match SKILL.md anchors verbatim. ui-capture sub-docs renamed from `# ui-capture — <name>` to `# <name> — Phase X`.
+- **CLAUDE.md gate→artifact map expanded** to list every artifact each gate checks (matching `ui_clone/gate.py:30-36` dispatch keys), with explicit Phase 0A note that `canvas-webgl-detection.json` is *advisory*, not gated — it routes the agent to `canvas-webgl-extraction.md` but no `gate_canvas_*` enforces it.
+- **`pipeline.py` no longer hardcodes total gate count.** Both the progress header (`Progress : N/7 gates completed`) and the JSON `total_steps` field now derive from `len(state.GATE_ORDER)`. Previously `7` was duplicated in two places, so adding/removing a gate would silently mis-display progress until the literals were also updated.
+- **`gate.py` import-time cross-validator for `state.GATE_ORDER`.** The existing validator checked `VALID_GATES` ↔ `Gate._gate_keys()`; new check additionally asserts `set(state.GATE_ORDER) == Gate._gate_keys()`. Drift between gate dispatch and pipeline-state ordering now fails fast at import instead of silently mis-reporting progress.
+- **`review.sh` step-anchor checks tightened.** `bundle-analysis.md` is now checked for `"Step 5c-a"` (was loose substring `"Step 5c"`) and a new check enforces `bundle-verification.md` says `"Step 5c-b"`. Locks the new sub-step anchors against silent regressions.
+
+### Security
+
+- **`section-compare.sh` shell-injection consistency.** Detected scroll-container selectors flow into Python f-strings used to build `agent-browser eval` commands. Selectors are now validated against a strict allow-list (`^[a-z][a-z0-9]*(#[a-zA-Z][a-zA-Z0-9_-]*)?(\.[a-zA-Z][a-zA-Z0-9_-]*)?$` or `__document__`); anything else falls back to `__document__`. Matches the v0.4.2 hardening pattern applied to `transition-compare.sh`.
+- **`transition-compare.sh` `EXCLUDE_SELECTORS` JSON-encoded.** The bash variable is now JSON-encoded via `python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))'` before substitution into the JS body, so a future selector containing `"`, `\`, or newline embeds as a valid JS string literal instead of breaking out of it. Default value (`[class*=fs-cc], [id*=cookie], …`) was already safe; this hardens the user-override path.
+
+### Compatibility
+
+- Sub-doc title format changes are documentation-only — no API or artifact path changes. Gates, hooks, and scripts continue to read the same JSON files.
+- Inner scroll-container detection is opt-in by site shape: when `document.documentElement` is the scroller (the common case), behavior is identical to v0.4.2.
+
 ## [0.4.2] - 2026-05-03
 
 Field-iteration release. New diagnostic scripts (tree-diff family, stray-absolute, video-transition), `section-compare.sh` accuracy improvements, security hardening of `transition-compare.sh`, gate ordering bugfix, hook performance improvement, and a new diagnostic Root Cause (H — Stray Absolute Positioning).

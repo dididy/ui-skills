@@ -193,14 +193,17 @@ W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "
 |---|---|
 | `stray-absolute-check.sh` | **Run first (Step 0 Structural)** — single-URL detector for stray `position: absolute` elements with no positioned ancestor (Root Cause H — "footer disappeared" bug class). Often manifests only on shorter viewports |
 | `computed-diff.sh` | **Run first** — per-selector `getComputedStyle` diff. Finds fontWeight/display/height root causes before pixel diff. `IGNORE_FONT_SIZE=1` skips fontSize/lineHeight/width/height (use on macOS with 105% system text scaling) |
+| `auto-diagnose.sh` | **Second call** — locates which element on the AE diff image is wrong by clustering hotspot pixels and resolving each cluster to the impl element underneath. Cheaper than `tree-diff.sh` |
+| `ae-compare.sh` | Single-pair AE pixel comparison primitive (used by other scripts; can be invoked directly for one-off ref/impl pairs) |
+| `batch-scroll.sh` | Captures scroll-position screenshots on both ref and impl at fixed percentages. Auto-detects Lenis / locomotive-scroll / `body { overflow: hidden }` inner-wrapper sites and falls back to `wrapper.scrollTop` + dispatched `scroll` event |
 | `tree-diff.sh` | Exhaustive per-element computed-style diff. Walks every visible impl element ≥ MIN_SIZE px, pairs with ref via `elementFromPoint`. Catches mismatches AE misses (wrong font rendering identically, same-box different overrides) |
 | `layout-health-check.sh` | D0: section height/total height comparison before pixel-level diff |
 | `layout-diff.sh` | Structural section bounding-box comparison between two URLs |
 | `layout-tree-diff.sh` | Geometry diff via signature-based pairing (text + tag + class hash + size class). Reports top/left/w/h deltas regardless of where elements moved. Catches "right element, wrong position" bugs |
 | `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |
 | `dssim-compare.sh` | Structural visual similarity (DSSIM) — catches layout issues AE misses |
-| `section-compare.sh` | Section-level visual + structural comparison (lazy pre-scroll for IntersectionObserver content, text fingerprint matching, per-section AE diff, DOM structure diff) |
-| `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation) |
+| `section-compare.sh` | Section-level visual + structural comparison (lazy pre-scroll for IntersectionObserver content, text fingerprint matching, per-section AE diff, DOM structure diff). Inner-scroll-container detection for Lenis/locomotive sites |
+| `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation). `EXCLUDE_SELECTORS` env var to skip third-party SDK overlays (default: cookie/consent banners) |
 | `hover-tree-diff.sh` | Per-element hover/transition diff. Captures idle → CDP `:hover` → settled style. Diffs timing (property/duration/easing/delay) + idle→hover delta. Uses CDP-level `:hover` (synthetic events do not fire `:hover`) |
 | `keyframes-diff.sh` | `@keyframes` declaration diff. Extracts keyframe rules from both pages; reports keyframes only on one side or same-name rules with different steps. Catches missing entrance animations and wrong timing curves baked into keyframes |
 

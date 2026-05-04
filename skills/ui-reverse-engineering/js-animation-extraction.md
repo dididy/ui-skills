@@ -1,4 +1,4 @@
-# JS-Driven Animation — Bundle Extraction Reference
+# JS-Driven Animation Extraction — Step T2b
 
 **Critical: `getComputedStyle()` only shows the CURRENT value of a property. It does NOT reveal animation from/to values, interpolation ranges, easing curves, or scroll progress mappings. For JS-driven animations, you MUST extract the actual code from JS bundles.**
 

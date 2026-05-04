@@ -1,4 +1,4 @@
-# Bundle-Based Verification — Numerical Comparison
+# Bundle-Based Verification — Step 5c-b (Numerical Comparison)
 
 **For auto-rotating, scroll-driven, and timer-based animations, screenshot comparison is unreliable because the reference point (T=0) cannot be synchronized between ref and impl.** Use bundle-extracted values as the source of truth instead.
 

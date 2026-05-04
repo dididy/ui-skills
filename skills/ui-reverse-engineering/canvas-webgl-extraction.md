@@ -1,4 +1,4 @@
-# Canvas/WebGL Path — Bundle Analysis Reference
+# Canvas/WebGL Extraction — Step T2c (also Step 0A / Step 6 fallback)
 
 ## Identify 3D Engine First
 

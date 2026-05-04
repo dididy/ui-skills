@@ -1,4 +1,4 @@
-# ui-capture — Report Page (Overlay Mode)
+# Report Page — Phase R (Overlay Mode)
 
 Generate `tmp/ref/capture/report.html` — fullpage screenshot with interactive transition overlays.
 

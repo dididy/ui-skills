@@ -1,4 +1,4 @@
-# Splash / Intro Animation Extraction
+# Splash / Intro Animation Extraction — Step 2.6
 
 Splash animations (page-load intros, logo reveals, curtain opens) are the hardest motion to extract because they fire during page load — before any `agent-browser eval` can attach. This doc covers the full workflow for reliably capturing them.
 
@@ -292,6 +292,14 @@ done
 - Animated elements (3D objects, logos) remain visible — missing opacity/visibility transition to terminal state
 - Overlay z-index not reset — splash overlay blocks interaction after animation completes
 - Content scale/opacity animation not triggered — content stays at initial state (e.g., `scale(0.8)`)
+- **Post-splash reveal-all anti-pattern:** the splash-finish handler unconditionally adds `.is-visible` to *every* element with the reveal class (`.js-hero-lines`, `.js-element-appears`, etc.), including ones far below the viewport. The hero animates correctly, but every scroll-triggered reveal further down the page also fires immediately, so subsequent sections never animate in — they're already at their final state when the user scrolls to them. **Detection:** scroll the impl page slowly and watch reveal classes — if every `.js-element-appears` already has `.is-visible` at scroll=0, the handler is over-revealing. **Fix:** in the splash-finish handler, gate by viewport visibility — only reveal elements whose `getBoundingClientRect().top < window.innerHeight`; let the IntersectionObserver pick up the rest as the user scrolls:
+  ```ts
+  const vh = window.innerHeight
+  reveals.forEach((el) => {
+    if (el.getBoundingClientRect().top < vh)
+      el.classList.add('is-visible')
+  })
+  ```
 
 ```bash
 # Post-splash DOM check — run after splash should have completed

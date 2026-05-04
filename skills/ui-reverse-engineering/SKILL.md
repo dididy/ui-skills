@@ -108,9 +108,9 @@ brew install imagemagick dssim ffmpeg
 
 | Phase | Step | Do |
 |---|---|---|
-| **0A** | — | Canvas/WebGL detection — `python -m ui_clone.pipeline` runs this automatically. If `hasCanvas=True` in `canvas-webgl-detection.json`, read `canvas-webgl-extraction.md` BEFORE Phase 2. |
+| **0A** | — | Canvas/WebGL detection — `python -m ui_clone.pipeline` runs this automatically. If `hasCanvas=True` in `canvas-webgl-detection.json`, read `canvas-webgl-extraction.md` BEFORE Phase 2. **Advisory only — no gate.** This is a routing signal, not a blocker; the agent reads the canvas extraction sub-doc when the flag is set, but no validation gate enforces it. |
 | **0** | — | Load `transition-spec.json`/`bundle-map.json` if they exist. Skip re-extraction of known transitions. |
-| **1** | R | `/ui-capture <url>` → `tmp/ref/capture/static/ref/`, `tmp/ref/capture/transitions/ref/`, `regions.json` (produced by ui-capture Phase 2). ⛔ Gate: all three exist. |
+| **1** | R | `/ui-capture <url>` → `tmp/ref/capture/static/ref/`, `tmp/ref/capture/transitions/ref/`, `regions.json` (produced by ui-capture Phase 2). ⛔ Gate: `reference`. |
 | **2** | 1–2 | `dom-extraction.md` → `structure.json`, `section-map.json`, `portal-candidates.json`, `sticky-elements.json`, `hidden-elements.json`. |
 | | 2-W | After Step 1–2: check `head.json` for `<meta name=generator>` containing "Webflow". If found, `webflow-ix2.md` — **mandatory before proceeding**. ⛔ Gate: `webflow-detection.json`, `webflow-hide-rule.json`, `webflow-ix2.json`. |
 | | 2.5 | `asset-extraction.md` → `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`, `visible-images.json`, CSS files, `css/variables.txt` |
@@ -121,7 +121,8 @@ brew install imagemagick dssim ffmpeg
 | | 4 | `responsive-detection.md` → `detected-breakpoints.json`. **Step 4-C1b MANDATORY** → `mobile-swap.json` (mobile-only sibling sections). **Step 4-C2 MANDATORY** → `sizing-expressions.json`. |
 | | 5 | `interaction-detection.md` → `interactions-detected.json`, `scroll-transitions.json`, `hover-deltas.json`, `hover-timing.json`, `hover-css-rules.json`. |
 | | 5b | If new interactive elements found → re-run `/ui-capture` Phase 2B–2E |
-| | 5c | `bundle-analysis.md` — Download ALL JS chunks → `scroll-engine.json`. If custom scroll detected → `js-animation-extraction.md` → `scroll-library.json`. ⛔ Gate: `bundle` |
+| | 5c-a | `bundle-analysis.md` — Download ALL JS chunks → `scroll-engine.json`. If custom scroll detected → `js-animation-extraction.md` → `scroll-library.json`. ⛔ Gate: `bundle` |
+| | 5c-b | `bundle-verification.md` — Numerical comparison of impl vs spec for auto-rotating / scroll-driven / timer-based animations (screenshots are unreliable for these). |
 | | 5d | `bundle-map.json`, `transition-spec.json` (DRAFT), `external-sdks.json`. ⛔ Gate: `spec` |
 | | 5e | Capture verification. Record original, extract frames, verify spatial values. |
 | | 6 | `animation-detection.md`. ALL 3 phases: A (idle 10s), B (scroll), C (per-element). Canvas/WebGL → `canvas-webgl-extraction.md`. |
@@ -250,8 +251,8 @@ Run the classifier eval from `js-animation-extraction.md` Step T1 to detect type
 | `style-extraction.md` | 3 | Computed styles, design tokens, em-conversion gate |
 | `responsive-detection.md` | 4 | Viewport sweep, Step 4-C2 multi-viewport sizing |
 | `interaction-detection.md` | 5 | Hover/scroll/click detection, JS timing, hover CSS rules |
-| `bundle-analysis.md` | 5c–5d | JS bundle download, scroll engine, animation library |
-| `bundle-verification.md` | 5c | Bundle quality gates and sanitization checks |
+| `bundle-analysis.md` | 5c-a | JS bundle download, grep, scroll engine detection |
+| `bundle-verification.md` | 5c-b | Numerical comparison for auto-rotating / scroll-driven / timer animations |
 | `animation-detection.md` | 6 | Idle/scroll/per-element animation phases |
 | `section-audit.md` | 6c | Six-stage audit: element ownership via parentElement chain |
 | `transition-coverage.md` | 6d | Multi-position scroll measurement → transition-coverage.json |

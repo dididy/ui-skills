@@ -1,4 +1,4 @@
-# ui-capture — Transition Capture
+# Transition Capture — Phase 2B–2E
 
 Capture each region from `regions.json`. Apply trigger type to choose the correct activation method.
 

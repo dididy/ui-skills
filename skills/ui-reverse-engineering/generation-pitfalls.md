@@ -1,4 +1,4 @@
-# Generation Pitfalls
+# Generation Pitfalls — Step 7 Reference
 
 CSS-to-React translation errors and failure-based diagnosis for common bugs.
 

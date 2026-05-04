@@ -12,6 +12,26 @@ agent-browser eval "(() => {
   const stylesheets = [...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.href);
   signals.hasTailwind = document.querySelector('[class*=tw-], [class*=sm\\:], [class*=md\\:]') !== null;
   signals.hasCSSModules = document.querySelector('[class*=_module_], [class*=__]') !== null;
+
+  // Tailwind major version — required to predict v3/v4 transform/translate/rotate/scale
+  // conflicts when porting into a host that uses the *other* major. v4 emits individual
+  // `translate:`/`rotate:`/`scale:` properties on shared utilities; v3 emits a composed
+  // `transform:`. If the cloned site uses v3 and the host uses v4 (or vice versa), the
+  // same utility class will compound and produce double-translation/rotation. See
+  // diagnosis.md Root Cause I.
+  // Heuristic: probe a known utility's resolved style. v4 sets `--tw-translate-x` AND
+  // emits a `translate:` declaration; v3 only emits `transform:`.
+  signals.tailwindMajor = (() => {
+    if (!signals.hasTailwind) return null;
+    const probe = document.createElement('div');
+    probe.className = 'translate-x-1';
+    probe.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    const v4 = cs.translate && cs.translate !== 'none';
+    probe.remove();
+    return v4 ? 4 : 3;
+  })();
   signals.hasReadableClasses = document.querySelectorAll('[class]').length > 0 &&
     [...document.querySelectorAll('[class]')].slice(0, 20).every(el =>
       !el.className.match(/^[a-z]{5,}$/)); // Not hashed single-word classes
@@ -46,6 +66,13 @@ agent-browser eval "(() => {
 | `isNextJS + hasTailwind` | **Extract-Values** | Tailwind utilities |
 
 **Default:** If `hasReadableClasses` is true AND `siteCSS > 2`, use CSS-First. Otherwise use Extract-Values.
+
+### Tailwind major version mismatch — flag early
+
+`tailwindMajor` records the cloned site's Tailwind major (3 or 4). The host app you're porting *into* may use a different major. When v3 ↔ v4 is mixed, transform/translate/rotate/scale utilities apply twice (one as a composed `transform:`, one as individual `translate:`/`rotate:`/`scale:` properties). Detect the host major the same way (probe `translate-x-1` on the host page) and **before** generation:
+
+- **Same major on both** — proceed normally.
+- **Different majors** — open `diagnosis.md` Root Cause I and pre-emptively add the `[data-project="<name>"] :is(...) { translate|rotate|scale: none !important }` block to the project's scoped globals.css, listing every shared utility class the JSX uses (`-translate-x-1/2`, `-rotate-90`, `-scale-x-[1]`, plus any `max-lg:` variants). Doing this once at scaffolding cost is cheaper than chasing visual regressions one-by-one later.
 
 ## Implementation Approach Gate (MANDATORY — decide before writing ANY code)
 

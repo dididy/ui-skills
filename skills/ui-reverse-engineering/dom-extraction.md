@@ -1,4 +1,4 @@
-# DOM Extraction — Steps 1 & 2
+# DOM Extraction — Steps 1–2
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 

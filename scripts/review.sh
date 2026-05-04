@@ -49,11 +49,18 @@ fi
 # ── 3. Step numbering consistency ──
 section "Step numbering"
 
-# bundle-analysis.md must say Step 5c, not Step 6
-if head -1 skills/ui-reverse-engineering/bundle-analysis.md | grep -q "Step 5c"; then
-  ok "bundle-analysis.md: Step 5c"
+# bundle-analysis.md must say Step 5c-a (split from 5c in v0.4.3)
+if head -1 skills/ui-reverse-engineering/bundle-analysis.md | grep -q "Step 5c-a"; then
+  ok "bundle-analysis.md: Step 5c-a"
 else
-  err "bundle-analysis.md: title should say Step 5c (not Step 6)"
+  err "bundle-analysis.md: title should say Step 5c-a (not Step 5c, not Step 6)"
+fi
+
+# bundle-verification.md must say Step 5c-b (split from 5c in v0.4.3)
+if head -1 skills/ui-reverse-engineering/bundle-verification.md | grep -q "Step 5c-b"; then
+  ok "bundle-verification.md: Step 5c-b"
+else
+  err "bundle-verification.md: title should say Step 5c-b"
 fi
 
 # animation-detection.md must say Step 6

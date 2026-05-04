@@ -1,4 +1,4 @@
-# Post-Generation Verification Loops
+# Post-Generation Verification — Step 7 Follow-up
 
 ## Pre-verification checklist
 

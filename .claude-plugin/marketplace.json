@@ -8,7 +8,7 @@
       "name": "ui-clone-skills",
       "source": "./",
       "description": "Point at any live website URL. Get production-ready React + Tailwind components that match the original — styles, animations, and responsive behavior. Downloads the actual CSS, greps JS bundles for GSAP/Framer Motion/Lenis params, and extracts Webflow IX2 timelines. Automated visual diff verification (AE/SSIM) without spending screenshot tokens. Anti-skip gates enforce extraction before code generation. 3 skills, automated pipeline.",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "author": {
         "name": "YONGJAE LEE"
       },

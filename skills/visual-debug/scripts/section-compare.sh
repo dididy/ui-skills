@@ -167,13 +167,76 @@ fi
 
 sleep 1
 
+# ── Detect the actual scroll container ──
+# Lenis / locomotive-scroll / overflow:hidden body sites move the document
+# scrollbar to an inner wrapper; window.scrollTo silently no-ops on those,
+# producing identical screenshots at every "scroll position". Detect once
+# per session and reuse for all subsequent scroll commands.
+DETECT_SCROLLER_JS='(() => {
+  const dh = document.documentElement.scrollHeight;
+  const dc = document.documentElement.clientHeight;
+  if (dh > dc + 100) return "__document__";
+  let best = null;
+  document.querySelectorAll("*").forEach(el => {
+    const cs = getComputedStyle(el);
+    if ((cs.overflowY === "auto" || cs.overflowY === "scroll" || cs.overflowY === "hidden")
+        && el.scrollHeight > el.clientHeight + 100) {
+      if (!best || el.scrollHeight > best.sh) best = { el, sh: el.scrollHeight };
+    }
+  });
+  if (!best) return "__document__";
+  const cls = (typeof best.el.className === "string" ? best.el.className : "")
+    .split(" ").find(c => c.startsWith("js-") || c.includes("lenis") || c.includes("scroll"));
+  return best.el.tagName.toLowerCase() + (cls ? "." + cls : "");
+})()'
+_unwrap_scroller() {
+  python3 -c "import sys, json; v=sys.argv[1]; print(json.loads(v) if v.startswith('\"') else v)" "$1" 2>/dev/null || echo "__document__"
+}
+# Validate the detected selector against a strict allow-list before it flows into
+# downstream Python f-strings. Detection produces values like `div.js-foo`; anything
+# else (special chars, malformed) falls back to __document__. Matches v0.4.2's
+# transition-compare.sh hardening discipline.
+_validate_scroller() {
+  local sel="$1"
+  if [ "$sel" = "__document__" ] || [[ "$sel" =~ ^[a-z][a-z0-9]*(#[a-zA-Z][a-zA-Z0-9_-]*)?(\.[a-zA-Z][a-zA-Z0-9_-]*)?$ ]]; then
+    echo "$sel"
+  else
+    echo "__document__"
+  fi
+}
+REF_SCROLLER_SEL=$(_unwrap_scroller "$(agent-browser --session "$SESSION_REF" eval "$DETECT_SCROLLER_JS" 2>&1 | tail -1)")
+IMPL_SCROLLER_SEL=$(_unwrap_scroller "$(agent-browser --session "$SESSION_IMPL" eval "$DETECT_SCROLLER_JS" 2>&1 | tail -1)")
+REF_SCROLLER_SEL=$(_validate_scroller "$REF_SCROLLER_SEL")
+IMPL_SCROLLER_SEL=$(_validate_scroller "$IMPL_SCROLLER_SEL")
+[ -z "$REF_SCROLLER_SEL" ] && REF_SCROLLER_SEL="__document__"
+[ -z "$IMPL_SCROLLER_SEL" ] && IMPL_SCROLLER_SEL="__document__"
+if [ "$REF_SCROLLER_SEL" != "__document__" ] || [ "$IMPL_SCROLLER_SEL" != "__document__" ]; then
+  echo "  ▸ Inner scroll container detected (Lenis/locomotive-style)"
+  echo "    ref:  $REF_SCROLLER_SEL"
+  echo "    impl: $IMPL_SCROLLER_SEL"
+fi
+
+# Build per-session scroll JS — falls back to window.scrollTo when the scroller is __document__.
+_scroll_js() {
+  local sel="$1"; local y="$2"
+  if [ "$sel" = "__document__" ]; then
+    echo "(() => { window.scrollTo(0, $y); return $y; })()"
+  else
+    echo "(() => { const w = document.querySelector('$sel'); if (!w) { window.scrollTo(0, $y); return $y; } w.scrollTop = $y; w.dispatchEvent(new Event('scroll')); return w.scrollTop; })()"
+  fi
+}
+
 # ── Pre-scroll: trigger lazy-loaded content before fingerprint extraction ──
 # Sites with IntersectionObserver-based lazy loading will have empty innerText
 # for off-screen sections at load time. Scrolling through the full page forces
 # all lazy content to load before we build section fingerprints.
 # This prevents MATCH_COUNT=0 on sites with aggressive lazy loading.
 echo "▸ Pre-scrolling to trigger lazy content..."
-PRE_SCROLL_JS='(() => {
+_pre_scroll_js() {
+  local sel="$1"
+  if [ "$sel" = "__document__" ]; then
+    cat <<'JSEOF'
+(() => {
   const total = document.documentElement.scrollHeight;
   const step = Math.max(window.innerHeight * 0.8, 400);
   let y = 0;
@@ -183,12 +246,32 @@ PRE_SCROLL_JS='(() => {
     if (y >= total) { clearInterval(timer); window.scrollTo(0, 0); }
   }, 120);
   return total;
-})()'
-agent-browser --session "$SESSION_REF" eval "$PRE_SCROLL_JS" > /dev/null 2>&1
-agent-browser --session "$SESSION_IMPL" eval "$PRE_SCROLL_JS" > /dev/null 2>&1
+})()
+JSEOF
+  else
+    cat <<JSEOF
+(() => {
+  const w = document.querySelector('$sel');
+  if (!w) { window.scrollTo(0, document.documentElement.scrollHeight); window.scrollTo(0, 0); return 0; }
+  const total = w.scrollHeight;
+  const step = Math.max(w.clientHeight * 0.8, 400);
+  let y = 0;
+  const timer = setInterval(() => {
+    w.scrollTop = y;
+    w.dispatchEvent(new Event('scroll'));
+    y += step;
+    if (y >= total) { clearInterval(timer); w.scrollTop = 0; w.dispatchEvent(new Event('scroll')); }
+  }, 120);
+  return total;
+})()
+JSEOF
+  fi
+}
+agent-browser --session "$SESSION_REF" eval "$(_pre_scroll_js "$REF_SCROLLER_SEL")" > /dev/null 2>&1
+agent-browser --session "$SESSION_IMPL" eval "$(_pre_scroll_js "$IMPL_SCROLLER_SEL")" > /dev/null 2>&1
 sleep "$WAIT_LAZY_LOAD"  # Wait for lazy content to load and render after scroll
-agent-browser --session "$SESSION_REF" eval "window.scrollTo(0,0)" > /dev/null 2>&1
-agent-browser --session "$SESSION_IMPL" eval "window.scrollTo(0,0)" > /dev/null 2>&1
+agent-browser --session "$SESSION_REF" eval "$(_scroll_js "$REF_SCROLLER_SEL" 0)" > /dev/null 2>&1
+agent-browser --session "$SESSION_IMPL" eval "$(_scroll_js "$IMPL_SCROLLER_SEL" 0)" > /dev/null 2>&1
 sleep "$WAIT_SCROLL_SETTLE"
 
 # ── Step 1: Enumerate sections on both sites ──
@@ -488,7 +571,17 @@ for m in matches:
         # Scroll to section and screenshot with clip
         scroll_y = max(0, r['top'] - 50)
         clip_top = r['top'] - scroll_y
-        cmd_scroll = f'agent-browser --session $SESSION_REF eval \"(() => {{ window.scrollTo(0, {scroll_y}); return {scroll_y}; }})()\"'
+        ref_sel = '$REF_SCROLLER_SEL'
+        if ref_sel == '__document__':
+            scroll_js_ref = '(() => { window.scrollTo(0, ' + str(scroll_y) + '); return ' + str(scroll_y) + '; })()'
+        else:
+            scroll_js_ref = (
+                \"(() => { const w = document.querySelector('\" + ref_sel + \"'); \"
+                + 'if (!w) { window.scrollTo(0, ' + str(scroll_y) + '); return ' + str(scroll_y) + '; } '
+                + 'w.scrollTop = ' + str(scroll_y) + '; '
+                + \"w.dispatchEvent(new Event('scroll')); return w.scrollTop; })()\"
+            )
+        cmd_scroll = f'agent-browser --session $SESSION_REF eval \"{scroll_js_ref}\"'
         subprocess.run(cmd_scroll, shell=True, capture_output=True)
         import time; time.sleep(0.1)
         # Re-apply pause to catch any scroll-triggered transitions that fired after scroll
@@ -506,7 +599,17 @@ for m in matches:
         r = impl['rect']
         scroll_y = max(0, r['top'] - 50)
         clip_top = r['top'] - scroll_y
-        cmd_scroll = f'agent-browser --session $SESSION_IMPL eval \"(() => {{ window.scrollTo(0, {scroll_y}); return {scroll_y}; }})()\"'
+        impl_sel = '$IMPL_SCROLLER_SEL'
+        if impl_sel == '__document__':
+            scroll_js_impl = '(() => { window.scrollTo(0, ' + str(scroll_y) + '); return ' + str(scroll_y) + '; })()'
+        else:
+            scroll_js_impl = (
+                \"(() => { const w = document.querySelector('\" + impl_sel + \"'); \"
+                + 'if (!w) { window.scrollTo(0, ' + str(scroll_y) + '); return ' + str(scroll_y) + '; } '
+                + 'w.scrollTop = ' + str(scroll_y) + '; '
+                + \"w.dispatchEvent(new Event('scroll')); return w.scrollTop; })()\"
+            )
+        cmd_scroll = f'agent-browser --session $SESSION_IMPL eval \"{scroll_js_impl}\"'
         subprocess.run(cmd_scroll, shell=True, capture_output=True)
         import time; time.sleep(0.1)
         cmd_pause = f'agent-browser --session $SESSION_IMPL eval \"{pause_js}\"'

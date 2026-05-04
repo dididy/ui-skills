@@ -1,4 +1,4 @@
-# Visual Verification — Full Procedure
+# Visual Verification — Phase A/B/D (Full Procedure)
 
 > Part of the `visual-debug` skill. Can be invoked standalone or as Step 8+9 of `ui-reverse-engineering`.
 >
@@ -133,6 +133,14 @@ agent-browser eval "(() => {
 ---
 
 ## Phase A: Record Reference (ONCE)
+
+> **Inner scroll wrapper (Lenis / locomotive-scroll / overflow-hidden body):** if `body { overflow: hidden }` and a child element is the actual scrollable container, `window.scrollTo` is a no-op and every `<n>pct.png` will look identical. Detect with:
+>
+> ```bash
+> agent-browser --session <s> eval "(() => { const dh = document.documentElement.scrollHeight; const dc = document.documentElement.clientHeight; if (dh > dc + 100) return '__document__'; let best = null; document.querySelectorAll('*').forEach(el => { const cs = getComputedStyle(el); if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll' || cs.overflowY === 'hidden') && el.scrollHeight > el.clientHeight + 100) { if (!best || el.scrollHeight > best.sh) best = { el, sh: el.scrollHeight }; } }); return best ? (best.el.tagName + (best.el.className ? '.' + best.el.className.split(' ').find(c => c.startsWith('js-') || c.includes('lenis') || c.includes('scroll')) : '')) : '__document__'; })()"
+> ```
+>
+> If the result is anything other than `"__document__"`, replace `window.scrollTo(0, Y)` with `(() => { const w = document.querySelector('<sel>'); w.scrollTop = Y; w.dispatchEvent(new Event('scroll')); return w.scrollTop; })()` for every scroll position. The `dispatchEvent('scroll')` is required because programmatic `scrollTop` writes don't fire scroll events that Lenis/observers listen for. `batch-scroll.sh` does this automatically.
 
 ### A-C1: Full-page static screenshots
 

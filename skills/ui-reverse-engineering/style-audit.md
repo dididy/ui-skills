@@ -1,4 +1,4 @@
-# Style Audit — Post-Implementation Class-Level Comparison
+# Style Audit — Step 7 (Post-Implementation Class-Level Comparison)
 
 After code generation (Step 7), before or alongside visual verification (Step 8), run a **systematic style audit** that compares computed styles of matching elements between the reference site and the implementation.
 

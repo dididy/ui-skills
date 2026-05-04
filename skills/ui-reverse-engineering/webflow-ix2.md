@@ -1,4 +1,4 @@
-# Webflow IX2 — Detection & Extraction
+# Webflow IX2 — Step 2-W (Detection & Extraction)
 
 Webflow Interactions 2.0 (IX2) is Webflow's proprietary scroll/hover/click animation engine. It is NOT GSAP. It does NOT use `ScrollTrigger`. Standard scroll-trigger detection from `bundle-analysis.md` will silently miss every IX2-driven effect.
 

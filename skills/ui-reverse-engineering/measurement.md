@@ -1,4 +1,4 @@
-# Multi-Point Measurement — Step -1
+# Multi-Point Measurement — Step T-1
 
 > **Before writing ANY implementation code, measure ALL animated properties at 11 progress points (0%, 10%, 20%, …, 100%) on the original site. This is non-negotiable.**
 

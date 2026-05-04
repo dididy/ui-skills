@@ -1,4 +1,4 @@
-# ui-capture — Transition Detection
+# Transition Detection — Phase 2
 
 Detect all interactive regions on the page and classify by trigger type before capturing.
 

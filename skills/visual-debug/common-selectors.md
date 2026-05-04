@@ -1,4 +1,4 @@
-# Common Computed-Diff Selector Sets
+# Common Computed-Diff Selector Sets — Reference
 
 Ready-to-use selector lists for `computed-diff.sh`.
 These are **framework-agnostic** — they work on any site using class-based or semantic HTML.

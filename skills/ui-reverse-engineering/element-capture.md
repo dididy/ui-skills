@@ -1,4 +1,4 @@
-# Element-Scope Capture (Single Effect)
+# Element-Scope Capture — Step T0
 
 > Element-scope captures — isolated target element effects (hover, scroll-driven, page-load). For `fullpage` scope, use the main ui-capture pipeline (Phase 1+2) instead.
 

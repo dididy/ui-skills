@@ -1,4 +1,4 @@
-# ui-capture — Comparison Page
+# Comparison Page — Phase 4B
 
 Generate `tmp/ref/capture/compare.html` for side-by-side human review of original vs clone.
 

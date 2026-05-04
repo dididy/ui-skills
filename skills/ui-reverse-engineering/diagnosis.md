@@ -25,6 +25,11 @@ Layout looks structurally wrong (items in wrong order / missing container)?
 Element appears missing / overlapping unrelated content despite being in the DOM
 (footer, sticky bar, badge), and computed `position: absolute`?
   → Root Cause H (Stray Absolute Positioning)
+
+Element is *double-translated*, *double-rotated*, or *double-scaled* (e.g. arrow rotated
+-180° instead of -90°, preloader element lands at -74px instead of -37px), AND the host
+app uses Tailwind v4 while the cloned project uses Tailwind v3?
+  → Root Cause I (Tailwind v3/v4 Transform Conflict)
 ```
 
 ---
@@ -289,5 +294,97 @@ agent-browser --session <s> eval "
 **Don't:**
 - Don't add a hardcoded large-pixel offset to "push the element to the bottom" — that breaks at every viewport size and on every content change.
 - Don't wrap with a fake fixed-height `position: relative` container just to anchor a stray absolute — that's CSS-by-accident; pick option 1 or 2 instead.
+
+---
+
+## Root Cause I: Tailwind v3/v4 Transform Conflict
+
+**Symptoms:** Element is *doubly* translated/rotated/scaled despite using a single utility class. Common manifestations:
+- Preloader marker drifts to `-74px` when the design calls for `-37px` (`-translate-x-1/2` applied twice).
+- Arrow next to a heading appears horizontal (`-180°`) when ref shows it vertical (`-90°`) — `-rotate-90` applied twice.
+- Off-screen element (footer wordmark, mobile menu) never enters viewport even after the reveal class is added.
+- The element's `getBoundingClientRect()` shows it at the wrong position but no inline transform is set.
+
+**Root cause:** The host app (e.g. Tailwind v4 monorepo / showcase) and the cloned project (Tailwind v3 in `_<project>.css`) both define the same utility class, but with **different generated CSS**:
+
+| Utility | Tailwind v3 emits | Tailwind v4 emits |
+|---|---|---|
+| `.-translate-x-1/2` | `transform: translate(var(--tw-translate-x), var(--tw-translate-y)) ...` | `translate: var(--tw-translate-x) var(--tw-translate-y)` |
+| `.-rotate-90` | `transform: ... rotate(var(--tw-rotate)) ...` | `rotate: var(--tw-rotate)` |
+| `.-scale-x-[1]` | `transform: ... scaleX(var(--tw-scale-x)) ...` | `scale: var(--tw-scale-x) var(--tw-scale-y)` |
+
+Both rules apply simultaneously because they target different CSS properties (`transform` vs `translate`/`rotate`/`scale`). The browser composes them — so the element gets translated/rotated/scaled twice.
+
+**Diagnosis:**
+```bash
+# Inspect a suspected element — do BOTH transform AND translate/rotate/scale resolve to non-identity?
+agent-browser --session <s> eval "(() => {
+  const el = document.querySelector('<selector>');
+  const cs = getComputedStyle(el);
+  return JSON.stringify({
+    transform: cs.transform,            // v3 path
+    translate: cs.translate,            // v4 path
+    rotate: cs.rotate,                  // v4 path
+    scale: cs.scale,                    // v4 path
+    twX: cs.getPropertyValue('--tw-translate-x'),
+    twY: cs.getPropertyValue('--tw-translate-y'),
+    twR: cs.getPropertyValue('--tw-rotate'),
+  });
+})()"
+
+# Smoking gun: transform != identity AND (translate != none OR rotate != none OR scale != none)
+# e.g. transform: matrix(0,-1,1,0,0,0)  AND  rotate: -90deg  →  total -180°
+```
+
+**Fix pattern** — null v4's individual properties for utilities defined by both. Place in the project-scoped globals.css:
+
+```css
+/* v3's composed `transform` is canonical for the cloned project; null v4's
+   individual properties for shared utility class names so they don't compound. */
+[data-project="<name>"] :is(
+  .-translate-x-1\/2, .translate-x-full, .-translate-x-full,
+  .-translate-y-1\/2, .translate-y-full, .translate-y-0
+) { translate: none !important; }
+
+[data-project="<name>"] :is(
+  .-rotate-90, .rotate-90, .max-lg\:-rotate-90, .max-lg\:rotate-90
+) { rotate: none !important; }
+
+[data-project="<name>"] :is(
+  .-scale-x-\[1\], .scale-x-\[-1\]
+) { scale: none !important; }
+```
+
+**Subtle gotcha — Tailwind v4 minifier collapses your override:** writing `transform: none !important; translate: 0 0 !important` together gets collapsed by the v4 minifier into a single `transform: translate3d(0,0,0) !important` and the `translate:` declaration is **dropped**. The element stays translated.
+
+**Fix:** override the underlying CSS variables, not the resolved property — v4's own rule then computes to identity:
+
+```css
+[data-project="<name>"] .js-footer-bar-logo.is-visible path {
+  --tw-translate-x: 0 !important;
+  --tw-translate-y: 0 !important;
+}
+```
+
+**SVG path quirk:** Tailwind v3's `transform: translate(0, 100%)` on an SVG `<path>` resolves percentages against the **view-box** (because `transform-box: view-box` is the default for SVG). Tailwind v4's `translate: 0 100%` on the same path resolves against the path's **bounding box**. Different reference frames mean the same utility class produces different visual offsets in v3 vs v4. Always inspect the resolved `transform` matrix, not the raw `translate-y-full` class.
+
+**Detection script** (run this once when standing up a new project clone in a v4 host):
+```bash
+agent-browser --session <s> eval "(() => {
+  const out = [];
+  document.querySelectorAll('[data-project=\"<name>\"] *').forEach(el => {
+    const cs = getComputedStyle(el);
+    const tFx = cs.transform !== 'none' && cs.transform !== 'matrix(1, 0, 0, 1, 0, 0)';
+    const indiv = cs.translate !== 'none' || cs.rotate !== 'none' || cs.scale !== 'none';
+    if (tFx && indiv) out.push({ tag: el.tagName, cls: el.className?.toString?.()?.slice(0,120), transform: cs.transform, translate: cs.translate, rotate: cs.rotate, scale: cs.scale });
+  });
+  return JSON.stringify(out, null, 2);
+})()" > tmp/v3v4-conflict.json
+```
+
+**Don't:**
+- Don't rename the utility classes in JSX to dodge the conflict — the cloned project's bundled JS may query them by name (see Root Cause F).
+- Don't `* { transform: none !important }` — kills legitimate transforms inside the project.
+- Don't override the resolved property (`translate: 0 0 !important`) without also setting `transform: none` — see minifier gotcha above. Override the CSS variables instead.
 
 **Prevention:** Run `stray-absolute-check.sh` as part of Phase 4 / Step 8 verification. Cost is one page load — far cheaper than catching the bug later via screenshot review.

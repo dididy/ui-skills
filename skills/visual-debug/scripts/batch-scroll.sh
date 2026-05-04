@@ -158,15 +158,55 @@ if [ "${NO_IMAGES:-0}" = "1" ]; then
   agent-browser --session "$SESSION_IMPL" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
 fi
 
-# Get total heights — use python for safe JSON unwrapping (agent-browser wraps string output in quotes)
-_get_height() {
-  local session="$1"
-  local raw
-  raw=$(agent-browser --session "$session" eval "(() => document.documentElement.scrollHeight)()" 2>&1)
-  python3 -c "import sys, json; v=sys.argv[1]; print(json.loads(v) if v.startswith('\"') else int(v))" "$raw" 2>/dev/null || echo ""
+# Detect the actual scroll container — Lenis/locomotive-scroll sites lock body
+# overflow and scroll an inner wrapper instead, so document.documentElement.scrollHeight
+# == viewport height and window.scrollTo is a no-op. Find the largest scrollable
+# element and use it for both height detection and scroll commands.
+_detect_scroller_js='(() => {
+  const dh = document.documentElement.scrollHeight;
+  const dc = document.documentElement.clientHeight;
+  if (dh > dc + 100) return { sel: "__document__", sh: dh };
+  let best = null;
+  document.querySelectorAll("*").forEach(el => {
+    const cs = getComputedStyle(el);
+    if ((cs.overflowY === "auto" || cs.overflowY === "scroll" || cs.overflowY === "hidden")
+        && el.scrollHeight > el.clientHeight + 100) {
+      if (!best || el.scrollHeight > best.sh) {
+        best = { el, sh: el.scrollHeight, ch: el.clientHeight };
+      }
+    }
+  });
+  if (!best) return { sel: "__document__", sh: dh };
+  let sel = best.el.tagName.toLowerCase();
+  if (best.el.id) sel += "#" + best.el.id;
+  else if (best.el.className && typeof best.el.className === "string") {
+    const cls = best.el.className.split(" ").find(c => c.startsWith("js-") || c.includes("lenis") || c.includes("scroll"));
+    if (cls) sel += "." + cls;
+  }
+  return { sel, sh: best.sh };
+})()'
+
+# Stash the detected scroller selector for both sessions so the scroll loop reuses it.
+ORIG_SCROLLER=$(agent-browser --session "$SESSION_REF" eval "$_detect_scroller_js" 2>&1)
+IMPL_SCROLLER=$(agent-browser --session "$SESSION_IMPL" eval "$_detect_scroller_js" 2>&1)
+
+_extract_height() {
+  python3 -c "import sys, json; v=sys.argv[1]; d=json.loads(v) if v.startswith('{') or v.startswith('\"') else None; print(d['sh'] if isinstance(d, dict) else (json.loads(v) if v.startswith('\"') else int(v)))" "$1" 2>/dev/null || echo ""
 }
-ORIG_HEIGHT=$(_get_height "$SESSION_REF")
-IMPL_HEIGHT=$(_get_height "$SESSION_IMPL")
+_extract_sel() {
+  python3 -c "import sys, json; v=sys.argv[1]; d=json.loads(v) if v.startswith('{') else None; print(d['sel'] if isinstance(d, dict) and 'sel' in d else '__document__')" "$1" 2>/dev/null || echo "__document__"
+}
+
+ORIG_HEIGHT=$(_extract_height "$ORIG_SCROLLER")
+IMPL_HEIGHT=$(_extract_height "$IMPL_SCROLLER")
+ORIG_SEL=$(_extract_sel "$ORIG_SCROLLER")
+IMPL_SEL=$(_extract_sel "$IMPL_SCROLLER")
+
+if [ "$ORIG_SEL" != "__document__" ] || [ "$IMPL_SEL" != "__document__" ]; then
+  echo "  ▸ Inner scroll container detected (Lenis/locomotive-style)"
+  echo "    ref:  $ORIG_SEL"
+  echo "    impl: $IMPL_SEL"
+fi
 
 if ! [[ "$ORIG_HEIGHT" =~ ^[0-9]+$ ]] || ! [[ "$IMPL_HEIGHT" =~ ^[0-9]+$ ]]; then
   echo "ERROR: Failed to extract page heights (orig=$ORIG_HEIGHT, impl=$IMPL_HEIGHT)"
@@ -198,9 +238,19 @@ for PCT in "${POSITIONS[@]}"; do
   Y_REF=$(awk "BEGIN { printf \"%d\", $ORIG_HEIGHT * $PCT / 100 }")
   Y_IMPL=$(awk "BEGIN { printf \"%d\", $IMPL_HEIGHT * $PCT / 100 }")
 
-  # Scroll both
-  agent-browser --session "$SESSION_REF" eval "(() => { window.scrollTo(0, $Y_REF); return $Y_REF; })()" 2>&1 > /dev/null
-  agent-browser --session "$SESSION_IMPL" eval "(() => { window.scrollTo(0, $Y_IMPL); return $Y_IMPL; })()" 2>&1 > /dev/null
+  # Scroll both — falls back to inner-wrapper scrollTop when document body has overflow:hidden
+  _scroll_js() {
+    local sel="$1"; local y="$2"
+    if [ "$sel" = "__document__" ]; then
+      echo "(() => { window.scrollTo(0, $y); return $y; })()"
+    else
+      # Use the detected selector; dispatch a 'scroll' event so libraries that listen
+      # for scroll events (Lenis, IntersectionObserver poll) re-evaluate.
+      echo "(() => { const w = document.querySelector('$sel'); if (!w) { window.scrollTo(0, $y); return $y; } w.scrollTop = $y; w.dispatchEvent(new Event('scroll')); return w.scrollTop; })()"
+    fi
+  }
+  agent-browser --session "$SESSION_REF" eval "$(_scroll_js "$ORIG_SEL" "$Y_REF")" 2>&1 > /dev/null
+  agent-browser --session "$SESSION_IMPL" eval "$(_scroll_js "$IMPL_SEL" "$Y_IMPL")" 2>&1 > /dev/null
 
   sleep "$(awk "BEGIN { printf \"%.3f\", $WAIT_SCROLL / 1000 }")"
 

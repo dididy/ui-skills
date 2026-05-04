@@ -700,6 +700,14 @@ if _ACTUAL_DISPATCH_KEYS != _EXPECTED_DISPATCH_KEYS:
         f"VALID_GATES mismatch: expected {_EXPECTED_DISPATCH_KEYS}, got {_ACTUAL_DISPATCH_KEYS}"
     )
 
+# Also validate state.GATE_ORDER stays in sync — pipeline progress display and gate
+# dispatch share the same gate set; drift between them silently mis-counts progress.
+if set(_state.GATE_ORDER) != _ACTUAL_DISPATCH_KEYS:
+    raise RuntimeError(
+        f"state.GATE_ORDER drift: gates={_ACTUAL_DISPATCH_KEYS}, "
+        f"GATE_ORDER={set(_state.GATE_ORDER)}"
+    )
+
 
 def main() -> None:
     import argparse

@@ -1,4 +1,4 @@
-# Phase C: Compare & Fix
+# Compare & Fix — Phase C/E/H
 
 > Split from `verification.md` for readability. This phase runs after Phase A (reference capture) and Phase B (implementation capture).
 > **After this phase:** proceed to Phase D (Pixel-Perfect Diff) in `verification.md`.

@@ -1,4 +1,4 @@
-# Transition Implementation Guide
+# Transition Implementation — Step 7 (Bundle → Code Translation)
 
 When implementing scroll/page-load/interaction transitions extracted from JS bundles.
 

@@ -74,6 +74,24 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -ex
 
 **Reference selectors:** `common-selectors.md` — ready-to-use selector sets (typography, CSS reset canaries, Tailwind preflight issues, Naver.com specific, general e-commerce)
 
+## Pick the right diff tool
+
+Five computed-style/geometry diff tools exist; each answers a different question. Run the targeted tool first, then escalate if the answer is "nothing wrong" but AE still fails.
+
+| Question | Tool | Scope | Cost |
+|---|---|---|---|
+| Are CSS resets / structural canaries OK? (entry-point sanity) | `computed-diff.sh` | Selector list you provide | Cheap — first call always |
+| AE failed; which element on the diff image is wrong? | `auto-diagnose.sh` | Hotspots in the AE diff image | Cheap — second call |
+| AE keeps failing but auto-diagnose found nothing — wrong style on visually-similar render | `tree-diff.sh` | Every visible element (≥ MIN_SIZE), paired by `elementFromPoint` | Med |
+| Element is in the right place style-wise but at the wrong position | `layout-tree-diff.sh` | Every element, paired by signature (text+tag+class hash+size class) — robust to reflow | Med |
+| Hover / transition feels off (wrong easing, missing rule, different delta) | `hover-tree-diff.sh` | Every hover-capable pair, idle → CDP `:hover` → settled | High — many state captures |
+| Entrance / scroll animation timing is subtly off | `keyframes-diff.sh` | All `@keyframes` declarations from both pages | Low — declarations only |
+
+**Heuristics:**
+- `tree-diff` and `layout-tree-diff` are siblings, not redundant — first asks "is the style right on this element?", second asks "is this element in the right place?". Run `tree-diff` first; if it's clean and AE still fails, run `layout-tree-diff`.
+- `transition-compare.sh` is the predefined-set hover gate (Step 8c of `ui-reverse-engineering`); `hover-tree-diff.sh` is the exhaustive escalation. Use `hover-tree-diff` only when `transition-compare` reports PASS but the impl still feels wrong.
+- Don't run all five by default — they are slower and noisier than the standard `auto-diagnose` workflow.
+
 ## Workflow
 
 ### Step 0: structural checks FIRST (before AE)

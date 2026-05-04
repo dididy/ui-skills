@@ -1,4 +1,4 @@
-# CSS-First Generation
+# CSS-First Generation — Step 7 (CSS-First Strategy)
 
 Download original CSS, use original class names, override only what React requires. Falls back to extracted-values approach when CSS is obfuscated.
 
