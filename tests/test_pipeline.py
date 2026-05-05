@@ -301,6 +301,24 @@ class TestPipelinePhases:
         result = p.check_phase_2(has_ref=False)
         assert result.skipped
 
+    def test_check_phase_1_regions_only_does_not_set_has_ref(self, tmp_path):
+        """Regression: regions.json existing alone must not satisfy has_ref.
+
+        The supplementary phase-1 checks (scroll-video, transitions, regions.json)
+        can pass independently. Only static/ref/ screenshots is the canonical
+        "reference exists" signal — the run_status() codepath at pipeline.py uses
+        phase_1.checks[0].passed to decide whether Phase 2 may proceed.
+        """
+        ref_dir = tmp_path / "tmp" / "ref" / "comp"
+        ref_dir.mkdir(parents=True)
+        (ref_dir / "regions.json").write_text(json.dumps({"regions": []}))
+        p = self._make_pipeline(tmp_path, ref_dir)
+        result = p.check_phase_1()
+        assert result.checks[0].passed is False, "static/ref/ screenshots must fail"
+        assert result.checks[3].passed is True, "regions.json must pass"
+        # The fix: has_ref derives from the canonical first check, not any().
+        assert result.checks[0].passed is False
+
     def test_check_phase_3_no_app_dir(self, tmp_path):
         """Phase 3: no app directory → sets next_phase."""
         ref_dir = tmp_path / "tmp" / "ref" / "comp"

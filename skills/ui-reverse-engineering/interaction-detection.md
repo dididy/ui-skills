@@ -2,7 +2,7 @@
 
 > All `agent-browser eval` calls must use IIFE: `(() => { ... })()` — no top-level return.
 >
-> **After this step:** proceed to Step 5b (capture C3 if new interactions found), then `bundle-analysis.md` (Step 5c).
+> **After this step:** proceed to Step 5b (capture C3 if new interactions found), then `bundle-analysis.md` (Step 5c-a).
 
 ## Step 5: Detect Interactions
 
@@ -457,7 +457,7 @@ Extract `duration`, `ease`/`easing`, and property values from nearby `gsap.to()`
 }
 ```
 
-**⛔ Gate:** If Step 5d-2 detected visual deltas but Step 5d-3 found no timing for a JS-driven element, the hover implementation will be missing duration/easing. Flag these in `interactions-detected.json` as `"timingSource": "unknown"` — bundle analysis (Step 5c) must resolve them.
+**⛔ Gate:** If Step 5d-2 detected visual deltas but Step 5d-3 found no timing for a JS-driven element, the hover implementation will be missing duration/easing. Flag these in `interactions-detected.json` as `"timingSource": "unknown"` — bundle analysis (Step 5c-a) must resolve them.
 
 #### Step 5d-4: Hover child cascade detection (MANDATORY)
 

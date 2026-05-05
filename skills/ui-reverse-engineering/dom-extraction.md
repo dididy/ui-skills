@@ -577,7 +577,7 @@ console.log(JSON.stringify({
 - **`visibility` or `opacity` changed** → Element was revealed by splash animation.
 - **`htmlClass` changed** → Preloader class removed (e.g., `rk-preloading`). Body-level state transition.
 
-⛔ **Gate:** If site has a splash/preloader (detected in Step 5c bundle analysis), `dom-state-diff.json` MUST exist before proceeding to Step 3 (style extraction). Without it, runtime-injected transitions will be silently missed.
+⛔ **Gate:** If site has a splash/preloader (detected in Step 5c-a bundle analysis), `dom-state-diff.json` MUST exist before proceeding to Step 3 (style extraction). Without it, runtime-injected transitions will be silently missed.
 
 ---
 

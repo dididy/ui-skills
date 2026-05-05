@@ -63,7 +63,10 @@ class Gate:
         """File must exist and have > 10 bytes (or be a valid empty JSON array if allow_empty_array)."""
         if not path.exists():
             return CheckResult(label, "fail", f"{label} — MISSING", fix=fix)
-        size = path.stat().st_size
+        try:
+            size = path.stat().st_size
+        except OSError as e:
+            return CheckResult(label, "fail", f"{label} — exists but unreadable ({e})", fix=fix)
         if size < 10:
             if allow_empty_array and size >= 2:
                 try:

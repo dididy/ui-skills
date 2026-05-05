@@ -1,6 +1,6 @@
 # Diagnosis → Fix: Root Cause Patterns
 
-When a visual mismatch occurs, one of 8 root causes (A–H) applies. **Identify the category first** — then apply the targeted fix. Random code tweaking without diagnosis wastes 10+ minutes.
+When a visual mismatch occurs, one of 9 root causes (A–I) applies. **Identify the category first** — then apply the targeted fix. Random code tweaking without diagnosis wastes 10+ minutes.
 
 ---
 

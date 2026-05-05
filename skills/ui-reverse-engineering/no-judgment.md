@@ -20,6 +20,7 @@ Read this when you feel a temptation to shortcut. Find your thought in the table
 | "`scroll-engine.json` shows 'native' so I used addEventListener" | Verify: `agent-browser eval "typeof window.lenis !== 'undefined' || typeof locomotiveScroll !== 'undefined'"`. Site may still use custom scroll. |
 | "The reference has the same items as I implemented" | `agent-browser eval "document.querySelectorAll('.card, .point-items, .item').length"` on ref. Items may be added post-launch. |
 | "I know what this section looks like" | `agent-browser eval "document.querySelector('.section-class').outerHTML"` on ref BEFORE any impl. Then `section-compare.sh` after. No exceptions. |
+| "Header should hide on scroll-down — that's standard UX" | Scroll ref to a deep position (`window.scrollTo(0, 4000)` or via the custom scroll wrapper), wait 500ms, then check `getComputedStyle(headerEl).transform`. If `none`, do NOT add hide-on-scroll — ref doesn't have it. |
 | "em-conversion failed so I'll use 16px as 1em" | Measure font-size via screenshot ruler or ask. Typical values: `10px` or `62.5%` base. Document as `// TODO: verify em base`. |
 
 ---

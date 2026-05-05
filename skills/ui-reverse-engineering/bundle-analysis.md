@@ -179,7 +179,7 @@ Record as `type: "cross-component"` in `interactions-detected.json`.
 
 ## Preloader/Splash Detection
 
-**Detection (here, Step 5c):** Two signals — either confirms splash exists.
+**Detection (here, Step 5c-a):** Two signals — either confirms splash exists.
 
 ```bash
 # Signal 1: Bundle grep

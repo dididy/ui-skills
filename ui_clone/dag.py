@@ -156,13 +156,19 @@ def check_staleness(ref_dir: Path) -> list[StalenessIssue]:
         parent_path = ref_dir / parent_name
         if not parent_path.exists():
             continue
-        parent_mtime = parent_path.stat().st_mtime
+        try:
+            parent_mtime = parent_path.stat().st_mtime
+        except OSError:
+            continue
 
         for child_name in dependents:
             child_path = ref_dir / child_name
             if not child_path.exists():
                 continue
-            child_mtime = child_path.stat().st_mtime
+            try:
+                child_mtime = child_path.stat().st_mtime
+            except OSError:
+                continue
 
             if parent_mtime > child_mtime:
                 directly_stale.add(child_name)

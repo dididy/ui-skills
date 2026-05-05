@@ -8,7 +8,7 @@ From **Step 2**: `structure.json`, `portal-candidates.json`, `sticky-elements.js
 From **Step 2.5**: `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`
 From **Step 3**: `styles.json`, `advanced-styles.json`, `body-state.json`, `design-bundles.json`, `decorative-svgs.json`
 From **Step 4**: detected breakpoints + per-breakpoint styles
-From **Step 5**: `interactions-detected.json`, `scroll-engine.json`, `scroll-library.json` (if custom scroll detected — produced by `js-animation-extraction.md` during Step 5c)
+From **Step 5**: `interactions-detected.json`, `scroll-engine.json`, `scroll-library.json` (if custom scroll detected — produced by `js-animation-extraction.md` during Step 5c-a)
 From **Step 2.6**: `animation-init-styles.json`, `state-coupling.json`
 From **Step 5b/A-C3**: `transitions/ref/<name>-idle.png` + `transitions/ref/<name>-active.png` for every hover/click interaction
 From **Step 6b**: `transition-spec.json`, `bundle-map.json`

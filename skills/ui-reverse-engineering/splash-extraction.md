@@ -1,12 +1,12 @@
-# Splash / Intro Animation Extraction — Step 2.6
+# Splash / Intro Animation Extraction
 
 Splash animations (page-load intros, logo reveals, curtain opens) are the hardest motion to extract because they fire during page load — before any `agent-browser eval` can attach. This doc covers the full workflow for reliably capturing them.
 
 **When to read:**
-- **Step 5c:** preloader detected (bundle grep or DOM class) → read now for timeline extraction
+- **Step 5c-a:** preloader detected (bundle grep or DOM class) → read now for timeline extraction
 - **Step 6 Phase A:** Tier 1 AE diff shows significant changes in first 1–3s → read for capture technique
 
-**This doc** solves the *capture problem* (splash fires before eval can attach) with throttle + record techniques. Called from pipeline Steps 5c and 6A. Do not read back into calling docs from here.
+**This doc** solves the *capture problem* (splash fires before eval can attach) with throttle + record techniques. Called from pipeline Steps 5c-a and 6 Phase A. Do not read back into calling docs from here.
 
 ## The capture problem
 
@@ -292,6 +292,52 @@ done
 - Animated elements (3D objects, logos) remain visible — missing opacity/visibility transition to terminal state
 - Overlay z-index not reset — splash overlay blocks interaction after animation completes
 - Content scale/opacity animation not triggered — content stays at initial state (e.g., `scale(0.8)`)
+- **Counter/progress starts at 40%+ instead of 0%:** the `startTime = performance.now()` reference was captured at `useEffect` mount, but the counter loop runs much later — preloaders typically chain delays (mount → init delay → slide-in transition → THEN counter). On frame 1, `elapsed = now - startTime` already includes every pre-counter delay, so the counter jumps in mid-progress. **Detection:** reload impl, screenshot at ~1s — counter should still read low single digits, never 40%+. **Fix:** capture `startTime` inside the function that actually starts the counter, not at outer scope:
+  ```ts
+  // BAD — startTime captured at useEffect mount
+  useEffect(() => {
+    const startTime = performance.now()                  // captured here
+    setTimeout(() => {                                   // 1000ms init delay
+      preloader.classList.add('is-visible')
+      setTimeout(() => {                                 // 700ms slide-in
+        const step = () => {
+          const elapsed = performance.now() - startTime  // 1700ms+ on frame 1 → 42%
+          counter.textContent = `${Math.round(elapsed / MIN_LOADING_TIME * 100)}%`
+          if (elapsed < MIN_LOADING_TIME) requestAnimationFrame(step)
+        }
+        requestAnimationFrame(step)
+      }, 700)
+    }, 1000)
+  }, [])
+
+  // GOOD — startTime captured when the counter actually starts
+  useEffect(() => {
+    setTimeout(() => {
+      preloader.classList.add('is-visible')
+      setTimeout(() => {
+        const startTime = performance.now()              // captured here instead
+        const step = () => {
+          const elapsed = performance.now() - startTime  // ≈0 on frame 1 → 0%
+          counter.textContent = `${Math.round(elapsed / MIN_LOADING_TIME * 100)}%`
+          if (elapsed < MIN_LOADING_TIME) requestAnimationFrame(step)
+        }
+        requestAnimationFrame(step)
+      }, 700)
+    }, 1000)
+  }, [])
+  ```
+  Generalizes to any "elapsed since start" timestamp behind a delay chain — not just preloaders.
+- **Body bg flash on preloader fade-out:** preloader uses a utility class (`bg-white`, `bg-cream`, etc.) which in scoped/embedded projects can resolve to a different RGB than the global `body { background: ... }` declaration — typically because a project-scoped CSS framework (Tailwind under `[data-project]`, design-system layer) redefines the utility's color token. As preloader opacity drops, the body shows through in a different color → visible flash before content reveal. **Detection (run on impl, not ref — ref won't show the bug):**
+  ```bash
+  agent-browser --session <s> eval "(() => {
+    const el = document.querySelector('.preloader, [class*=preload], [class*=splash]')
+    return {
+      body: getComputedStyle(document.body).backgroundColor,
+      preloader: el ? getComputedStyle(el).backgroundColor : '(no preloader element matched — pass an explicit selector)',
+    }
+  })()"
+  ```
+  If the two RGB values differ, the fade will flash. Cross-check against ref's body: `getComputedStyle(document.body).backgroundColor` on ref gives the canonical color — both impl body AND impl preloader must match it. **Fix:** set body bg to the exact hex/rgb value (not a CSS keyword like `white`, which can't *match* a redefined utility class).
 - **Post-splash reveal-all anti-pattern:** the splash-finish handler unconditionally adds `.is-visible` to *every* element with the reveal class (`.js-hero-lines`, `.js-element-appears`, etc.), including ones far below the viewport. The hero animates correctly, but every scroll-triggered reveal further down the page also fires immediately, so subsequent sections never animate in — they're already at their final state when the user scrolls to them. **Detection:** scroll the impl page slowly and watch reveal classes — if every `.js-element-appears` already has `.is-visible` at scroll=0, the handler is over-revealing. **Fix:** in the splash-finish handler, gate by viewport visibility — only reveal elements whose `getBoundingClientRect().top < window.innerHeight`; let the IntersectionObserver pick up the rest as the user scrolls:
   ```ts
   const vh = window.innerHeight

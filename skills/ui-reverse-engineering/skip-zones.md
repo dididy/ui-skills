@@ -33,7 +33,7 @@ When a parent artifact (e.g. `structure.json`) is re-extracted *after* a downstr
 
 ---
 
-## ZONE 1: Extraction Gates (Steps 2–3, 5c–5e, 6c–6d)
+## ZONE 1: Extraction Gates (Steps 2–3, 5c-a/5c-b–5e, 6c–6d)
 
 Gate check: `python -m ui_clone.gate <ref-dir> pre-generate`
 
@@ -41,7 +41,7 @@ Gate check: `python -m ui_clone.gate <ref-dir> pre-generate`
 |---|---|---|---|
 | **2.5b** SVG-as-text | Heading rendered as SVG path mistaken for font text | Wrong font rendering, size mismatch | `python -m ui_clone.gate` blocks without `svg-text-elements.json` |
 | **2.6-pre** Dual-snapshot | Only one DOM snapshot taken | Runtime-injected transitions missed entirely | Gate: `dom-state-diff.json` must exist for splash sites |
-| **5c–5d** Bundle completeness | Only `<script>` tags searched, not performance API | GSAP ScrollTrigger / Lenis params / Framer springs missed | Download ALL JS chunks via `performance.getEntriesByType('resource')` |
+| **5c-a–5d** Bundle completeness | Only `<script>` tags searched, not performance API | GSAP ScrollTrigger / Lenis params / Framer springs missed | Download ALL JS chunks via `performance.getEntriesByType('resource')` |
 | **5d-2b** Hover CSS extraction | Only downloaded `.css` files searched | Inline `<style>` hover rules missed | Extract ALL `:hover` from live page: `[...document.styleSheets].flatMap(s => [...s.rules])` |
 | **5d-2c** Hover DOM changes | Only style delta captured | `data-text` / `data-label` swap effects missed | Scan `data-*` on all interactive elements |
 | **5d-2d** Hover video | "No visual transition" concluded from grep alone | 3D fold / text swap effects missed | Record hover video for EVERY hoverable element |

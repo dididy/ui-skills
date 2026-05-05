@@ -74,6 +74,7 @@ def find_project_root() -> Path:
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             git_root = Path(result.stdout.strip())
@@ -82,7 +83,7 @@ def find_project_root() -> Path:
             if (git_root / "tmp" / "ref").is_dir():
                 _cached_project_root = git_root
                 return git_root
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
     cwd = Path.cwd()

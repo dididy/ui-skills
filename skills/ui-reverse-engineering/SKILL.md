@@ -142,7 +142,7 @@ Gates run automatically via the Stop hook — you cannot finish until all gates 
 Run manually to check status at any time:
 
 ```bash
-uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> bundle         # after 5c
+uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> bundle         # after 5c-a
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> spec           # after 5d
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> pre-generate   # before Step 7
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> post-implement # after each transition
@@ -170,7 +170,7 @@ Long sessions cause context decay — initial rules get diluted as the conversat
 | Situation | Read |
 |---|---|
 | Gate failed / step was skipped | `skip-zones.md` — find your zone, run the zone gate |
-| Visual mismatch after implementing | `diagnosis.md` — identify root cause A–G, get diagnosis commands |
+| Visual mismatch after implementing | `diagnosis.md` — identify root cause A–I, get diagnosis commands |
 | About to skip a step or make an assumption | `no-judgment.md` — find the temptation, do the required action instead (read BEFORE implementing, not after) |
 | Verification FAIL, don't know why | `../visual-debug/comparison-fix.md` |
 
@@ -243,7 +243,7 @@ Run the classifier eval from `js-animation-extraction.md` Step T1 to detect type
 | File | Step | Role |
 |---|---|---|
 | `skip-zones.md` | — | **Read when gate fails** — 5 zones of commonly skipped steps with per-zone gate checks |
-| `diagnosis.md` | — | **Read when visual mismatch** — Root Cause A–G with diagnosis commands + fix patterns |
+| `diagnosis.md` | — | **Read when visual mismatch** — Root Cause A–I with diagnosis commands + fix patterns |
 | `no-judgment.md` | — | **Read when "looks right to me"** — decision framework for measurement vs assumption |
 | `site-detection.md` | 1 | Auto-detect stack; pick CSS-First vs Extract-Values |
 | `dom-extraction.md` | 1–2 | DOM hierarchy, semantic section enumeration, hidden element extraction |
@@ -263,7 +263,7 @@ Run the classifier eval from `js-animation-extraction.md` Step T1 to detect type
 | `post-gen-verification.md` | 7 | Output validation after component generation |
 | `style-audit.md` | 7 | Design token consistency validation |
 | `webflow-ix2.md` | W | Webflow IX2 detection + hide-rule extraction + IX2 timeline JSON |
-| `splash-extraction.md` | 2.6 | Preloader overlay handling and test harness |
+| `splash-extraction.md` | — | Preloader overlay handling — sub-protocol called from Steps 5c-a (preloader detected in bundle) and 6A (Tier 1 AE shows changes in first 1–3s) |
 | `dynamic-content-protocol.md` | — | Handling dynamic/animated UIs during capture |
 | `transition-spec-rules.md` | 5d | Transition spec JSON schema and validation |
 | `measurement.md` | T-1 | Multi-point animation measurement (11 data points) |

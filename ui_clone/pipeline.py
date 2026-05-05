@@ -495,7 +495,11 @@ class Pipeline:
         self.check_phase_0()
 
         phase_1 = self.check_phase_1()
-        has_ref = any(c.passed for c in phase_1.checks)
+        # static/ref/ screenshots is the canonical "reference exists" signal — it is the
+        # first check appended in check_phase_1() and the local `has_ref` used there to
+        # decide next_step. Other phase 1 checks (scroll-video, transitions, regions.json)
+        # are supplementary; if regions.json exists alone, Phase 2 must still be skipped.
+        has_ref = bool(phase_1.checks) and phase_1.checks[0].passed
 
         self.check_phase_2(has_ref)
 

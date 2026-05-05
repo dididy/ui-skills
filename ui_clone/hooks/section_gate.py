@@ -74,7 +74,7 @@ def main() -> None:
     marker = ref_dir / ".ui-re-active"
     try:
         age = time.time() - marker.stat().st_mtime
-    except FileNotFoundError:
+    except OSError:
         sys.exit(0)
     if age >= _get_stale_seconds():
         age_days = int(age // 86400)
