@@ -319,6 +319,90 @@ agent-browser eval "(() => {
 
 Heights must match within 1px. A 30-60px gap is the mask line-height bug — fix the mask CSS before moving on.
 
+### IntersectionObserver placement for masked reveals
+
+When the reveal pattern is `overflow: hidden` parent + `transform: translate(0, 100%)` child (the standard "rise from below mask"), the **IO observer ref MUST be on the non-moving outer wrapper, never on the moving child.**
+
+**Why:** `IntersectionObserver` computes the visible (post-clipping) intersection rect — it respects every ancestor's `overflow: hidden`/`clip`. When the child is translated 100% of its own height, it sits exactly outside the parent's box. The parent clips it out, so IO reports `intersect: false, ratio: 0` even when `getBoundingClientRect()` says the child is inside the viewport. The reveal **never triggers**, the element stays at `opacity: 0` forever, and there is no console error.
+
+**Wrong:**
+```tsx
+function RevealRise({ children }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useScrollTrigger(ref)  // ❌ ref on the moving element
+  return (
+    <div
+      ref={ref}
+      style={{ transform: inView ? 'translateY(0)' : 'translateY(100%)' }}
+    >
+      {children}
+    </div>
+  )
+}
+// Caller wraps it in <li className="overflow-hidden"> — IO clipped, never fires
+```
+
+**Right:**
+```tsx
+function RevealRise({ children }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useScrollTrigger(ref)  // ✅ ref on the static outer wrapper
+  return (
+    <div ref={ref} style={{ overflow: 'hidden' }}>
+      <div style={{ transform: inView ? 'translateY(0)' : 'translateY(100%)' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+```
+
+**Verification — first thing to check when a reveal "doesn't trigger":**
+
+```js
+agent-browser eval "(async () => {
+  const el = document.querySelector('<the moving child selector>')
+  return new Promise(r => {
+    const o = new IntersectionObserver(([e]) => {
+      r({intersect: e.isIntersecting, ratio: e.intersectionRatio,
+         rect: e.boundingClientRect.toJSON(), root: e.rootBounds && e.rootBounds.toJSON()})
+      o.disconnect()
+    }, {threshold: 0.2})
+    o.observe(el)
+  })
+})()"
+```
+
+If `intersect: false` while `rect` is clearly inside `root` → ancestor clipping. Move the IO ref one level up (to a non-transformed wrapper) and apply `overflow: hidden` there. `display: contents` on a wrapper does **not** fix this — IO can't observe `contents` elements (returns 0-size rect).
+
+This applies to any intersection-based reveal that uses a clipping mask: `RevealRise`, `RevealLetters`, `RevealLine`, custom `IntersectionFadeUp`, etc. The rule is symmetric for `clip-path: inset(...)` masks too.
+
+### Verification per spec-entry trigger type
+
+`transition-spec.json` is a checklist, not a hint. Every entry has a `trigger` (or `type`) field, and **each trigger category has a different verification command** — verifying hover entries does not verify intersection entries, and so on. Reporting "transitions matched" after only running `transition-compare.sh` (which is hover/idle-state only) is the bug class that produced the L878 regression on 375.studio.
+
+Run the matrix in this exact order. Skipping a row = silent omission of that whole category.
+
+| Spec `trigger` / `type` | Examples | Required verification | Tool |
+|---|---|---|---|
+| `hover` / `css-hover` / `mouseenter` | nav-link underline, button color, image scale | Idle vs hover computed style + timing per element | `transition-compare.sh <orig> <impl> <session>` |
+| `intersection` / `inview` / `intersection-fade-up` | RevealRise, RevealLetters, fade-up sections, reveal masks | Scroll each hidden-init element into view; verify opacity/transform actually advance past initial values | `reveal-trigger-check.sh <session> <impl-url> <w> <h>` |
+| `scroll` / `scroll-driven` / `scroll-scale` | parallax, scroll-driven scale on Works cards, sticky header threshold | Scroll-position sweep — capture computed style at 0/25/50/75/100% and check the value progresses monotonically | `batch-scroll.sh` + `auto-diagnose.sh` on diff hotspots |
+| `auto-timer` / `loop` / `cycle` / `raf` | WebGL canvas cycle, cursor follower, infinite marquee | Numerical comparison against bundle-extracted parameters (NOT screenshots — frames are async) | See `bundle-verification.md` |
+| `click` / `click-toggle` / `click-cycle` | accordion, tab swap, modal open | Dispatch click + capture state delta; ensure both directions tested | `transition-compare.sh` with explicit click event in `--actions` |
+
+**Coverage gate (run before any of the above):**
+
+```bash
+bash visual-debug/scripts/transition-spec-coverage.sh \
+  tmp/ref/<component> \
+  apps/<app>/src/projects/<component>
+```
+
+Every spec entry must show ≥1 matching impl artifact. A `❌` row means the entry was extracted into the spec but **never wired in code** — that's the meta-bug ("hover transitions matched" while the intersection entry was missing entirely). Fix coverage before running the per-trigger verification rows above.
+
+**Done = every row of the matrix returns PASS for entries of that trigger type.** Not "I checked the hover ones, looks good."
+
 ### GSAP `stagger` semantics — number vs object
 
 ```ts

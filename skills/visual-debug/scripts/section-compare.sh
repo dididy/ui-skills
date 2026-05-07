@@ -89,6 +89,9 @@ agent-browser --session "$SESSION_IMPL" wait "$WAIT_IMPL" > /dev/null 2>&1
 
 # Remove common overlays (cookie banners, newsletter popups)
 DISMISS_OVERLAYS='(() => {
+  // First sweep: vendor-specific consent/cookie SDKs that always render fixed UIs
+  document.querySelectorAll("#iubenda-cs-banner, [id^=iubenda-], [class*=iubenda], [id^=onetrust-], [class*=onetrust], [id^=osano-], [class*=osano], [id^=cky-], [class*=cookieconsent]").forEach(el => el.remove());
+  // Second sweep: heuristic match by class keywords for big fixed/absolute popups
   document.querySelectorAll("[class*=popup], [class*=modal], [class*=cookie], [class*=banner], [class*=overlay], [class*=signup]").forEach(el => {
     const s = getComputedStyle(el);
     if (s.position === "fixed" || s.position === "absolute") {
@@ -297,12 +300,15 @@ ENUMERATE_SECTIONS='(() => {
       const isPageWrapper = h > document.documentElement.scrollHeight * 0.8;
 
       if (isSemantic) {
-        // Descend only when this element directly wraps other structural sections
+        // Descend only when this element directly wraps other layout-level sections
         // (e.g., <main> with <section> children, or <section> wrapping nested <section>s).
-        // Do NOT descend on content semantics like <article>/<figure> nested inside a section.
+        // <header>/<footer>/<nav>/<aside> are internal *content* roles when they appear
+        // inside a section (page header, section heading row, table-of-contents nav,
+        // sidebar aside) — descending on them loses the wrapping section. Only true
+        // layout-level wrappers (section/main) trigger descent here.
         const hasStructuralChild = Array.from(el.children).some(c => {
           const t = c.tagName.toLowerCase();
-          return t === "section" || t === "main" || t === "header" || t === "footer" || t === "nav" || t === "aside";
+          return t === "section" || t === "main";
         });
         if (hasStructuralChild) {
           collect(el, depth + 1);
@@ -440,6 +446,7 @@ def similarity(a, b):
 matches = []
 used_impl = set()
 used_names = set()  # dedup: prevent multiple sections mapping to same filename
+preferred_impl = {}  # ref_index -> impl_index (filled by className pre-pass below)
 
 def make_name(item, fallback_prefix):
     raw = item.get('id') or ''
@@ -460,7 +467,44 @@ def dedup_name(base, used):
     used.add(n)
     return n
 
+# ── PRE-PASS: className exact match ──
+# Greedy fingerprint pairing breaks down when the ref has sections with no
+# impl counterpart (cookie banners, third-party overlays) — they steal the
+# best-fingerprint match away from a real ref section, cascading wrong pairs.
+# Anchor pairs by className equality first; fingerprint pairing only fills
+# the gaps. CSS-Modules tokens like \"page_first__r2OaE\" are uniquely keyed,
+# so when both ref and impl carry the same token, the pairing is unambiguous.
+def class_tokens(s):
+    return [t for t in (s or '').split() if t and len(t) >= 4]
+
 for r in ref:
+    r_tokens = set(class_tokens(r.get('className')))
+    if not r_tokens:
+        continue
+    for im in impl:
+        if im['index'] in used_impl:
+            continue
+        im_tokens = set(class_tokens(im.get('className')))
+        if r_tokens & im_tokens:
+            preferred_impl[r['index']] = im['index']
+            used_impl.add(im['index'])
+            break
+
+for r in ref:
+    if r['index'] in preferred_impl:
+        anchored = next((x for x in impl if x['index'] == preferred_impl[r['index']]), None)
+        if anchored:
+            name = dedup_name(make_name(r, 'section'), used_names)
+            entry = {
+                'name': name,
+                'score': 1.0,  # className-anchored pair
+                'ref': r,
+                'impl': anchored,
+                'pairing': 'className-exact',
+            }
+            matches.append(entry)
+            continue
+
     best_score = 0
     best_impl = None
     for im in impl:

@@ -173,9 +173,30 @@ bash "$SCRIPTS/transition-compare.sh" <orig-url> <impl-url> <session> tmp/ref/<c
 - **GSAP baked init styles** (`visibility: hidden`, `opacity: 0`) not reset → element stays invisible forever
 - **Double-apply transform** → CSS already rotates, JSX adds another → wrong result
 - **`.effect-data` IntersectionObserver missing** → section blank (all `opacity: 0` by CSS default, JS never adds `active` class)
+- **IO ref on the transformed child of an `overflow: hidden` mask** → `intersect: false` forever, reveal never fires, no console error. IO respects ancestor clipping; a child translated 100% out of its `overflow: hidden` parent has zero visible rect. **Fix:** put the IO ref on the static outer wrapper, apply the transform to an inner child. See `transition-implementation.md` → "IntersectionObserver placement for masked reveals". Quick check: run a manual IO `eval` on the suspected element — if `intersect: false` while `boundingClientRect` is inside `rootBounds`, it's ancestor clipping.
 - **Card stack height not pre-fixed** → `height: auto → 64px` not CSS-animatable; must set `item.style.height = item.offsetHeight + 'px'` before scroll handler runs
 
 **Fix:** Check `transition-spec.json` for expected easing + duration. Run `transition-compare.sh`. Rule: **RAF drives transform values** (parallax progress); **scroll events drive class changes** (toggle animations). Never mix.
+
+### Stuck-reveal triage flow (3 steps, in order)
+
+When a scroll-triggered reveal "doesn't trigger" — opacity stays 0, transform stays at the initial offset — diagnose in this order. Each step takes seconds and rules out a whole class:
+
+```bash
+SCRIPTS="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/visual-debug/scripts}"
+SCRIPTS="${SCRIPTS:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -exec dirname {} \; 2>/dev/null | head -1)}"
+
+# 1. Is the reveal even wired in code? (catches "extracted into spec but never implemented")
+bash "$SCRIPTS/transition-spec-coverage.sh" tmp/ref/<component> apps/<app>/src/projects/<component>
+
+# 2. Is the reveal wired but stuck at runtime? (catches IO+overflow:hidden, GSAP baked init, missing observer)
+bash "$SCRIPTS/reveal-trigger-check.sh" <session>-reveal <impl-url> 1280 800
+
+# 3. Is the reveal triggering but with wrong easing/duration? (catches timing-only mismatches)
+bash "$SCRIPTS/transition-compare.sh" <orig-url> <impl-url> <session> tmp/ref/<component>
+```
+
+**Read the output of step 2 first.** Its parent-chain column names the `overflow: hidden` ancestor — if one is listed, you're hitting the IO+clip bug class. Move the observer ref one level up. Step 3 (`transition-compare`) only meaningfully runs once steps 1 and 2 are clean — it cannot distinguish "easing wrong" from "transition never started".
 
 ---
 

@@ -66,6 +66,8 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -ex
 | `auto-diagnose.sh <session> <orig> <impl> <diff.png>` | **Auto-find mismatched elements** from AE diff image → elementFromPoint → computed-diff with severity |
 | `layout-health-check.sh <session> <orig> <impl> <dir>` | Section height/total height structural check before pixel diff |
 | `stray-absolute-check.sh <session> <impl-url> [w] [h]` | **Catches the "footer disappeared" bug class** — flags `position: absolute` elements with no positioned ancestor (offset resolves against `<body>`). Single URL, no ref needed. See `diagnosis.md` → Root Cause H. |
+| `reveal-trigger-check.sh <session> <impl-url> [w] [h]` | **Catches the "stuck reveal" bug class** — enumerates initially-hidden elements (opacity 0 / non-identity transform), scrolls each into view, fails any whose style never advances. Reports parent-chain with `overflow: hidden` ancestors so the IO+overflow:hidden bug class (took 12 iterations to find on 375.studio) is named on first run. See `ui-reverse-engineering/transition-implementation.md` → IntersectionObserver placement for masked reveals. |
+| `transition-spec-coverage.sh <component-dir> <impl-src-dir>` | **Static gate: every spec entry has an impl artifact.** Parses `transition-spec.json`, greps the impl source for each entry's id / selector / type-derived hooks (RevealRise, useScrollTrigger, useScroll, etc.), FAILs if any entry has zero hits. Catches the "hover transitions matched while intersection entries were never wired" failure class. |
 | `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
 | `tree-diff.sh <session> <orig> <impl> [dir]` | **Exhaustive per-element CSS diff** — walks every visible impl element (≥ MIN_SIZE px), pairs with ref via `elementFromPoint`, runs computed-style diff per pair. Catches mismatches AE misses (wrong font that renders identically, same-box different-style). |
 | `layout-tree-diff.sh <session> <orig> <impl> [dir]` | **Geometry diff via signature-based pairing** — pairs impl ↔ ref by stable signature (text + tag + class hash + size class), reports geometry deltas (top/left/w/h) regardless of where elements moved. Catches what tree-diff misses (right element, wrong position). |
@@ -81,6 +83,8 @@ Five computed-style/geometry diff tools exist; each answers a different question
 | Question | Tool | Scope | Cost |
 |---|---|---|---|
 | Are CSS resets / structural canaries OK? (entry-point sanity) | `computed-diff.sh` | Selector list you provide | Cheap — first call always |
+| Did every transition-spec entry get wired into impl code at all? | `transition-spec-coverage.sh` | All entries in `transition-spec.json` vs grep of impl source | Cheap — first call when verifying transitions |
+| Hidden-init elements (opacity 0, transform offset) — do they ever trigger? | `reveal-trigger-check.sh` | Every initially-hidden element on the impl page | Cheap — second call when verifying transitions |
 | AE failed; which element on the diff image is wrong? | `auto-diagnose.sh` | Hotspots in the AE diff image | Cheap — second call |
 | AE keeps failing but auto-diagnose found nothing — wrong style on visually-similar render | `tree-diff.sh` | Every visible element (≥ MIN_SIZE), paired by `elementFromPoint` | Med |
 | Element is in the right place style-wise but at the wrong position | `layout-tree-diff.sh` | Every element, paired by signature (text+tag+class hash+size class) — robust to reflow | Med |
@@ -90,6 +94,7 @@ Five computed-style/geometry diff tools exist; each answers a different question
 **Heuristics:**
 - `tree-diff` and `layout-tree-diff` are siblings, not redundant — first asks "is the style right on this element?", second asks "is this element in the right place?". Run `tree-diff` first; if it's clean and AE still fails, run `layout-tree-diff`.
 - `transition-compare.sh` is the predefined-set hover gate (Step 8c of `ui-reverse-engineering`); `hover-tree-diff.sh` is the exhaustive escalation. Use `hover-tree-diff` only when `transition-compare` reports PASS but the impl still feels wrong.
+- `transition-spec-coverage.sh` and `reveal-trigger-check.sh` are the **first two** transition gates, not escalations — run them before `transition-compare.sh`. Coverage catches "entry never wired", reveal-trigger catches "wired but stuck". `transition-compare.sh` only verifies idle→hover diffs, so it can pass while intersection/scroll-driven entries are completely broken.
 - Don't run all five by default — they are slower and noisier than the standard `auto-diagnose` workflow.
 
 ## Workflow
@@ -105,6 +110,15 @@ SCRIPTS="$SCRIPTS_DIR"
 #     Run on EVERY viewport you care about; the bug often only manifests on shorter pages.
 bash "$SCRIPTS/stray-absolute-check.sh" <session>-stray <impl> 375 812
 bash "$SCRIPTS/stray-absolute-check.sh" <session>-stray <impl> 1280 800
+
+# 0a-bis. Stuck reveals — catches the IO+overflow:hidden bug class. Mandatory if
+#         the spec has any `intersection`/`inview` trigger entries.
+bash "$SCRIPTS/reveal-trigger-check.sh" <session>-reveal <impl> 1280 800
+
+# 0a-ter. Spec coverage — every transition-spec entry must have an impl artifact.
+#         Mandatory before per-trigger verification (transition-compare etc.) so
+#         entirely-missing entries are caught BEFORE you waste a hover sweep.
+bash "$SCRIPTS/transition-spec-coverage.sh" tmp/ref/<component> <impl-src-dir>
 
 # 0b. Broad sweep: CSS reset canaries + page structure
 bash "$SCRIPTS/computed-diff.sh" <session> <orig> <impl> \
