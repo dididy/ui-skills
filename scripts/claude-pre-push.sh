@@ -31,6 +31,19 @@ if [ "$unique" != "1" ]; then
   exit 2
 fi
 
+# CI mirror — pytest + mypy + ruff + shell syntax + review.sh.
+# Mirrors .github/workflows/ci.yml `test` job so we don't push code that GitHub
+# will reject. Slow (~30-60s) so it runs after the fast checks above.
+# Bypass: UI_RE_SKIP_CI_LOCAL=1 git push (emergency only — same env var ci-local.sh honors).
+if [ -f scripts/ci-local.sh ]; then
+  if ! bash scripts/ci-local.sh --quiet; then
+    echo "⚠️ CI mirror failed — run 'bash scripts/ci-local.sh' to see details." >&2
+    echo "Bypass (emergency only): UI_RE_SKIP_CI_LOCAL=1 git push" >&2
+    echo "decision: block" >&2
+    exit 2
+  fi
+fi
+
 upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null) || upstream=""
 if [ -z "$upstream" ]; then
   current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || current_branch=""

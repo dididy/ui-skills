@@ -16,6 +16,7 @@ tests/             pytest suite (260 tests)
 ```bash
 uv run python -m pytest tests/ -q          # run all tests
 uv run python -m pytest tests/test_gate.py  # run specific module
+bash scripts/ci-local.sh                    # full CI mirror (pytest + mypy + ruff + shell + review)
 bash scripts/pre-push-security.sh           # security + cross-ref + version sync
 python -m ui_clone.gate tmp/ref/<c> all     # validate all gates
 ```
@@ -23,10 +24,11 @@ python -m ui_clone.gate tmp/ref/<c> all     # validate all gates
 ## Verification gate (must pass before commit)
 
 ```
-[] uv run python -m pytest tests/ — 0 failures
+[] bash scripts/ci-local.sh — 0 failures (mirrors GitHub Actions test job)
 [] bash scripts/pre-push-security.sh — 0 blockers
-[] bash -n on every modified .sh file
 ```
+
+`scripts/ci-local.sh` is the single source of truth for what CI runs. `scripts/claude-pre-push.sh` calls it automatically before `git push` (bypass for emergencies: `UI_RE_SKIP_CI_LOCAL=1 git push`). If you change CI, update `ci-local.sh` to match — and vice versa.
 
 ## Rules
 

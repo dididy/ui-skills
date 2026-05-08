@@ -115,8 +115,8 @@ def main() -> None:
                 except OSError:
                     pass
             print(
-                f"⚑  UI-RE: post-done edit detected — pipeline state demoted to 'section-compare'. "
-                f"sections/result.txt invalidated. Re-run section-compare before declaring done.",
+                "⚑  UI-RE: post-done edit detected — pipeline state demoted to 'section-compare'. "
+                "sections/result.txt invalidated. Re-run section-compare before declaring done.",
                 file=sys.stderr,
             )
         except OSError:

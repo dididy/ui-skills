@@ -243,7 +243,7 @@ def main() -> None:
         sys.exit(0)
 
     # Gate failed — list failures
-    failures: list[dict[str, str]] = cast(list[dict[str, str]], gate_result.get("failures", []))
+    failures = cast(list[dict[str, str]], gate_result.get("failures", []))
     fail_count = cast(int, gate_result.get("fail_count", len(failures)))
     parts = [
         f"⛔ UI-RE: cannot run '{cmd.split(chr(10))[0][:60]}' — "
