@@ -38,7 +38,7 @@ echo ""
 # Red pixels in AE diff = mismatched areas
 echo "  ▸ Finding mismatch regions..."
 
-COORDS=$(python3 << 'PYEOF'
+COORDS=$(python3 - "$DIFF_IMG" << 'PYEOF'
 import sys
 from pathlib import Path
 
@@ -117,6 +117,30 @@ agent-browser --session "$SESSION_ORIG" open "$ORIG_URL" >/dev/null 2>&1
 agent-browser --session "$SESSION_ORIG" set viewport "$VIEW_W" "$VIEW_H" >/dev/null 2>&1 || true
 agent-browser --session "$SESSION_ORIG" wait 4000 >/dev/null 2>&1
 
+# Detect-and-hide a preloader/splash overlay (full-viewport fixed element with high z-index).
+# elementFromPoint hits the overlay at every coord otherwise, masking real diffs.
+# Heuristic-based — does not depend on the site dismissing on scroll/click, and does
+# not trigger scroll-driven animations.
+DISMISS_PRELOADER_JS='(() => {
+  const candidates = document.querySelectorAll("body > *, body > * > *");
+  const VW = window.innerWidth;
+  const VH = window.innerHeight;
+  for (const el of candidates) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== "fixed") continue;
+    const z = parseInt(cs.zIndex || "0", 10);
+    if (!(z >= 1000)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < VW * 0.8 || r.height < VH * 0.8) continue;
+    if (parseFloat(cs.opacity || "1") < 0.5) continue;
+    if (cs.visibility === "hidden" || cs.display === "none") continue;
+    el.style.display = "none";
+    return "hid preloader: z=" + z;
+  }
+  return "no preloader detected";
+})()'
+agent-browser --session "$SESSION_ORIG" eval "$DISMISS_PRELOADER_JS" >/dev/null 2>&1 || true
+
 # ── Scroll context: diff image may be from a cropped section, not viewport origin ──
 # Detect scroll context from diff image filename:
 #   sections/diff/<section-name>.png → scroll that section into view
@@ -160,6 +184,26 @@ if [ -n "$SCROLL_SCRIPT" ]; then
   SCROLL_RESULT=$(agent-browser --session "$SESSION_ORIG" eval "$SCROLL_SCRIPT" 2>/dev/null || echo "scroll failed")
   echo "  Scroll context: $SCROLL_RESULT"
   agent-browser --session "$SESSION_ORIG" wait 1000 >/dev/null 2>&1
+fi
+
+# When diagnosing a section crop, fixed/sticky overlays (header, mobile menu, banners)
+# block elementFromPoint at every coord within their bounds. Hide them so the probe
+# sees the section content that the diff image was actually capturing.
+# NOT applied to static/full-page diffs — there fixed elements are legitimate diff targets.
+if [ "$DIFF_DIR" = "diff" ] && [ "$PARENT_DIR" = "sections" ]; then
+  HIDE_OVERLAYS_JS='(() => {
+    const els = document.querySelectorAll("*");
+    let n = 0;
+    for (const el of els) {
+      const cs = getComputedStyle(el);
+      if ((cs.position === "fixed" || cs.position === "sticky") && cs.visibility !== "hidden") {
+        el.style.visibility = "hidden";
+        n++;
+      }
+    }
+    return "hidden " + n + " fixed/sticky elements";
+  })()'
+  agent-browser --session "$SESSION_ORIG" eval "$HIDE_OVERLAYS_JS" >/dev/null 2>&1 || true
 fi
 
 # Build coordinate array for eval

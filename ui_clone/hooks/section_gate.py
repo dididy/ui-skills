@@ -122,13 +122,12 @@ def main() -> None:
             _emit_block("\n".join(parts))
             sys.exit(0)
         # Gate passed — _run_gate subprocess already recorded state via Gate.run().
-        # Reload state to verify it was persisted before removing the WIP marker.
-        updated_state = PipelineState.load(ref_dir)
-        if "section-compare" in updated_state.completed_steps:
-            try:
-                marker.unlink()
-            except OSError:
-                pass
+        # IMPORTANT: do NOT unlink the marker here. Leaving it in place lets the
+        # other hooks (pre_generate, pre_bash, session_resume) keep enforcing on
+        # any post-done edits — pre_generate detects current_gate == "done" and
+        # demotes state back to section-compare, forcing re-verification before
+        # the next git commit / Stop event. The stale-marker guard above (3 days)
+        # cleans up genuinely abandoned WIPs.
         sys.exit(0)
 
     # For all other gates, run the Python gate

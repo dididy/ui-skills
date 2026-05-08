@@ -140,6 +140,34 @@ def load_json_safe(path: Path) -> dict[str, Any] | None:
     return data
 
 
+_DEFAULT_COMPONENT_SUBSTRINGS = ("/src/components/", "/src/projects/")
+_DEFAULT_APP_PREFIX = "/src/app/"
+
+
+def is_component_file(file_path: str) -> bool:
+    """Return True for component/page files that pre-generate / pre-bash should enforce.
+
+    Default enforced paths:
+    - /src/components/**       — all component files
+    - /src/projects/**         — project-scoped component trees (monorepo layouts)
+    - /src/app/**/page.*       — Next.js App Router page files only
+                                 (layout.tsx, route.ts etc. are excluded)
+
+    Override via UI_RE_COMPONENT_PATHS env var (colon-separated substrings):
+        UI_RE_COMPONENT_PATHS=/src/components/:/app/components/
+    """
+    if not file_path:
+        return False
+    custom = os.environ.get("UI_RE_COMPONENT_PATHS", "").strip()
+    if custom:
+        return any(p in file_path for p in custom.split(":") if p)
+    if any(sub in file_path for sub in _DEFAULT_COMPONENT_SUBSTRINGS):
+        return True
+    if _DEFAULT_APP_PREFIX in file_path:
+        return any(seg.startswith("page.") for seg in file_path.split("/"))
+    return False
+
+
 def _log_gate_skip(ref_dir: Path, gate_name: str, reason: str) -> None:
     """Append a gate skip event to ref_dir/.gate-skip-log for auditability.
 

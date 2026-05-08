@@ -15,43 +15,15 @@ Environment variables:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import cast
 
 from ui_clone.hooks._common import find_project_root as _find_project_root
 from ui_clone.hooks._common import find_ref_dir as _find_ref_dir
+from ui_clone.hooks._common import is_component_file as _is_component_file
 from ui_clone.hooks._common import run_gate as _run_gate_common
-
-# ── Is this a component/page file? ──
-
-# Built-in default patterns (substring match, except page.* which uses segment logic)
-_DEFAULT_COMPONENT_SUBSTRINGS = ["/src/components/", "/src/projects/"]
-_DEFAULT_APP_PREFIX = "/src/app/"
-
-
-def _is_component_file(file_path: str) -> bool:
-    """Return True for component/page files that the pre-generate gate should enforce.
-
-    Default enforced paths:
-    - /src/components/**       — all component files
-    - /src/projects/**/        — project-scoped component trees
-    - /src/app/**/page.*       — Next.js App Router page files only
-                                 (layout.tsx, route.ts etc. are excluded)
-
-    Override via UI_RE_COMPONENT_PATHS env var (colon-separated substrings):
-        UI_RE_COMPONENT_PATHS=/src/components/:/app/components/
-    """
-    custom = os.environ.get("UI_RE_COMPONENT_PATHS", "").strip()
-    if custom:
-        return any(p in file_path for p in custom.split(":") if p)
-
-    if any(sub in file_path for sub in _DEFAULT_COMPONENT_SUBSTRINGS):
-        return True
-    if _DEFAULT_APP_PREFIX in file_path:
-        return any(seg.startswith("page.") for seg in file_path.split("/"))
-    return False
+from ui_clone.state import PipelineState
 
 
 def _run_gate(ref_dir: Path) -> dict[str, object]:
@@ -114,11 +86,41 @@ def main() -> None:
     if ref_dir is None:
         sys.exit(0)
 
-    # Check if WIP marker exists (only proceed if active)
+    # The marker is the activation signal for downstream hooks (Stop / Bash /
+    # SessionStart / PostCompact). It is *created* on the first passing
+    # pre-generate gate run (further down). Until then it doesn't exist — but
+    # we still want to run the gate on a component-file edit so the agent
+    # gets blocked on missing extraction artifacts. Marker presence is *not*
+    # a precondition for blocking; it's a side-effect that activates the
+    # rest of the enforcement chain.
     marker = ref_dir / ".ui-re-active"
-    if not marker.is_file():
-        # No active marker — skip
-        sys.exit(0)
+    state = PipelineState.load(ref_dir)
+
+    # Post-done invalidation only fires when there's an active session
+    # (marker exists). Without the marker, no other hook is enforcing, and
+    # there's no stale gate state to retract.
+    if marker.is_file() and state.current_gate == "done":
+        try:
+            state.demote_to("section-compare", ref_dir)
+            # Move (not delete) result.txt → audit trail of prior PASS state.
+            result_file = ref_dir / "sections" / "result.txt"
+            if result_file.is_file():
+                stale_path = result_file.with_suffix(".txt.stale")
+                # If a previous .stale file exists, overwrite — only the most
+                # recent stale state is interesting.
+                try:
+                    if stale_path.exists():
+                        stale_path.unlink()
+                    result_file.rename(stale_path)
+                except OSError:
+                    pass
+            print(
+                f"⚑  UI-RE: post-done edit detected — pipeline state demoted to 'section-compare'. "
+                f"sections/result.txt invalidated. Re-run section-compare before declaring done.",
+                file=sys.stderr,
+            )
+        except OSError:
+            pass
 
     # Run pre-generate gate
     gate_result = _run_gate(ref_dir)
@@ -141,15 +143,19 @@ def main() -> None:
         _emit_block(reason)
         sys.exit(0)
 
-    # Gate passed — refresh the existing WIP marker timestamp (proves liveness).
-    # marker.is_file() was confirmed at line 119; touch may still race with
-    # section_gate stale cleanup, so catch OSError.
+    # Gate passed — ensure marker exists. Path.touch() creates the file if
+    # absent, refreshes mtime if present. First-time creation here is the
+    # documented activation site for the Stop / Bash / SessionStart /
+    # PostCompact hooks. Print the activation message only on first creation
+    # so subsequent edits don't spam the agent.
+    was_new = not marker.is_file()
     try:
         marker.touch()
-        print(
-            "⚑  UI-RE Stop gate ACTIVATED: section-compare must pass before finishing.",
-            file=sys.stderr,
-        )
+        if was_new:
+            print(
+                "⚑  UI-RE Stop gate ACTIVATED: section-compare must pass before finishing.",
+                file=sys.stderr,
+            )
     except OSError:
         pass
 

@@ -193,11 +193,14 @@ fi
 section "Shell syntax"
 
 SH_BAD=""
+SH_FILES=$(find scripts skills -name '*.sh' -type f 2>/dev/null)
+[ -f install.sh ] && SH_FILES="$SH_FILES"$'\n'"install.sh"
 while IFS= read -r f; do
+  [ -z "$f" ] && continue
   bash -n "$f" 2>/dev/null || SH_BAD="$SH_BAD $f"
-done < <(find scripts skills -name '*.sh' -type f 2>/dev/null)
+done <<< "$SH_FILES"
 if [ -z "$SH_BAD" ]; then
-  SH_COUNT=$(find scripts skills -name '*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')
+  SH_COUNT=$(printf "%s\n" "$SH_FILES" | grep -c '\.sh$' || true)
   ok "all $SH_COUNT shell scripts pass bash -n"
 else
   err "shell syntax errors in:$SH_BAD"

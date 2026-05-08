@@ -20,7 +20,124 @@ Splash animations (page-load intros, logo reveals, curtain opens) are the hardes
 
 If **Tier 1 AE diff shows significant changes in the first 1–3 seconds** (frames 1–30 at 10fps), a splash transition exists. Follow the rest of this doc.
 
-If **Tier 1 shows NO changes in the first 3s**, splash doesn't exist — use the standard Tier 2 in `animation-detection.md`.
+If **Tier 1 shows NO changes in the first 3s**, run the **additional signals below before concluding splash doesn't exist**. AE-only detection misses fast splashes that finish before capture starts and misses sites whose loader element name doesn't match the standard grep list (`preloader|splash|introAnimation`).
+
+## Detection signals when AE diff misses splash
+
+Mark `hasPreloader: true` if **any one** of A–C below fires. A single positive signal is enough — splash detection biases toward false-positive (extra capture work) over false-negative (hero stuck at `from` state forever because the gating class never lands).
+
+**Cross-ref to `bundle-analysis.md` (Step 5c-a):** Signal A here = BA Signal 4, Signal B = BA Signal 2, Signal C = BA Signal 3. BA orders by grep-first / standard-first; this doc orders by reliability (most reliable first).
+
+### Signal A: html/body class transition (most reliable)
+
+Many sites toggle a class on `<html>` or `<body>` that gates the entire splash → content flow. Capture the class **twice** — early after `open`, again after a wait — and diff:
+
+```bash
+agent-browser --session <s> open <url>
+agent-browser --session <s> eval "(() => JSON.stringify({
+  html: document.documentElement.className,
+  body: document.body.className,
+}))()" > tmp/ref/<c>/splash-classes-early.json
+
+agent-browser --session <s> wait 6000
+agent-browser --session <s> eval "(() => JSON.stringify({
+  html: document.documentElement.className,
+  body: document.body.className,
+}))()" > tmp/ref/<c>/splash-classes-late.json
+```
+
+If the early/late diff includes any of these → splash exists:
+
+| Class transition | Where | Meaning |
+|---|---|---|
+| `is-loading` → `is-loaded` | `<html>` | Generic load-state gate |
+| `loading` → `loaded` | `<html>` or `<body>` | Generic load-state gate |
+| `rk-preloading` → (removed) | `<html>` | Older WordPress/Slater convention |
+| (added) `-once`, `-revealed` | `<body>` | First-load splash completion flag |
+| (added) `-hideLogo`, `-loaded` | `<body>` | Triggers post-splash hero entry |
+| (removed) `is-locked` | `<body>` | Scroll-lock released after splash |
+
+The body class added on splash completion is usually the gate that triggers the hero entry animation. Missing it means the hero stays at its `from` state forever — a silent failure mode where everything renders but nothing animates in.
+
+### Signal B: BEM-prefix loader element scan
+
+Slater, Barba, and many bespoke build setups name the loader with a BEM prefix (`o-` organism, `m-` molecule, `a-` atom) or a `#js-` id. The standard `[class*=preloader]` selector misses these. Run a broader DOM scan:
+
+```bash
+agent-browser --session <s> eval "(() => {
+  const sels = [
+    '#js-loader', '#js-preloader', '#js-splash', '#js-intro',
+    '.o-loader', '.m-loader', '.a-loader',
+    '.c-loader', '.c-preloader', '.c-splash',
+    '[class*=loader]', '[class*=splash]', '[class*=intro]',
+    '[class*=preload]', '[class*=overlay]',
+  ];
+  const out = [];
+  for (const sel of sels) {
+    document.querySelectorAll(sel).forEach(el => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      if (r.width < 100 || r.height < 100) return;
+      if (s.position !== 'fixed' && s.position !== 'absolute') return;
+      out.push({
+        sel, id: el.id || null,
+        cls: el.className?.toString?.().slice(0, 80),
+        position: s.position, zIndex: s.zIndex,
+        visibility: s.visibility, opacity: s.opacity, display: s.display,
+        rect: { w: Math.round(r.width), h: Math.round(r.height) },
+      });
+    });
+  }
+  return JSON.stringify(out);
+})()"
+```
+
+A fixed/absolute full-viewport element with `id^=js-` or BEM-prefixed class is the splash overlay **even if it has already faded out** (`opacity: 0`, `visibility: hidden`, `display: none` after the splash finished). Existence of the element in the DOM at all is the signal.
+
+### Signal C: Extended bundle grep — anime.js + Barba transition systems
+
+The standard `bundle-analysis.md` grep list misses Barba-style page-transition systems where the splash lives in a `transitions[].once()` method and uses anime.js (no `gsap.` prefix to grep for):
+
+```bash
+# anime.js — additional library not in standard animation-library detection
+grep -lE 'anime\.timeline|anime\(\{|anime/lib' tmp/ref/<c>/bundles/*.js
+
+# Barba.js + once() pattern — page-load splash entrypoint
+grep -nE '\bonce\s*\(\s*\)\s*\{|basicTransition|barba\.|leave\s*\(\)\s*\{|enter\s*\(\)\s*\{' \
+  tmp/ref/<c>/bundles/*.js | head -30
+
+# #js- id pattern — Slater/Barba selectors for splash + post-splash hero
+grep -oE '"#js-[a-zA-Z][^"]{2,30}"' tmp/ref/<c>/bundles/*.js | sort -u
+```
+
+If `once()` or `basicTransition` matches → the splash timeline is inside a Barba transition object. Read 200 lines after the match to extract the timeline (anime.js syntax: `anime.timeline().add({ targets, translateY, duration, easing }, offsetMs)`).
+
+## Extracted-CSS gap (asset-extraction caveat)
+
+Even after splash is detected, the loader's CSS often **isn't** in `tmp/ref/<c>/css/*.css`. Slater's per-page CSS, Webflow's IX2 styles, Barba's runtime CSS, and many critical-CSS setups are:
+
+- Inline `<style>` blocks (not in `performance.getEntriesByType('resource')` → asset-extraction skips them)
+- Critical-CSS injected by the framework before hydration
+- Generated at runtime from JS keyframe definitions in the bundle
+
+`getComputedStyle(loaderEl)` on the live page is the source of truth, **not** the downloaded `site.css`. Reading `site.css` and finding zero `.o-loader` rules does not mean the loader has no styles — it means the styles live somewhere else. When implementing the splash, query computed styles directly from the live element:
+
+```bash
+agent-browser --session <s> eval "(() => {
+  const el = document.querySelector('#js-loader, .o-loader, [class*=loader]');
+  if (!el) return null;
+  const s = getComputedStyle(el);
+  return JSON.stringify({
+    backgroundColor: s.backgroundColor,
+    position: s.position, zIndex: s.zIndex,
+    transform: s.transform, transformOrigin: s.transformOrigin,
+    transition: s.transition, animation: s.animation, opacity: s.opacity,
+    width: s.width, height: s.height, top: s.top, left: s.left,
+  });
+})()"
+```
+
+If the loader has already faded by the time you query it (`display: none`), temporarily restore it: `el.style.display = 'flex'; el.style.opacity = '1'` before the `getComputedStyle` call.
 
 ## Splash throttle protocol (Tier 2 variant)
 

@@ -61,13 +61,38 @@ python3 --version            # 3.11+ required (macOS default is sufficient)
 ## Installation
 
 ```bash
-# npx skills (recommended)
-npx skills add voidmatcha/ui-clone-skills
-
-# Or clone directly
-mkdir -p ~/.claude/skills
-git clone https://github.com/voidmatcha/ui-clone-skills.git ~/.claude/skills/ui-clone-skills
+# one-shot installer (deps + plugin marketplace registration)
+curl -LsSf https://raw.githubusercontent.com/voidmatcha/ui-clone-skills/main/install.sh | bash
 ```
+
+The installer is idempotent — it skips anything already installed and clones the repo to `~/.local/share/ui-clone-skills` (override with `INSTALL_DIR=...`). It bootstraps `uv`, `ffmpeg`, `imagemagick`, `dssim`, and `agent-browser`, then registers the local checkout as a Claude Code marketplace.
+
+After it finishes, run inside Claude Code:
+
+```
+/plugin install ui-clone-skills@voidmatcha
+```
+
+<details>
+<summary>Manual install / alternatives</summary>
+
+```bash
+# clone + run installer locally
+git clone https://github.com/voidmatcha/ui-clone-skills.git
+cd ui-clone-skills
+./install.sh                    # all flags: ./install.sh --help
+
+# skip system deps (already installed):
+./install.sh --no-deps
+
+# skip marketplace registration (deps only):
+./install.sh --no-marketplace
+
+# npx skills (skills only — no marketplace registration, no deps)
+npx skills add voidmatcha/ui-clone-skills
+```
+
+</details>
 
 ### Pipeline hooks (automatic)
 
@@ -75,10 +100,12 @@ Hooks register automatically via `hooks/hooks.json` on plugin install — no man
 
 | Hook module | Event | Purpose |
 |------|-------|---------|
-| `ui_clone.hooks.pre_generate` | `PreToolUse` (Write/Edit) | Blocks component writes until extraction completes |
+| `ui_clone.hooks.pre_generate` | `PreToolUse` (Write/Edit) | Blocks component writes until extraction completes. Creates `.ui-re-active` on first passing gate (activation site for the rest of the chain). Demotes state + invalidates `sections/result.txt` on post-`done` component edits |
+| `ui_clone.hooks.pre_bash` | `PreToolUse` (Bash) | Two checks. (1) Blocks declaration-of-done bash commands (`git commit`, `git push`, `gh pr create/merge/close`) when verification is incomplete. (2) Blocks Bash redirects/streams that write to component files (`cat > Foo.tsx`, `tee Foo.tsx`, `sed -i ... Foo.tsx`) when extraction is incomplete — symmetrical with the `Edit/Write` gate so shell-redirect bypass is closed. Read-only commands pass through. Bypass: `UI_RE_SKIP_BASH_GATE=1` |
 | `ui_clone.hooks.post_verify` | `PostToolUse` (Bash) | Warns on completion signals if verification hasn't run |
 | `ui_clone.hooks.devtools_errors` | `PostToolUse` (Bash) | Checks browser devtools for console errors after each Bash call |
-| `ui_clone.hooks.section_gate` | `Stop` | Blocks finishing if section comparison hasn't passed |
+| `ui_clone.hooks.section_gate` | `Stop` | Blocks finishing if the current gate hasn't passed. Marker persists past section-compare; `current_gate == "done"` is the canonical complete signal |
+| `ui_clone.hooks.session_resume` | `SessionStart`, `PostCompact` | Reinjects the verification checklist into context after a session resume or context compact (empirical: 73% of past verification skips happened within 20 min of a `compact_boundary`). Skipped when state is `done` |
 
 ### Gate system (Python)
 
@@ -193,7 +220,7 @@ W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "
 |---|---|
 | `stray-absolute-check.sh` | **Run first (Step 0 Structural)** — single-URL detector for stray `position: absolute` elements with no positioned ancestor (Root Cause H — "footer disappeared" bug class). Often manifests only on shorter viewports |
 | `computed-diff.sh` | **Run first** — per-selector `getComputedStyle` diff. Finds fontWeight/display/height root causes before pixel diff. `IGNORE_FONT_SIZE=1` skips fontSize/lineHeight/width/height (use on macOS with 105% system text scaling) |
-| `auto-diagnose.sh` | **Second call** — locates which element on the AE diff image is wrong by clustering hotspot pixels and resolving each cluster to the impl element underneath. Cheaper than `tree-diff.sh` |
+| `auto-diagnose.sh` | **Second call** — locates which element on the AE diff image is wrong by clustering hotspot pixels and resolving each cluster to the impl element underneath. Detects and hides full-viewport preloader overlays (heuristic: fixed, z-index ≥ 1000, ≥ 80% viewport coverage) before probing. For section-crop diffs, also hides fixed/sticky overlays so the probe sees the section content. Cheaper than `tree-diff.sh` |
 | `ae-compare.sh` | Single-pair AE pixel comparison primitive (used by other scripts; can be invoked directly for one-off ref/impl pairs) |
 | `batch-scroll.sh` | Captures scroll-position screenshots on both ref and impl at fixed percentages. Auto-detects Lenis / locomotive-scroll / `body { overflow: hidden }` inner-wrapper sites and falls back to `wrapper.scrollTop` + dispatched `scroll` event |
 | `tree-diff.sh` | Exhaustive per-element computed-style diff. Walks every visible impl element ≥ MIN_SIZE px, pairs with ref via `elementFromPoint`. Catches mismatches AE misses (wrong font rendering identically, same-box different overrides) |
@@ -202,10 +229,10 @@ W.   Webflow IX2 detection     — MANDATORY if <meta name=generator> contains "
 | `layout-tree-diff.sh` | Geometry diff via signature-based pairing (text + tag + class hash + size class). Reports top/left/w/h deltas regardless of where elements moved. Catches "right element, wrong position" bugs |
 | `batch-compare.sh` | Batch AE comparison with dynamic-region threshold support |
 | `dssim-compare.sh` | Structural visual similarity (DSSIM) — catches layout issues AE misses |
-| `section-compare.sh` | Section-level visual + structural comparison (lazy pre-scroll for IntersectionObserver content, text fingerprint matching, per-section AE diff, DOM structure diff). Inner-scroll-container detection for Lenis/locomotive sites |
+| `section-compare.sh` | Section-level visual + structural comparison (lazy pre-scroll for IntersectionObserver content, text fingerprint matching, per-section AE diff, DOM structure diff). Inner-scroll-container detection for Lenis/locomotive sites. `NO_CANVAS=1` opt-in to hide `<canvas>` elements (WebGL/Three.js dynamic content drowns out structural diffs) |
 | `reveal-trigger-check.sh` | **Run before transition-compare** — runtime gate for the "stuck reveal" bug class. Enumerates initially-hidden elements (opacity 0 / non-identity transform), scrolls each into view, fails any whose style never advances. Reports the parent-chain `overflow: hidden` ancestor that's most likely clipping the IntersectionObserver |
 | `transition-spec-coverage.sh` | **Static gate for spec-vs-impl coverage** — parses `transition-spec.json`, greps the impl source for each entry's id / selector / type-derived hooks (RevealRise, useScrollTrigger, useScroll, etc.), FAILs if any entry has zero hits. Catches the failure class where hover transitions match while intersection/scroll-driven entries were never wired |
-| `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation). `EXCLUDE_SELECTORS` env var to skip third-party SDK overlays (default: cookie/consent banners) |
+| `transition-compare.sh` | Hover/transition behavior comparison (idle/hover state capture, computedStyle diff, timing validation). `EXCLUDE_SELECTORS` env var to skip third-party SDK overlays (default: cookie/consent banners). `NO_CANVAS=1` opt-in to hide `<canvas>` elements during capture |
 | `hover-tree-diff.sh` | Per-element hover/transition diff. Captures idle → CDP `:hover` → settled style. Diffs timing (property/duration/easing/delay) + idle→hover delta. Uses CDP-level `:hover` (synthetic events do not fire `:hover`) |
 | `keyframes-diff.sh` | `@keyframes` declaration diff. Extracts keyframe rules from both pages; reports keyframes only on one side or same-name rules with different steps. Catches missing entrance animations and wrong timing curves baked into keyframes |
 

@@ -162,10 +162,25 @@ HIDE_IMAGES_JS='(() => {
   }).observe(document.body, { childList: true, subtree: true });
 })()'
 
+# Hide <canvas> elements (WebGL/Three.js/etc.) — their content is dynamic per-frame
+# so it would dominate AE without representing real structural diffs.
+HIDE_CANVAS_JS='(() => {
+  const style = document.createElement("style");
+  style.id = "__no_canvas__";
+  style.textContent = "canvas { visibility: hidden !important; }";
+  document.head.appendChild(style);
+})()'
+
 if [ "$NO_IMAGES" = "1" ]; then
   echo "▸ Hiding images (NO_IMAGES=1)..."
   agent-browser --session "$SESSION_REF" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
   agent-browser --session "$SESSION_IMPL" eval "$HIDE_IMAGES_JS" 2>/dev/null || true
+fi
+
+if [ "${NO_CANVAS:-0}" = "1" ]; then
+  echo "▸ Hiding canvases (NO_CANVAS=1)..."
+  agent-browser --session "$SESSION_REF" eval "$HIDE_CANVAS_JS" 2>/dev/null || true
+  agent-browser --session "$SESSION_IMPL" eval "$HIDE_CANVAS_JS" 2>/dev/null || true
 fi
 
 sleep 1

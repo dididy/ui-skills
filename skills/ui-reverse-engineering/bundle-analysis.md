@@ -179,30 +179,42 @@ Record as `type: "cross-component"` in `interactions-detected.json`.
 
 ## Preloader/Splash Detection
 
-**Detection (here, Step 5c-a):** Two signals — either confirms splash exists.
+**Detection (here, Step 5c-a):** Multiple signals — **any one** confirms splash exists. Signal 1 catches the standard-name case; signals 2–4 catch the failure modes (BEM-prefix loaders, anime.js + Barba transitions, body-class gates) where the standard grep list misses entirely. Each failure-mode signal cross-refs the full protocol in `splash-extraction.md`.
 
 ```bash
-# Signal 1: Bundle grep
+# Signal 1: Bundle grep — standard names
 grep -l "preloader\|Preloader\|pre_loader\|splash\|introAnimation" tmp/ref/<c>/bundles/*.js
 
-# Signal 2: DOM class on html/body
+# Signal 2: DOM class on html/body — broadened with BEM-prefix selectors
+#  → Full protocol: splash-extraction.md "Signal B (BEM-prefix loader element scan)"
 agent-browser eval "(() => {
   const html = document.documentElement;
   const body = document.body;
-  const preloaderEl = document.querySelector('[class*=preloader], [class*=loader], [data-preloader]');
+  const preloaderEl = document.querySelector('[class*=preloader], [class*=loader], [data-preloader], #js-loader, .o-loader, .m-loader, .a-loader');
   return JSON.stringify({
     htmlClass: html.className,
     bodyClass: body.className,
-    preloaderEl: preloaderEl ? preloaderEl.className : null,
-    hasPreloading: html.classList.contains('rk-preloading') || html.classList.contains('is-loading') || body.classList.contains('loading'),
+    preloaderEl: preloaderEl ? (preloaderEl.id || preloaderEl.className) : null,
+    hasPreloading: html.classList.contains('rk-preloading') || html.classList.contains('is-loading') || html.classList.contains('loading') || body.classList.contains('loading'),
   });
 })()"
+
+# Signal 3: anime.js + Barba transition entrypoint (page-load splash often lives in transitions[].once())
+#  → Full protocol: splash-extraction.md "Signal C (Extended bundle grep)"
+grep -lE 'anime\.timeline|anime\(\{' tmp/ref/<c>/bundles/*.js
+grep -nE '\bonce\s*\(\s*\)\s*\{|basicTransition|barba\.' tmp/ref/<c>/bundles/*.js | head -20
+
+# Signal 4 → splash-extraction.md "Signal A (html/body class transition)" — pointer, not runnable here
+#   Two-eval protocol: capture html/body class right after `open`, again at +6s, diff for
+#   is-loading→is-loaded and -once/-hideLogo/-loaded body classes that gate hero entry animations.
 ```
 
-If either signal hits → mark `"hasPreloader": true` in `interactions-detected.json`. Then:
-- Extract timeline from bundle. Full procedure → `splash-extraction.md`.
+If **any** signal hits → mark `"hasPreloader": true` in `interactions-detected.json`. Then:
+- Extract timeline from bundle. Full procedure → `splash-extraction.md` (covers BEM-prefix scan, anime.js timelines, html class diff, extracted-CSS gap).
 - Step 5e capture verification will automatically capture the splash (record from blank → navigate).
 - Step 6 Phase A idle capture provides additional Tier 1 AE confirmation.
+
+**Why four signals, not two:** Signals 1–2 miss sites that (a) name their loader `o-loader` / `js-loader` rather than `preloader`, (b) use anime.js instead of GSAP so the timeline isn't grep-visible by `gsap.` prefix, and (c) place the splash inside `transitions[].once()` (Barba page-transition pattern) where the function-name itself is the only stable grep target. Concluding `hasPreloader: false` from signals 1–2 alone leaves the body's gating class (`-once`, `-loaded`) unhandled, which silently freezes every hero/section entry animation in their `from` state.
 
 ## Output
 

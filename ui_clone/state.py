@@ -53,6 +53,56 @@ class PipelineState:
             print(f"ui-clone-skills: Cannot read {path}: {exc}", file=sys.stderr)
             return cls(component=ref_dir.name)
 
+    def demote_to(self, gate: str, ref_dir: Path) -> None:
+        """Reset current_gate back to `gate` and remove it (and later gates) from completed.
+
+        Used when downstream artifacts are invalidated (e.g., a component file was
+        edited after section-compare passed — the visual verification is now stale).
+        Writes file atomically.
+        """
+        if gate not in GATE_ORDER:
+            return
+        target_idx = GATE_ORDER.index(gate)
+
+        # Remove `gate` and any later gates from completed_steps
+        self.completed_steps = [
+            g for g in self.completed_steps
+            if g not in GATE_ORDER or GATE_ORDER.index(g) < target_idx
+        ]
+
+        # Only retreat — never set current_gate forward via this method
+        if self.current_gate == "done":
+            self.current_gate = gate
+        elif self.current_gate in GATE_ORDER:
+            cur_idx = GATE_ORDER.index(self.current_gate)
+            if cur_idx > target_idx:
+                self.current_gate = gate
+        else:
+            self.current_gate = gate
+
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if not self.started_at:
+            self.started_at = now
+        self.last_updated = now
+
+        path = ref_dir / "pipeline-state.json"
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(
+                {
+                    "component": self.component,
+                    "started_at": self.started_at,
+                    "completed_steps": self.completed_steps,
+                    "current_gate": self.current_gate,
+                    "last_updated": self.last_updated,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
+
     def mark_passed(self, gate: str, ref_dir: Path) -> None:
         """Record gate as passed and advance current_gate. Writes file atomically.
 

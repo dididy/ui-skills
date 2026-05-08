@@ -146,3 +146,58 @@ def test_mark_passed_does_not_regress_from_done(tmp_path):
     state.mark_passed("reference", ref_dir)
     reloaded = PipelineState.load(ref_dir)
     assert reloaded.current_gate == "done"
+
+
+# ── PipelineState.demote_to ──
+
+
+def test_demote_to_from_done_moves_back_to_section_compare(tmp_path):
+    """When state is 'done', demote_to('section-compare') retreats current_gate
+    and removes section-compare from completed_steps."""
+    ref_dir = tmp_path / "comp"
+    ref_dir.mkdir()
+    data = {
+        "component": "Comp",
+        "started_at": "2026-01-01T00:00:00Z",
+        "completed_steps": list(GATE_ORDER),
+        "current_gate": "done",
+        "last_updated": "2026-01-01T02:00:00Z",
+    }
+    (ref_dir / "pipeline-state.json").write_text(json.dumps(data))
+    state = PipelineState.load(ref_dir)
+    state.demote_to("section-compare", ref_dir)
+    reloaded = PipelineState.load(ref_dir)
+    assert reloaded.current_gate == "section-compare"
+    assert "section-compare" not in reloaded.completed_steps
+    # Earlier gates remain completed
+    assert "post-implement" in reloaded.completed_steps
+    assert "pre-generate" in reloaded.completed_steps
+
+
+def test_demote_to_does_not_advance(tmp_path):
+    """demote_to must never move current_gate forward — only backward or stay."""
+    ref_dir = tmp_path / "comp"
+    ref_dir.mkdir()
+    state = PipelineState.load(ref_dir)
+    # Currently at "reference" — demote_to("section-compare") must not advance
+    state.demote_to("section-compare", ref_dir)
+    reloaded = PipelineState.load(ref_dir)
+    assert reloaded.current_gate == "reference"
+
+
+def test_demote_to_unknown_gate_is_noop(tmp_path):
+    """demote_to with a gate not in GATE_ORDER → no state change."""
+    ref_dir = tmp_path / "comp"
+    ref_dir.mkdir()
+    data = {
+        "component": "Comp",
+        "started_at": "2026-01-01T00:00:00Z",
+        "completed_steps": list(GATE_ORDER),
+        "current_gate": "done",
+        "last_updated": "2026-01-01T02:00:00Z",
+    }
+    (ref_dir / "pipeline-state.json").write_text(json.dumps(data))
+    state = PipelineState.load(ref_dir)
+    state.demote_to("nonexistent-gate", ref_dir)
+    reloaded = PipelineState.load(ref_dir)
+    assert reloaded.current_gate == "done"

@@ -83,7 +83,7 @@ uv run --project "$PLUGIN_ROOT" python -m ui_clone.pipeline <url> <component-nam
 ```
 
 Follow its output. Run `status` after each phase. Do not guess which phase you're in.
-The Stop gate activates automatically on the first component write (pre-generate gate pass) and deactivates after section comparison passes — the Stop hook records completion in `pipeline-state.json` and removes the WIP marker on the next write attempt.
+The Stop gate activates automatically on the first component write that passes the pre-generate gate — the hook creates `tmp/ref/<c>/.ui-re-active`, after which Stop / Bash / SessionStart / PostCompact hooks all enforce. The marker persists past `section-compare` passing; pipeline state in `pipeline-state.json` is the canonical "complete" signal (`current_gate == "done"`). A subsequent component-source edit on a `done` project demotes state back to `section-compare` and invalidates `sections/result.txt`, forcing re-verification before the next git commit / Stop event. Genuinely abandoned WIP markers are reaped after 3 days (configurable via `UI_RE_STALE_DAYS`).
 
 **Loop flow** (repeat until `status` shows all phases green):
 ```
