@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.7] - 2026-05-09
+
+CI portability + tooling release. Two failure modes from the v0.4.6 push surfaced gaps in the local pre-push surface and ship as a hardening pass — no skill behavior changes.
+
+### Added
+
+- **`scripts/ci-local.sh`** — Single source of truth mirroring the GitHub Actions `test` job (pytest → mypy → ruff → shell syntax → review.sh). Runs locally with the same commands and order as CI, so type errors and lint failures are caught before push instead of after. Used by humans (`bash scripts/ci-local.sh`) and by `scripts/claude-pre-push.sh`, which now invokes it as a blocking step before allowing `git push`. Emergency bypass: `UI_RE_SKIP_CI_LOCAL=1 git push` (mirrors the existing `UI_RE_SKIP_BASH_GATE` pattern). The first push that exercised the new hook caught a real defect (Korean text in `skip-zones.md`) that the prior local checks missed — proving the gap was load-bearing.
+
+### Fixed
+
+- **`ui_clone/hooks/pre_bash.py:246` mypy redeclaration.** `failures` was annotated `list[dict[str, str]]` at line 174 inside the bash-write branch, then re-annotated at line 246 in the same function scope — mypy correctly flagged `[no-redef]`. Local pre-push didn't run mypy, so this only surfaced on GitHub Actions. Fix: drop the redundant annotation on the second assignment (already typed at line 174).
+- **`ui_clone/hooks/pre_generate.py:118-119` ruff F541.** Two `f"..."` strings with no `{...}` placeholders left over from an earlier interpolated-message version. Removed the `f` prefix on both. Same root cause as the mypy issue — local pre-push didn't run ruff.
+- **`scripts/review.sh` language consistency check is now portable.** Was using `grep -rlP '[\x{AC00}-\x{D7AF}]'` — `-P` is GNU-only, so macOS BSD grep silently no-op'd the check while Linux CI flagged real violations. Replaced with a Python `re.compile(r'[\uAC00-\uD7AF]')` scan that gives identical results on both platforms. This was the second class of "local pre-push didn't catch what CI catches" within 24 hours; the new ci-local.sh wrapper plus this portability fix close that loop.
+- **`skills/ui-reverse-engineering/skip-zones.md:120` Korean quote replaced with English paraphrase.** A verbatim user message ("스크롤에 반응하는 섹션 확대 트랜지션이나…") embedded as evidence in the failure-table row violated the CLAUDE.md English-only rule for skill docs. Replaced with "scroll-reactive section transitions, text transitions, footer video — still not applied" — same diagnostic value, English-only.
+
+### Improved
+
+- **`scripts/claude-pre-push.sh` now blocks on full CI mirror, not just the security gate.** The hook previously ran `pre-push-security.sh` (secrets/eval/manifests) and a version-sync check before allowing push, but did not run pytest, mypy, ruff, shell syntax, or review.sh. As a result, two CI failures shipped to GitHub before the agent noticed. The hook now invokes `ci-local.sh --quiet` after the fast checks, blocking push on any test/type/lint/review failure with `decision: block` plus the exact remediation command. ~30-60s overhead per push, but locks the door against the failure class that just hit.
+- **`CLAUDE.md` verification-gate section** updated to list `scripts/ci-local.sh` as the canonical pre-commit check (replaces standalone `pytest` mention) with a note that `ci-local.sh` and `.github/workflows/ci.yml` must be kept in sync.
+
+### Compatibility
+
+- No skill behavior changes. The pipeline, gates, hooks, and visual-debug scripts behave identically. Only the local-developer-facing pre-push surface and an internal review-script grep flavor change.
+- `UI_RE_SKIP_CI_LOCAL=1` is an emergency bypass — its presence in shell history is a deliberate signal that someone overrode the gate, same auditing pattern as `UI_RE_SKIP_BASH_GATE`.
+
 ## [0.4.6] - 2026-05-08
 
 Verification-skip enforcement release, grounded in JSONL analysis of the 89a64 cloning session (31 wallclock hours, 30 `compact_boundary` events). The data showed that **73.3% of all verification skips and 60.4% of all sub-doc skips occurred within 20 minutes of a context-compact event**, while early-session (pre-first-compact) verification skips ran at 0%. Once a session segment passed its first compact without re-reading the verification sub-docs, the skip pattern persisted to the end of that segment — segments 1–6 of 89a64: 17 hours, 227 edits, 0 sub-doc reads. v0.4.5 supplied the *gates* (`reveal-trigger-check.sh`, `transition-spec-coverage.sh`) but did nothing to make the agent re-read the gate list after a compact, and nothing to block declaration-of-done bash commands when verification was incomplete. v0.4.6 closes both holes. **Also bundles a splash-detection signal expansion** for BEM-prefix loaders and anime.js/Barba transition stacks (agencefoudre.com failure class) — see the `splash-extraction.md` / `bundle-analysis.md` bullet under Improved.

@@ -209,10 +209,26 @@ fi
 # ── 10. Language consistency ──
 section "Language"
 
-# SKILL.md and sub-docs should be English only
-# Exclude evals (multilingual trigger tests) and font-check examples
-KOREAN_IN_SKILLS=$(grep -rlP '[\x{AC00}-\x{D7AF}]' skills/ 2>/dev/null \
-  | grep -v '/evals/' | grep -v 'asset-extraction.md' || true)
+# SKILL.md and sub-docs should be English only.
+# `grep -P` is GNU-only — macOS BSD grep silently no-ops, which made this check
+# pass locally while failing on Linux CI. Use python for a portable Unicode scan.
+# Exclude evals (multilingual trigger tests) and font-check examples.
+KOREAN_IN_SKILLS=$(python3 - <<'PY' 2>/dev/null || true
+import pathlib, re
+hangul = re.compile(r'[\uAC00-\uD7AF]')
+hits = []
+for p in sorted(pathlib.Path('skills').rglob('*.md')):
+    s = str(p)
+    if '/evals/' in s or s.endswith('asset-extraction.md'):
+        continue
+    try:
+        if hangul.search(p.read_text(encoding='utf-8', errors='ignore')):
+            hits.append(s)
+    except OSError:
+        pass
+print('\n'.join(hits))
+PY
+)
 if [ -z "$KOREAN_IN_SKILLS" ]; then
   ok "skills/ docs are English only"
 else

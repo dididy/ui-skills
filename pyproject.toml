@@ -1,6 +1,6 @@
 [project]
 name = "ui-clone-skills"
-version = "0.4.6"
+version = "0.4.7"
 requires-python = ">=3.11"
 dependencies = [
     "scikit-image==0.26.0",
