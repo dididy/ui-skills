@@ -33,18 +33,31 @@ Never let large JSON print to stdout — it wastes tokens.
 
 ## When to use
 
-- **Standalone**: `/ui-capture <reference-url> [local-url]`
-- **From ui-reverse-engineering**: Phase A (reference), Phase 4 (verification)
+- **Standalone**: `/ui-capture <reference-url> [local-url] [component]`
+- **From ui-reverse-engineering**: Phase A (reference), Phase 4 (verification) — `<component>` MUST be passed so output lands in `tmp/ref/<component>/` where the pipeline gates look
 - **From ralph**: when SPEC.md has `reference_url`
+
+**Output directory:**
+- `<component>` provided → `tmp/ref/<component>/` (matches `ui_clone.gate` expectations — flat, no `capture/` parent)
+- `<component>` omitted → `tmp/ref/capture/` (standalone usage; not gated)
+
+The slash command translates positional args to env vars before the pipeline runs:
+
+```bash
+REF_URL="$1"
+LOCAL_URL="${2:-}"
+COMPONENT="${3:-}"
+OUT_DIR="tmp/ref/${COMPONENT:-capture}"
+```
 
 **If the user invoked this skill without providing `<reference-url>`:** stop immediately and reply with exactly:
 
 ```
 A URL is required. Use the following format:
 
-/ui-capture <reference-url> [local-url]
+/ui-capture <reference-url> [local-url] [component]
 
-Example: /ui-capture https://www.naver.com http://localhost:3000
+Example: /ui-capture https://www.naver.com http://localhost:3000 naver-main
 ```
 
 Do NOT proceed to any capture phase until `<reference-url>` is provided.
@@ -81,12 +94,17 @@ local-url provided?
 ## Phase 1 — Full page capture
 
 ```bash
-mkdir -p tmp/ref/capture/{static,scroll-video,transitions,clip}/{ref,impl}
-mkdir -p tmp/ref/capture/clip/diff
+# $OUT_DIR comes from "When to use" above. Layout is flat — gates check $OUT_DIR/static/ref/, NOT $OUT_DIR/capture/static/ref/.
+mkdir -p "$OUT_DIR"/{static,scroll-video,transitions,clip}/{ref,impl}
+mkdir -p "$OUT_DIR/clip/diff"
+
+# Order matters: open → set viewport → wait. set viewport before open is silently dropped.
 agent-browser --session <name> open <url>
 agent-browser --session <name> set viewport 1440 900
 agent-browser --session <name> wait 3000
 ```
+
+**Screenshot output rule:** `agent-browser --session <s> screenshot [path]` saves the file itself and prints `Screenshot saved to <path>` on stdout. Relative paths resolve against the *shell's* cwd at invocation time (verified). The failure mode to avoid: `cd` between commands inside a loop, or invoking via a wrapper that changes cwd, so half the screenshots land in one directory and half in another. Two safe patterns: (1) pass an absolute path — `agent-browser --session <s> screenshot "$(pwd)/$OUT_DIR/static/ref/section-${i}.png"`, or (2) keep the loop in one shell with a single `cd` up front. After the loop, sanity-check: `ls "$OUT_DIR/static/ref/" | wc -l` should equal the section count.
 
 **Scroll detection:** Run `detection.md` eval → `scrollType`, `scrollSelector`, `sections[]`.
 - **Instant** (screenshots): `scrollTo(0, Y)` on `window` or `scrollSelector`

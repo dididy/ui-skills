@@ -283,6 +283,22 @@ After AE + DSSIM complete, the LLM reads **every position's** ref+impl pair. Thi
 
 **Why this changed from "1 pair only":** We discovered that AE can report PASS on completely wrong content (scientific notation parsing bug: `1.27e+06` → `1`), and DSSIM can report PASS when content is missing on a same-color background (`empty yellow bg` vs `yellow bg + card` → DSSIM=0.19). Neither automated metric reliably answers "is this the same page?"
 
+#### MANDATORY: delegate to a subagent
+
+Phase E reads ~22 PNG pairs (~44K vision tokens). **Run it inside an `Agent` tool call** so the vision tokens never enter the main context — only the verdict markdown table returns.
+
+```
+Agent({
+  description: "Phase E LLM review — N positions",
+  subagent_type: "general-purpose",
+  prompt: "<paste the Procedure block below verbatim, with absolute paths substituted>"
+})
+```
+
+The subagent has its own context, reads every pair, returns the table. Main context cost: ~500 tokens (the table) instead of ~44K. Do **not** run Phase E inline — that defeats the entire visual-debug "near-zero vision tokens" guarantee for any session that reaches this step.
+
+If you skip the subagent and read pairs inline, mark the choice explicitly with the reason ("session is already terminating, no compaction risk") — otherwise default to subagent.
+
 #### Procedure
 
 For each scroll position (0%, 10%, ..., 100%):

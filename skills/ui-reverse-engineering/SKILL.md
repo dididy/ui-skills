@@ -38,6 +38,12 @@ Reverse-engineer a live website into a **React + Tailwind** component.
 > **Silent Bash rule:** After any Bash with no output, verify the side effect: `ls -la <path>` or `echo $?`. Never assume success from silence.
 >
 > **Screenshot rule:** Use `agent-browser --session <s> screenshot` (no shell redirect). The command saves the image to its own path and prints the location. **Never** use `agent-browser screenshot > file.png` — shell redirect captures the CLI's text confirmation message, not image data, creating a corrupt file that poisons the session context when Read.
+>
+> **Environment rules:** read `agent-environment-rules.md` once per session — covers viewport ordering (`open → set viewport → wait`), zsh word-split, monorepo path resolution, agent-browser CLI verbs, and the flat `tmp/ref/<component>/` layout. Skipping this is the #1 source of "gates pass against an empty repo" silent failures.
+>
+> **Browser cleanup rule (MANDATORY at end of every run):** `agent-browser --session <name> close` for each session you opened. **Never** `close --all` — other Claude sessions may own active browsers. Unclosed sessions leak Chrome Helper processes indefinitely. Detail at the end of this file may be clipped after auto-compaction; this one-liner is the survival copy.
+>
+> **Ralph worker rule:** dismiss modals before capture, always re-capture ref frames before comparing (never trust "already implemented"), iterate until visual match — measurements only, no guessing.
 
 ## Core principles
 
@@ -110,7 +116,7 @@ brew install imagemagick dssim ffmpeg
 |---|---|---|
 | **0A** | — | Canvas/WebGL detection — `python -m ui_clone.pipeline` runs this automatically. If `hasCanvas=True` in `canvas-webgl-detection.json`, read `canvas-webgl-extraction.md` BEFORE Phase 2. **Advisory only — no gate.** This is a routing signal, not a blocker; the agent reads the canvas extraction sub-doc when the flag is set, but no validation gate enforces it. |
 | **0** | — | Load `transition-spec.json`/`bundle-map.json` if they exist. Skip re-extraction of known transitions. |
-| **1** | R | `/ui-capture <url>` → `tmp/ref/capture/static/ref/`, `tmp/ref/capture/transitions/ref/`, `regions.json` (produced by ui-capture Phase 2). ⛔ Gate: `reference`. |
+| **1** | R | `/ui-capture <url> "" <component>` → `tmp/ref/<component>/static/ref/`, `tmp/ref/<component>/transitions/ref/`, `regions.json`. ⛔ Gate: `reference`. The 3rd arg is REQUIRED so output lands where gates look — passing only `/ui-capture <url>` writes to `tmp/ref/capture/` and the gate fails. Pass `""` for the local-url slot to skip impl capture in this phase. |
 | **2** | 1–2 | `dom-extraction.md` → `structure.json`, `section-map.json`, `portal-candidates.json`, `sticky-elements.json`, `hidden-elements.json`. |
 | | 2-W | After Step 1–2: check `head.json` for `<meta name=generator>` containing "Webflow". If found, `webflow-ix2.md` — **mandatory before proceeding**. ⛔ Gate: `webflow-detection.json`, `webflow-hide-rule.json`, `webflow-ix2.json`. |
 | | 2.5 | `asset-extraction.md` → `head.json`, `assets.json`, `inline-svgs.json`, `fonts.json`, `visible-images.json`, CSS files, `css/variables.txt` |
@@ -123,6 +129,7 @@ brew install imagemagick dssim ffmpeg
 | | 5b | If new interactive elements found → re-run `/ui-capture` Phase 2B–2E |
 | | 5c-a | `bundle-analysis.md` — Download ALL JS chunks → `scroll-engine.json`. If custom scroll detected → `js-animation-extraction.md` → `scroll-library.json`. ⛔ Gate: `bundle` |
 | | 5c-b | `bundle-verification.md` — Numerical comparison of impl vs spec for auto-rotating / scroll-driven / timer-based animations (screenshots are unreliable for these). |
+| | 5c-c | `bash paid-features-detect.sh "$(pwd)/tmp/ref/<component>"` (visual-debug/scripts/) ⛔ Gate: `paid-features`. Static-greps downloaded `bundles/`, `css/`, `fonts.json`, `head.json`, `external-sdks.json` for paid font CDN hosts (Adobe Typekit, Monotype, Hoefler/Cloud.typography, Linotype, FONTPLUS / TypeSquare in Japan). Writes `paid-features.json` with `decision: null` for each finding. Edit each entry to set `decision` to one of `use` / `substitute` / `skip` BEFORE Step 7 — generation is wasted effort if you discover a paid font dependency at section-compare time and every text-bearing section reports 100% mismatch. **Note:** GSAP plugins are no longer flagged here — GSAP became 100% free following the Webflow acquisition. |
 | | 5d | `bundle-map.json`, `transition-spec.json` (DRAFT), `external-sdks.json`. ⛔ Gate: `spec` |
 | | 5e | Capture verification. Record original, extract frames, verify spatial values. |
 | | 6 | `animation-detection.md`. ALL 3 phases: A (idle 10s), B (scroll), C (per-element). Canvas/WebGL → `canvas-webgl-extraction.md`. |
@@ -131,8 +138,10 @@ brew install imagemagick dssim ffmpeg
 | | 6d | `transition-coverage.md` — → `transition-coverage.json`. ⛔ Gate: `pre-generate`. |
 | **3** | 7 | Read `site-detection.md` FIRST, then `component-generation.md` + `transition-implementation.md`. |
 | **4** | 8-pre | `stray-absolute-check.sh <session>-stray <impl> <w> <h>` (visual-debug/scripts/) — run for each viewport you support (e.g. 375×812, 1280×800). Catches Root Cause H (footer/sticky elements with `position: absolute` and no positioned ancestor — silently anchors to `<body>`, often only manifests on shorter pages). Cheap (one page load); runs before AE so you fix structure before chasing pixels. See `diagnosis.md` → Root Cause H. |
+| | 8-pre-bound | `REF_DIR="$(pwd)/tmp/ref/<component>" bash breakpoint-collision-check.sh <session>-bound <impl-url>` (visual-debug/scripts/) ⛔ MANDATORY before the `boundary` gate fires. Probes the impl at every Tailwind breakpoint ±1 and writes `responsive/boundary-collisions.json`. Catches Root Cause J (Tailwind `min-width` ↔ project `max-width` overlap producing 1-pixel-wide horizontal overflow zones invisible to AE). The `boundary` gate refuses to pass until this file exists and is `[]`. |
 | | 8 | `auto-verify.sh`. ⛔ MANDATORY — must run before 8b. |
-| | 8b | `section-compare.sh <orig-url> <impl-url> <session> "$(pwd)/tmp/ref/<component>"` (visual-debug/scripts/) ⛔ MANDATORY — runs IN ADDITION to Step 8, not instead. 4th arg required for Stop gate |
+| | 8b-pre | `bash font-parity-check.sh <session>-fp <ref-url> <impl-url> "$(pwd)/tmp/ref/<component>"` (visual-debug/scripts/) ⛔ MANDATORY before the `font-parity` gate fires. Writes `font-parity.json`. If `parity == "mismatch"` and the substitution is intentional (commercial font → free variable font, etc.), declare it in `tmp/ref/<component>/asset-substitution.json` per `asset-substitution.md` schema. Gate refuses to pass when fonts diverge but no `fonts[]` entry acknowledges it. Without this gate, section-compare reports 100% FAIL forever and the agent thrashes. |
+| | 8b | `section-compare.sh <orig-url> <impl-url> <session> "$(pwd)/tmp/ref/<component>"` (visual-debug/scripts/) ⛔ MANDATORY — runs IN ADDITION to Step 8, not instead. 4th arg required for Stop gate. Reads `asset-substitution.json` if present and switches matching sections to structural-only diff. |
 | | 8c | `transition-compare.sh` ⛔ MANDATORY if `interactions-detected.json` exists. |
 | | 9 | Test every interaction. Dispatch `mouseenter` for JS hovers. 100% ✅. |
 
@@ -143,9 +152,13 @@ Run manually to check status at any time:
 
 ```bash
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> bundle         # after 5c-a
+uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> paid-features  # after 5c-c
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> spec           # after 5d
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> pre-generate   # before Step 7
 uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> post-implement # after each transition
+uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> boundary       # after 8-pre-bound
+uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> font-parity    # after 8b-pre
+uv run --project "$PLUGIN_ROOT" python -m ui_clone.gate tmp/ref/<c> section-compare # after 8b
 ```
 
 **Gates print relevant guidance when they fail.** Read the output — it tells you what to fix.
@@ -242,8 +255,9 @@ Run the classifier eval from `js-animation-extraction.md` Step T1 to detect type
 
 | File | Step | Role |
 |---|---|---|
+| `agent-environment-rules.md` | — | **Read once per session** — viewport ordering, zsh word-split, monorepo paths, agent-browser CLI verbs, flat `tmp/ref/<c>/` layout |
 | `skip-zones.md` | — | **Read when gate fails** — 5 zones of commonly skipped steps with per-zone gate checks |
-| `diagnosis.md` | — | **Read when visual mismatch** — Root Cause A–I with diagnosis commands + fix patterns |
+| `diagnosis.md` | — | **Read when visual mismatch** — Root Cause A–J with diagnosis commands + fix patterns |
 | `no-judgment.md` | — | **Read when "looks right to me"** — decision framework for measurement vs assumption |
 | `site-detection.md` | 1 | Auto-detect stack; pick CSS-First vs Extract-Values |
 | `dom-extraction.md` | 1–2 | DOM hierarchy, semantic section enumeration, hidden element extraction |
@@ -265,6 +279,7 @@ Run the classifier eval from `js-animation-extraction.md` Step T1 to detect type
 | `webflow-ix2.md` | W | Webflow IX2 detection + hide-rule extraction + IX2 timeline JSON |
 | `splash-extraction.md` | — | Preloader overlay handling — sub-protocol called from Steps 5c-a (preloader detected in bundle) and 6A (Tier 1 AE shows changes in first 1–3s) |
 | `dynamic-content-protocol.md` | — | Handling dynamic/animated UIs during capture |
+| `asset-substitution.md` | — | Declaring deliberate font/image/video substitutions so section-compare switches affected sections to structural-only diff. Written when the impl uses a different font/asset than ref by design (license, availability). |
 | `transition-spec-rules.md` | 5d | Transition spec JSON schema and validation |
 | `measurement.md` | T-1 | Multi-point animation measurement (11 data points) |
 | `element-capture.md` | T0 | Frame extraction protocols |

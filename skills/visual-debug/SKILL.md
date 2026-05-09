@@ -29,7 +29,9 @@ Automated visual comparison — original vs implementation. **Zero vision tokens
 - During ui-reverse-engineering Phase C
 - **Instead of** `Read`-ing screenshots for comparison
 
-**HARD RULE:** Never `Read` ref/impl images for comparison. For FAIL positions, use `auto-diagnose.sh` first (zero vision tokens). Only `Read` diff images as fallback if auto-diagnose finds nothing. Exception: Phase E reads ref+impl pairs.
+**HARD RULE:** Never `Read` ref/impl images for comparison. For FAIL positions, use `auto-diagnose.sh` first (zero vision tokens). Only `Read` diff images as fallback if auto-diagnose finds nothing. Exception: Phase E reads ref+impl pairs — and Phase E **must run inside an `Agent` subagent** so its 44K vision tokens stay out of the main context (see Phase E section).
+
+**Browser cleanup rule (MANDATORY at end of every run):** `agent-browser --session <name> close` for each session you opened. **Never** `close --all` — other Claude sessions may own active browsers. The detailed section near the end of this file may be clipped after auto-compaction; this one-liner is the survival copy.
 
 ## Token rule
 
@@ -66,6 +68,9 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -ex
 | `auto-diagnose.sh <session> <orig> <impl> <diff.png>` | **Auto-find mismatched elements** from AE diff image → elementFromPoint → computed-diff with severity |
 | `layout-health-check.sh <session> <orig> <impl> <dir>` | Section height/total height structural check before pixel diff |
 | `stray-absolute-check.sh <session> <impl-url> [w] [h]` | **Catches the "footer disappeared" bug class** — flags `position: absolute` elements with no positioned ancestor (offset resolves against `<body>`). Single URL, no ref needed. See `diagnosis.md` → Root Cause H. |
+| `breakpoint-collision-check.sh <session> <impl-url> [bps]` | **Catches the "broken at exactly 768" bug class** — captures impl at every Tailwind boundary ±1 (default 640/768/1024/1280/1536) and flags widths where `matchMedia(max-width)` and `matchMedia(min-width)` both match, body overflows in isolation, or root font-size jitters. Single URL, no ref needed. Set `REF_DIR=...` env to write `responsive/boundary-collisions.json` for the `boundary` gate. See `diagnosis.md` → Root Cause J. |
+| `font-parity-check.sh <session> <ref-url> <impl-url> <ref-dir>` | **Gates the asset-substitution decision** — extracts primary `font-family` from both ref and impl, writes `<ref-dir>/font-parity.json`. The `font-parity` gate enforces: parity:`match` → PASS; parity:`mismatch` → must be declared in `asset-substitution.json`. Catches the "100% sections FAIL forever" bug when commercial fonts are silently substituted. See `ui-reverse-engineering/asset-substitution.md`. |
+| `paid-features-detect.sh <ref-dir>` | **Early-detects paid font dependencies BEFORE generation** — static-greps `<ref-dir>/bundles/`, `css/`, `fonts.json`, `head.json`, `external-sdks.json` for paid font CDN hosts (Adobe Typekit, Monotype, Hoefler, Linotype, FONTPLUS / TypeSquare in Japan). Writes `<ref-dir>/paid-features.json` with `decision: null` for each finding. The `paid-features` gate (between `bundle` and `spec`) refuses to pass until every entry has `decision` set to one of `use` / `substitute` / `skip`. Catches the "100% sections FAIL forever" bug class when a paid web font silently falls back to the default sans-serif at impl time. **Note:** GSAP plugins are no longer flagged — GSAP became 100% free (including all previously-paid Club plugins) following the Webflow acquisition. |
 | `reveal-trigger-check.sh <session> <impl-url> [w] [h]` | **Catches the "stuck reveal" bug class** — enumerates initially-hidden elements (opacity 0 / non-identity transform), scrolls each into view, fails any whose style never advances. Reports parent-chain with `overflow: hidden` ancestors so the IO+overflow:hidden bug class (took 12 iterations to find on 375.studio) is named on first run. See `ui-reverse-engineering/transition-implementation.md` → IntersectionObserver placement for masked reveals. |
 | `transition-spec-coverage.sh <component-dir> <impl-src-dir>` | **Static gate: every spec entry has an impl artifact.** Parses `transition-spec.json`, greps the impl source for each entry's id / selector / type-derived hooks (RevealRise, useScrollTrigger, useScroll, etc.), FAILs if any entry has zero hits. Catches the "hover transitions matched while intersection entries were never wired" failure class. |
 | `transition-compare.sh <orig> <impl> <session> [dir]` | **Transition comparison** — idle/hover screenshots + computedStyle + timing diff per element |
@@ -73,6 +78,7 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -ex
 | `layout-tree-diff.sh <session> <orig> <impl> [dir]` | **Geometry diff via signature-based pairing** — pairs impl ↔ ref by stable signature (text + tag + class hash + size class), reports geometry deltas (top/left/w/h) regardless of where elements moved. Catches what tree-diff misses (right element, wrong position). |
 | `hover-tree-diff.sh <session> <orig> <impl> [dir]` | **Per-element hover/transition diff** — for each hover-capable element pair, captures idle → CDP `:hover` → settled style. Diffs timing (property/duration/easing/delay) + idle→hover delta. Catches missing hover rules, wrong easing, different deltas. |
 | `keyframes-diff.sh <session> <orig> <impl> [dir]` | **`@keyframes` declaration diff** — extracts all keyframe rules from both pages, reports keyframes only on one side and same-name rules with different steps. Catches missing entrance animations, wrong timing curves baked into keyframes. |
+| `scroll-anim-temporal-diff.sh <session> <ref> <impl> <selector> [dir]` | **Phase/frequency diff for scroll-driven repeating animations** — samples each matched element's position at N scroll progress steps on both sides, classifies as single-frequency (traveling wave) vs per-row-frequency vs mixed. Catches the "wave family wrong" bug class that AE/SSIM can't see (animation pixels match in any frozen frame, perceived motion is completely different). **Advisory only — no gate.** Run manually when the impl "feels off" on scroll for repeating elements; the selector arg is required so it can't be auto-invoked. |
 
 **Reference selectors:** `common-selectors.md` — ready-to-use selector sets (typography, CSS reset canaries, Tailwind preflight issues, Naver.com specific, general e-commerce)
 
@@ -90,6 +96,7 @@ Five computed-style/geometry diff tools exist; each answers a different question
 | Element is in the right place style-wise but at the wrong position | `layout-tree-diff.sh` | Every element, paired by signature (text+tag+class hash+size class) — robust to reflow | Med |
 | Hover / transition feels off (wrong easing, missing rule, different delta) | `hover-tree-diff.sh` | Every hover-capable pair, idle → CDP `:hover` → settled | High — many state captures |
 | Entrance / scroll animation timing is subtly off | `keyframes-diff.sh` | All `@keyframes` declarations from both pages | Low — declarations only |
+| Scroll-driven repeating animation "feels off" — irregular gaps where ref shows smooth interlock, or vice versa | `scroll-anim-temporal-diff.sh` | Per-element trajectory across N scroll progress samples (you provide the selector for the repeating set) | Med — N viewport scrolls × 2 sites |
 
 **Heuristics:**
 - `tree-diff` and `layout-tree-diff` are siblings, not redundant — first asks "is the style right on this element?", second asks "is this element in the right place?". Run `tree-diff` first; if it's clean and AE still fails, run `layout-tree-diff`.
@@ -114,6 +121,13 @@ bash "$SCRIPTS/stray-absolute-check.sh" <session>-stray <impl> 1280 800
 # 0a-bis. Stuck reveals — catches the IO+overflow:hidden bug class. Mandatory if
 #         the spec has any `intersection`/`inview` trigger entries.
 bash "$SCRIPTS/reveal-trigger-check.sh" <session>-reveal <impl> 1280 800
+
+# 0a-quater. Breakpoint collision — catches the "broken at exactly 768" bug class.
+#            Mandatory whenever impl mixes Tailwind responsive utilities AND a
+#            project-scoped @media (max-width: <bp>px) rule (root font-size,
+#            container padding, mobile-only stack). One run sweeps every Tailwind
+#            boundary ±1; cheap (single page load, ~15 viewport sets).
+bash "$SCRIPTS/breakpoint-collision-check.sh" <session>-bp <impl>
 
 # 0a-ter. Spec coverage — every transition-spec entry must have an impl artifact.
 #         Mandatory before per-trigger verification (transition-compare etc.) so
@@ -202,6 +216,8 @@ A position is PASS only when **all three agree** (or LLM explicitly approves a k
 NOTE: Quick comparison (Phases A-D) uses zero vision tokens via AE/SSIM diff. Phase E (LLM verification) is mandatory for full verification workflow and DOES use vision tokens for the final review.
 
 After AE + DSSIM, read every position's ref+impl pair. Judge PASS / PARTIAL / FAIL. Not optional — automated metrics can silently pass wrong results. ~44K tokens.
+
+**Always delegate Phase E to a subagent** (`Agent` tool, `subagent_type: "general-purpose"`). The 44K vision tokens stay in the subagent context — only the verdict table (~500 tokens) returns. See `comparison-fix.md` Phase E section for the exact invocation.
 
 ## Thresholds
 

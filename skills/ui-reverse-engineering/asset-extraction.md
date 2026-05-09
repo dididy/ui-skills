@@ -35,6 +35,20 @@ mkdir -p tmp/ref/<component>/css
 - `hero-index-video.css`, `products-showcase.css`, `index-faq.css`, etc.
 - `app.css` for the main stylesheet
 
+**Portable filename derivation (BSD sed gotcha):** macOS `sed` is BSD, not GNU — backslash classes like `\d` and some `-E` regex features behave differently. A `sed`-based filename derivation that works on GNU may collapse every URL to the same filename on macOS, causing 13 CSS files to overwrite each other in `css/`. Use shell parameter expansion or `awk` instead:
+
+```bash
+# Portable on bash 3.2+ (macOS default)
+url="https://example.com/static/css/hero-index-video.css?v=42"
+fname="${url##*/}"        # hero-index-video.css?v=42
+fname="${fname%%\?*}"     # hero-index-video.css
+curl -sL "$url" > "tmp/ref/<component>/css/$fname"
+
+# Verify after batch download — count must match URL count
+ls tmp/ref/<component>/css/*.css | wc -l
+```
+Sanity-check after the batch finishes — if the file count is 1 when you downloaded N URLs, your sed pattern collapsed them.
+
 **What to do with downloaded CSS:**
 1. Read each file to understand the class names and their exact styles
 2. During generation (Step 7), include these CSS files in the project

@@ -17,9 +17,12 @@ GATE_ORDER: list[str] = [
     "reference",
     "extraction",
     "bundle",
+    "paid-features",
     "spec",
     "pre-generate",
     "post-implement",
+    "boundary",
+    "font-parity",
     "section-compare",
 ]
 

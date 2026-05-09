@@ -1,15 +1,24 @@
 import json
 from pathlib import Path
 
+from ui_clone import state as _state
 from ui_clone.gate import VALID_GATES, Gate
 
 
-def test_gate_keys_match_dispatch(tmp_path: Path):
-    """_gate_keys() must stay in sync with _make_dispatch() — drift would
-    make the import-time validator (used without instantiation) silently lie
-    about which gates exist."""
+def test_dispatch_matches_gate_order(tmp_path: Path):
+    """_make_dispatch() must return exactly the gates declared in state.GATE_ORDER.
+
+    state.GATE_ORDER is the single source of truth. dispatch is auto-derived
+    via getattr; this test guards against accidental method-name typos / missing
+    methods that the import-time validator already catches but is cheap to
+    re-assert at the unit-test layer."""
     gate = Gate(tmp_path)
-    assert frozenset(gate._make_dispatch().keys()) == Gate._gate_keys()
+    assert list(gate._make_dispatch().keys()) == list(_state.GATE_ORDER)
+
+
+def test_valid_gates_derives_from_gate_order():
+    """VALID_GATES must equal GATE_ORDER + ['all'] — no manual list to drift."""
+    assert VALID_GATES == list(_state.GATE_ORDER) + ["all"]
 
 
 # ── check_file ──
@@ -490,6 +499,542 @@ def test_gate_post_implement_passes_with_required_files(tmp_path: Path):
     results = gate.gate_post_implement()
     failures = [r for r in results if r.status == "fail"]
     assert not failures, f"gate_post_implement must pass with required files present: {failures}"
+
+
+# ── gate_boundary ──
+
+
+def test_gate_boundary_fails_when_artifact_missing(tmp_path: Path):
+    """gate_boundary must fail when responsive/boundary-collisions.json is absent."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+
+    gate = Gate(ref)
+    results = gate.gate_boundary()
+    failures = [r for r in results if r.status == "fail"]
+    assert any("boundary-collisions.json" in r.message for r in failures), (
+        "Missing boundary-collisions.json must produce a fail in gate_boundary"
+    )
+
+
+def test_gate_boundary_passes_when_array_empty(tmp_path: Path):
+    """gate_boundary must pass when the artifact exists and is `[]` (no collisions)."""
+    ref = tmp_path / "ref"
+    (ref / "responsive").mkdir(parents=True)
+    (ref / "responsive" / "boundary-collisions.json").write_text("[]")
+
+    gate = Gate(ref)
+    results = gate.gate_boundary()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, f"empty array must pass gate_boundary: {failures}"
+    assert any("No breakpoint collisions" in r.message for r in results)
+
+
+def test_gate_boundary_fails_when_collisions_present(tmp_path: Path):
+    """gate_boundary must fail when the array has at least one finding."""
+    ref = tmp_path / "ref"
+    (ref / "responsive").mkdir(parents=True)
+    (ref / "responsive" / "boundary-collisions.json").write_text(
+        json.dumps([{"bp": 768, "reasons": ["isolated overflow spike"]}])
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_boundary()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "non-empty boundary-collisions.json must fail gate_boundary"
+    assert any("768" in r.message for r in failures)
+
+
+def test_gate_boundary_fails_when_artifact_invalid_json(tmp_path: Path):
+    """gate_boundary must fail when the artifact is not valid JSON."""
+    ref = tmp_path / "ref"
+    (ref / "responsive").mkdir(parents=True)
+    (ref / "responsive" / "boundary-collisions.json").write_text("{not json")
+
+    gate = Gate(ref)
+    results = gate.gate_boundary()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "invalid JSON must fail gate_boundary"
+
+
+def test_gate_boundary_fails_when_artifact_not_array(tmp_path: Path):
+    """gate_boundary must fail when the artifact is JSON but not an array."""
+    ref = tmp_path / "ref"
+    (ref / "responsive").mkdir(parents=True)
+    (ref / "responsive" / "boundary-collisions.json").write_text('{"bp": 768}')
+
+    gate = Gate(ref)
+    results = gate.gate_boundary()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "non-array JSON must fail gate_boundary"
+
+
+# ── gate_font_parity ──
+
+
+def test_gate_font_parity_fails_when_artifact_missing(tmp_path: Path):
+    """gate_font_parity must fail when font-parity.json is absent."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert any("font-parity.json" in r.message for r in failures), (
+        "Missing font-parity.json must fail gate_font_parity"
+    )
+
+
+def test_gate_font_parity_passes_when_match(tmp_path: Path):
+    """gate_font_parity must pass when parity is 'match'."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {"ref": {"family": "Inter"}, "impl": {"family": "Inter"}, "parity": "match"}
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, f"match must pass: {failures}"
+
+
+def test_gate_font_parity_fails_when_mismatch_undeclared(tmp_path: Path):
+    """gate_font_parity must fail when parity is 'mismatch' and asset-substitution.json is absent."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {"ref": {"family": "Exat"}, "impl": {"family": "Roboto Flex"}, "parity": "mismatch"}
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "undeclared mismatch must fail"
+    assert any("Exat" in r.message and "Roboto Flex" in r.message for r in failures)
+
+
+def test_gate_font_parity_passes_when_mismatch_declared(tmp_path: Path):
+    """gate_font_parity must pass when mismatch is declared in asset-substitution.json."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {"ref": {"family": "Exat"}, "impl": {"family": "Roboto Flex"}, "parity": "mismatch"}
+        )
+    )
+    (ref / "asset-substitution.json").write_text(
+        json.dumps(
+            {
+                "fonts": [
+                    {"original": "Exat", "replacement": "Roboto Flex", "reason": "license"}
+                ],
+                "structuralOnlySections": ["*"],
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, f"declared mismatch must pass: {failures}"
+
+
+def test_gate_font_parity_fails_when_substitution_has_empty_fonts(tmp_path: Path):
+    """gate_font_parity must fail when asset-substitution.json exists but fonts[] is empty."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {"ref": {"family": "Exat"}, "impl": {"family": "Roboto Flex"}, "parity": "mismatch"}
+        )
+    )
+    (ref / "asset-substitution.json").write_text(json.dumps({"fonts": [], "images": []}))
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "empty fonts[] must still fail"
+
+
+def test_gate_font_parity_fails_when_impl_declared_but_not_loaded(tmp_path: Path):
+    """gate_font_parity must catch the silent-fallback case: same family declared but impl FontFace failed to load."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {
+                "ref": {"family": "Exat", "loaded": True},
+                "impl": {"family": "Exat", "loaded": False},
+                "parity": "match",
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "match parity but impl unloaded must fail"
+    assert any("NOT actually loaded" in r.message or "not actually loaded" in r.message.lower() for r in failures)
+
+
+def test_gate_font_parity_passes_when_both_loaded(tmp_path: Path):
+    """gate_font_parity must pass when both ref and impl have loaded:true."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {
+                "ref": {"family": "Inter", "loaded": True},
+                "impl": {"family": "Inter", "loaded": True},
+                "parity": "match",
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, f"both loaded must pass: {failures}"
+
+
+def test_gate_font_parity_passes_when_loaded_field_missing(tmp_path: Path):
+    """Backward compat: older font-parity.json without `loaded` field still passes on match."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(
+        json.dumps(
+            {"ref": {"family": "Inter"}, "impl": {"family": "Inter"}, "parity": "match"}
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, "missing loaded field defaults to True (backward compat)"
+
+
+def test_gate_font_parity_fails_when_invalid_parity_value(tmp_path: Path):
+    """gate_font_parity must fail when `parity` is not 'match' or 'mismatch'."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "font-parity.json").write_text(json.dumps({"parity": "unknown"}))
+
+    gate = Gate(ref)
+    results = gate.gate_font_parity()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "unknown parity value must fail"
+
+
+# ── gate_paid_features ──
+
+
+def test_gate_paid_features_fails_when_artifact_missing(tmp_path: Path):
+    """gate_paid_features must fail when paid-features.json is absent."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+
+    gate = Gate(ref)
+    results = gate.gate_paid_features()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "Missing paid-features.json must fail gate_paid_features"
+    assert any("paid-features.json" in r.message for r in failures)
+
+
+def test_gate_paid_features_passes_when_no_findings(tmp_path: Path):
+    """gate_paid_features must pass when paidFonts is empty."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "paid-features.json").write_text(json.dumps({"paidFonts": []}))
+
+    gate = Gate(ref)
+    results = gate.gate_paid_features()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, f"empty findings must pass: {failures}"
+
+
+def test_gate_paid_features_fails_when_decision_is_null(tmp_path: Path):
+    """gate_paid_features must fail when any paid font has decision=null."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "use.typekit.net",
+                        "evidence": "css/main.css:1",
+                        "decision": None,
+                    }
+                ],
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_paid_features()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "decision=null must fail"
+    assert any("use.typekit.net" in r.message for r in failures)
+
+
+def test_gate_paid_features_passes_when_decisions_set(tmp_path: Path):
+    """gate_paid_features must pass once every paid font has a valid decision."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "use.typekit.net",
+                        "evidence": "css/main.css:1",
+                        "decision": "substitute",
+                    },
+                    {
+                        "family": None,
+                        "cdn": "fast.fonts.net",
+                        "evidence": "head.json:1",
+                        "decision": "use",
+                    },
+                ],
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_paid_features()
+    failures = [r for r in results if r.status == "fail"]
+    assert not failures, f"valid decisions must pass: {failures}"
+
+
+def test_gate_paid_features_fails_when_decision_invalid(tmp_path: Path):
+    """gate_paid_features must fail when decision is not in {use, substitute, skip}."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "p.typekit.net",
+                        "evidence": "css/main.css:7",
+                        "decision": "yes",
+                    }
+                ],
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_paid_features()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "invalid decision value must fail"
+    assert any("p.typekit.net" in r.message for r in failures)
+
+
+def test_gate_paid_features_fails_when_partial_decisions(tmp_path: Path):
+    """gate_paid_features must fail if even one paid font has decision=null among many."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "use.typekit.net",
+                        "evidence": "css/a.css:1",
+                        "decision": "use",
+                    },
+                    {
+                        "family": None,
+                        "cdn": "fast.fonts.net",
+                        "evidence": "css/b.css:2",
+                        "decision": None,
+                    },
+                ],
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_paid_features()
+    failures = [r for r in results if r.status == "fail"]
+    assert failures, "any null decision must fail the gate"
+
+
+# ── gate_spec ↔ paid-features cross-validation (font substitution) ──
+
+
+def _write_min_spec_artifacts(ref: Path, transitions: list[dict] | None = None) -> None:
+    """Write the minimum artifacts gate_spec needs so we can exercise the
+    cross-validation branch without satisfying every other check."""
+    (ref / "bundle-map.json").write_text(json.dumps({}))
+    (ref / "external-sdks.json").write_text(json.dumps({}))
+    (ref / "transition-spec.json").write_text(
+        json.dumps({"transitions": transitions or []})
+    )
+
+
+def test_gate_spec_passes_when_no_substitute_decisions(tmp_path: Path):
+    """No paid-features.json (or no substitute decisions) → cross-check is silent."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    _write_min_spec_artifacts(ref)
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "use.typekit.net",
+                        "evidence": "css/main.css:1",
+                        "decision": "use",
+                    }
+                ]
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_spec()
+    sub_failures = [
+        r
+        for r in results
+        if r.status == "fail" and "paid-font substitution" in r.label
+    ]
+    assert not sub_failures, (
+        f"decision=use must not trigger substitution failure: {sub_failures}"
+    )
+
+
+def test_gate_spec_fails_when_substitute_but_no_asset_substitution_json(tmp_path: Path):
+    """decision='substitute' without asset-substitution.json must fail at spec time
+    (otherwise font-parity discovers it much later, after generation)."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    _write_min_spec_artifacts(ref)
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "use.typekit.net",
+                        "evidence": "css/main.css:1",
+                        "decision": "substitute",
+                    }
+                ]
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_spec()
+    failures = [
+        r
+        for r in results
+        if r.status == "fail" and "paid-font substitution" in r.label
+    ]
+    assert failures, "substitute without asset-substitution.json must fail"
+    assert any("use.typekit.net" in r.message for r in failures)
+
+
+def test_gate_spec_fails_when_asset_substitution_has_no_fonts(tmp_path: Path):
+    """asset-substitution.json present but missing fonts[] → still fail."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    _write_min_spec_artifacts(ref)
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "fast.fonts.net",
+                        "evidence": "css/main.css:7",
+                        "decision": "substitute",
+                    }
+                ]
+            }
+        )
+    )
+    # Has images but no fonts — schema allows other categories
+    (ref / "asset-substitution.json").write_text(
+        json.dumps({"images": [{"from": "a", "to": "b"}]})
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_spec()
+    failures = [
+        r
+        for r in results
+        if r.status == "fail" and "paid-font substitution" in r.label
+    ]
+    assert failures, "asset-substitution.json without fonts[] must fail"
+
+
+def test_gate_spec_passes_when_substitute_and_fonts_declared(tmp_path: Path):
+    """substitute + asset-substitution.json with fonts[] → pass."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    _write_min_spec_artifacts(ref)
+    (ref / "paid-features.json").write_text(
+        json.dumps(
+            {
+                "paidFonts": [
+                    {
+                        "family": None,
+                        "cdn": "use.typekit.net",
+                        "evidence": "css/main.css:1",
+                        "decision": "substitute",
+                    }
+                ]
+            }
+        )
+    )
+    (ref / "asset-substitution.json").write_text(
+        json.dumps(
+            {
+                "fonts": [
+                    {"from": "Adobe Garamond Pro", "to": "EB Garamond", "reason": "paid"}
+                ]
+            }
+        )
+    )
+
+    gate = Gate(ref)
+    results = gate.gate_spec()
+    failures = [
+        r
+        for r in results
+        if r.status == "fail" and "paid-font substitution" in r.label
+    ]
+    assert not failures, f"declared substitute must pass: {failures}"
+    sub_pass = [r for r in results if r.label == "paid-font substitution"]
+    assert sub_pass and sub_pass[0].status == "pass"
+
+
+def test_gate_spec_skips_substitution_check_when_no_paid_features_json(tmp_path: Path):
+    """No paid-features.json → no substitution check runs (paid-features gate
+    would block first; here we just verify spec stays silent)."""
+    ref = tmp_path / "ref"
+    ref.mkdir()
+    _write_min_spec_artifacts(ref)
+    # No paid-features.json written
+
+    gate = Gate(ref)
+    results = gate.gate_spec()
+    sub_results = [r for r in results if "paid-font substitution" in r.label]
+    assert sub_results == [], "no paid-features.json → no substitution check"
 
 
 # ── gate_section_compare ──

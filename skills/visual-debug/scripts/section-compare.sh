@@ -71,6 +71,41 @@ mkdir -p "$DIR/sections/ref" "$DIR/sections/impl" "$DIR/sections/diff"
 # inflate the section count with stale entries that never re-render.
 rm -f "$DIR/sections/ref/"*.png "$DIR/sections/impl/"*.png "$DIR/sections/diff/"*.png 2>/dev/null || true
 
+# ── Asset substitution mode ──
+# When the impl deliberately substitutes paid fonts / unlicensed images / videos
+# with free replacements, AE pixel comparison is by-design meaningless for the
+# affected sections — but layout/structure should still match the ref.
+#
+# Read $DIR/asset-substitution.json (if present) and build a list of section
+# patterns to skip pixel comparison for. Schema:
+#   {
+#     "fonts":  [{ "original": "Exat", "replacement": "Roboto Flex", "reason": "..." }],
+#     "images": [{ "originalSrc": "...", "replacementSrc": "...", "reason": "..." }],
+#     "videos": [...],
+#     "structuralOnlySections": ["main-hero", "*"]   // "*" matches every section
+#   }
+SUBSTITUTION_FILE="$DIR/asset-substitution.json"
+SUBSTITUTION_PATTERNS=""
+SUBSTITUTION_ALL=0
+if [ -f "$SUBSTITUTION_FILE" ]; then
+  SUBSTITUTION_PATTERNS=$(python3 -c "
+import json, sys
+try:
+    d = json.loads(open('$SUBSTITUTION_FILE').read())
+    pats = d.get('structuralOnlySections', [])
+    if not isinstance(pats, list): pats = []
+    print(' '.join(p for p in pats if isinstance(p, str)))
+except Exception as e:
+    print('', file=sys.stderr)
+" 2>/dev/null || echo "")
+  case " $SUBSTITUTION_PATTERNS " in
+    *" * "*) SUBSTITUTION_ALL=1 ;;
+  esac
+  if [ -n "$SUBSTITUTION_PATTERNS" ]; then
+    echo "▸ Asset substitution mode active: pixel diff skipped for [$SUBSTITUTION_PATTERNS]"
+  fi
+fi
+
 echo "═══ Section-Level Comparison ═══"
 echo "Original: $ORIG_URL"
 echo "Implementation: $IMPL_URL"
@@ -135,6 +170,17 @@ PAUSE_ANIMATIONS='(() => {
       if (el.splide) el.splide.Components.Autoplay.pause();
     });
   }
+  // Pause all <video> elements at frame 0 — autoplay videos otherwise produce
+  // a different frame on every screenshot, dominating AE without representing
+  // structural diffs. Reset currentTime so ref/impl land on the same frame
+  // (poster image or 0:00 keyframe).
+  document.querySelectorAll("video").forEach(v => {
+    try {
+      v.pause();
+      v.autoplay = false;
+      if (v.readyState >= 1) v.currentTime = 0;
+    } catch (e) {}
+  });
   // Stop any setInterval-based sliders (common pattern: stash interval IDs in data attributes)
   // We cannot enumerate all intervals, but freezing CSS transitions catches visual state.
   return "animations paused";
@@ -143,6 +189,71 @@ PAUSE_ANIMATIONS='(() => {
 if [ "${SKIP_PAUSE_ANIMATIONS:-0}" != "1" ]; then
   agent-browser --session "$SESSION_REF" eval "$PAUSE_ANIMATIONS" 2>&1 > /dev/null
   agent-browser --session "$SESSION_IMPL" eval "$PAUSE_ANIMATIONS" 2>&1 > /dev/null
+fi
+
+# Force JS-driven entrance animations to their end state.
+# CSS pause (above) does NOT stop libraries that mutate inline styles via RAF
+# (GSAP, anime.js) or Web Animations API (Framer Motion, motion). When the ref
+# site uses one of these, screenshots capture mid-flight frames (opacity 0.5,
+# translate3d(20px, 0, 0)) producing huge AE that has nothing to do with
+# structural correctness. We detect each library and jump its active
+# animations to their final frame. No-op when none are present.
+# Set SKIP_FINISH_ANIMATIONS=1 to disable.
+FINISH_ANIMATIONS='(() => {
+  const found = [];
+  // Web Animations API — Framer Motion (when using waapi backend), CSS animations, motion
+  try {
+    if (typeof document.getAnimations === "function") {
+      const anims = document.getAnimations();
+      let n = 0;
+      anims.forEach(a => { try { a.finish(); n++; } catch (e) {} });
+      if (n) found.push("waapi:" + n);
+    }
+  } catch (e) {}
+  // GSAP — jump every active tween/timeline to its end
+  try {
+    if (window.gsap && window.gsap.globalTimeline && typeof window.gsap.globalTimeline.getChildren === "function") {
+      const items = window.gsap.globalTimeline.getChildren(true, true, true);
+      let n = 0;
+      items.forEach(t => { try { if (typeof t.progress === "function") { t.progress(1, false); n++; } } catch (e) {} });
+      found.push("gsap:" + n);
+    }
+  } catch (e) {}
+  // anime.js v3 — running is an array of active instances
+  try {
+    if (window.anime && Array.isArray(window.anime.running)) {
+      const list = window.anime.running.slice();
+      let n = 0;
+      list.forEach(a => { try { a.seek(a.duration); a.pause(); n++; } catch (e) {} });
+      found.push("anime:" + n);
+    }
+  } catch (e) {}
+  // Lottie — lottie-web (window.lottie.getRegisteredAnimations) + <lottie-player>/<dotlottie-player> elements
+  try {
+    let n = 0;
+    if (window.lottie && typeof window.lottie.getRegisteredAnimations === "function") {
+      window.lottie.getRegisteredAnimations().forEach(a => {
+        try {
+          const last = (typeof a.totalFrames === "number" ? a.totalFrames : 1) - 1;
+          a.goToAndStop(Math.max(0, last), true);
+          n++;
+        } catch (e) {}
+      });
+    }
+    document.querySelectorAll("lottie-player, dotlottie-player").forEach(el => {
+      try { if (typeof el.seek === "function") el.seek("100%"); if (typeof el.pause === "function") el.pause(); n++; } catch (e) {}
+    });
+    if (n) found.push("lottie:" + n);
+  } catch (e) {}
+  return found.join(",") || "none";
+})()'
+
+if [ "${SKIP_FINISH_ANIMATIONS:-0}" != "1" ]; then
+  REF_FIN=$(agent-browser --session "$SESSION_REF" eval "$FINISH_ANIMATIONS" 2>/dev/null | tail -1)
+  IMPL_FIN=$(agent-browser --session "$SESSION_IMPL" eval "$FINISH_ANIMATIONS" 2>/dev/null | tail -1)
+  if [ -n "$REF_FIN" ] && [ "$REF_FIN" != '"none"' ]; then
+    echo "  ▸ Animation libs finished — ref: $REF_FIN, impl: $IMPL_FIN"
+  fi
 fi
 
 # Hide images to reduce AE noise from dynamic content (thumbnails, ads, etc.)
@@ -623,7 +734,13 @@ for m in matches:
     # Re-apply animation pause after each scroll — scroll-triggered CSS transitions
     # (enter-reveal, GSAP ScrollTrigger) reset on scroll and can be mid-animation
     # at the screenshot moment if we only pause once at page load.
-    pause_js = r'(() => { const s = document.getElementById(\"__sc-pause__\"); if (!s) { const ns = document.createElement(\"style\"); ns.id = \"__sc-pause__\"; ns.textContent = \"*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }\"; document.head.appendChild(ns); } return \"paused\"; })()'
+    pause_js = r'(() => { const s = document.getElementById(\"__sc-pause__\"); if (!s) { const ns = document.createElement(\"style\"); ns.id = \"__sc-pause__\"; ns.textContent = \"*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }\"; document.head.appendChild(ns); } document.querySelectorAll(\"video\").forEach(v => { try { v.pause(); v.autoplay = false; if (v.readyState >= 1) v.currentTime = 0; } catch(e){} }); return \"paused\"; })()'
+
+    # Re-finish JS-driven entrance animations after scroll. Scroll fires
+    # IntersectionObserver/ScrollTrigger callbacks that start fresh tweens —
+    # CSS pause does not stop them. No-op when no animation lib is present.
+    finish_js = r'(() => { try { if (typeof document.getAnimations === \"function\") { document.getAnimations().forEach(a => { try { a.finish(); } catch(e){} }); } } catch(e){} try { if (window.gsap && window.gsap.globalTimeline && typeof window.gsap.globalTimeline.getChildren === \"function\") { window.gsap.globalTimeline.getChildren(true, true, true).forEach(t => { try { if (typeof t.progress === \"function\") t.progress(1, false); } catch(e){} }); } } catch(e){} try { if (window.anime && Array.isArray(window.anime.running)) { window.anime.running.slice().forEach(a => { try { a.seek(a.duration); a.pause(); } catch(e){} }); } } catch(e){} try { if (window.lottie && typeof window.lottie.getRegisteredAnimations === \"function\") { window.lottie.getRegisteredAnimations().forEach(a => { try { const last = (typeof a.totalFrames === \"number\" ? a.totalFrames : 1) - 1; a.goToAndStop(Math.max(0, last), true); } catch(e){} }); } document.querySelectorAll(\"lottie-player, dotlottie-player\").forEach(el => { try { if (typeof el.seek === \"function\") el.seek(\"100%\"); if (typeof el.pause === \"function\") el.pause(); } catch(e){} }); } catch(e){} try { var snapped = 0; document.querySelectorAll(\"[style*=translate3d]\").forEach(function(el){ try { var s = el.getAttribute(\"style\") || \"\"; var m = s.match(/translate3d\\(\\s*(-?[0-9.]+)px\\s*,\\s*(-?[0-9.]+)px\\s*,\\s*0(?:px)?\\s*\\)/); if (!m) return; var ax = Math.abs(parseFloat(m[1])); var ay = Math.abs(parseFloat(m[2])); if (ax >= 10 || ay >= 10) return; var op = parseFloat(el.style.opacity || \"1\"); if (!Number.isFinite(op) || op < 0.95) return; el.style.transform = \"translate3d(0px, 0px, 0px)\"; if (op > 0.999) el.style.opacity = \"1\"; snapped++; } catch(e){} }); } catch(e){} return \"finished\"; })()'
+    skip_finish = '${SKIP_FINISH_ANIMATIONS:-0}' == '1'
 
     if ref:
         r = ref['rect']
@@ -646,7 +763,10 @@ for m in matches:
         # Re-apply pause to catch any scroll-triggered transitions that fired after scroll
         cmd_pause = f'agent-browser --session $SESSION_REF eval \"{pause_js}\"'
         subprocess.run(cmd_pause, shell=True, capture_output=True)
-        time.sleep(0.2)
+        if not skip_finish:
+            cmd_finish = f'agent-browser --session $SESSION_REF eval \"{finish_js}\"'
+            subprocess.run(cmd_finish, shell=True, capture_output=True)
+        time.sleep(max(0.2, float('${WAIT_SCROLL_SETTLE:-0.5}')))
         cmd_ss = f'agent-browser --session $SESSION_REF screenshot $DIR/sections/ref/{name}.png'
         subprocess.run(cmd_ss, shell=True, capture_output=True)
         # Crop to section bounds
@@ -673,7 +793,10 @@ for m in matches:
         import time; time.sleep(0.1)
         cmd_pause = f'agent-browser --session $SESSION_IMPL eval \"{pause_js}\"'
         subprocess.run(cmd_pause, shell=True, capture_output=True)
-        time.sleep(0.2)
+        if not skip_finish:
+            cmd_finish = f'agent-browser --session $SESSION_IMPL eval \"{finish_js}\"'
+            subprocess.run(cmd_finish, shell=True, capture_output=True)
+        time.sleep(max(0.2, float('${WAIT_SCROLL_SETTLE:-0.5}')))
         cmd_ss = f'agent-browser --session $SESSION_IMPL screenshot $DIR/sections/impl/{name}.png'
         subprocess.run(cmd_ss, shell=True, capture_output=True)
         crop_h = min(r['height'], 1800)
@@ -692,6 +815,7 @@ RESULTS=""
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
+SUBSTITUTED_COUNT=0
 
 # Build a lookup of wrapper-only sections so the AE loop can skip them.
 # These have no ref content of their own (sticky-image holders, spacer wrappers).
@@ -726,6 +850,27 @@ for REF_IMG in "${REF_IMGS[@]}"; do
   if echo " $WRAPPER_NAMES " | grep -q " ${NAME} "; then
     RESULTS="${RESULTS}| ${NAME} | — | — | wrapper | ⏭️ SKIP (structural wrapper) |\n"
     SKIP_COUNT=$((SKIP_COUNT + 1))
+    continue
+  fi
+
+  # Skip strict AE for SUBSTITUTED sections (asset-substitution.json declared
+  # the impl uses different fonts/images/videos than the ref). Layout regressions
+  # are still caught by the structure diff in Step 5 below — only pixel-level
+  # comparison is bypassed here.
+  IS_SUBSTITUTED=0
+  if [ "$SUBSTITUTION_ALL" -eq 1 ]; then
+    IS_SUBSTITUTED=1
+  elif [ -n "$SUBSTITUTION_PATTERNS" ]; then
+    for PAT in $SUBSTITUTION_PATTERNS; do
+      case "$NAME" in
+        *"$PAT"*) IS_SUBSTITUTED=1; break ;;
+      esac
+    done
+  fi
+  if [ "$IS_SUBSTITUTED" -eq 1 ]; then
+    RESULTS="${RESULTS}| ${NAME} | — | — | substituted | 🔁 STRUCTURAL_ONLY |\n"
+    SUBSTITUTED_COUNT=$((SUBSTITUTED_COUNT + 1))
+    PASS_COUNT=$((PASS_COUNT + 1))
     continue
   fi
 
@@ -787,7 +932,7 @@ echo "| Section | AE | AE/Mpx | Severity | Status |"
 echo "|---------|-----|--------|----------|--------|"
 echo -e "$RESULTS"
 echo ""
-echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
+echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP, ${SUBSTITUTED_COUNT} STRUCTURAL_ONLY**"
 echo "(Severity is based on AE/Mpx — defect density per megapixel — not raw AE.)"
 
 # ── Auto-save result for Stop gate hook ──
@@ -797,7 +942,7 @@ mkdir -p "$DIR/sections"
   echo "|---------|-----|--------|----------|--------|"
   echo -e "$RESULTS"
   echo ""
-  echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP**"
+  echo "**Result: ${PASS_COUNT} PASS, ${FAIL_COUNT} FAIL, ${SKIP_COUNT} SKIP, ${SUBSTITUTED_COUNT} STRUCTURAL_ONLY**"
   echo "(Severity is based on AE/Mpx — defect density per megapixel — not raw AE.)"
 } > "$DIR/sections/result.txt"
 

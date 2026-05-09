@@ -1,6 +1,6 @@
 # Diagnosis → Fix: Root Cause Patterns
 
-When a visual mismatch occurs, one of 9 root causes (A–I) applies. **Identify the category first** — then apply the targeted fix. Random code tweaking without diagnosis wastes 10+ minutes.
+When a visual mismatch occurs, one of 10 root causes (A–J) applies. **Identify the category first** — then apply the targeted fix. Random code tweaking without diagnosis wastes 10+ minutes.
 
 ---
 
@@ -30,6 +30,11 @@ Element is *double-translated*, *double-rotated*, or *double-scaled* (e.g. arrow
 -180° instead of -90°, preloader element lands at -74px instead of -37px), AND the host
 app uses Tailwind v4 while the cloned project uses Tailwind v3?
   → Root Cause I (Tailwind v3/v4 Transform Conflict)
+
+Layout overflows / appears broken at *exactly one viewport width* (e.g. 768px) but is fine
+1px on either side, AND the project uses both Tailwind responsive prefixes (`md:`, `lg:`)
+and a project-scoped `@media (max-width: <bp>px)` rule?
+  → Root Cause J (Tailwind ↔ CSS @media Boundary Collision)
 ```
 
 ---
@@ -409,3 +414,97 @@ agent-browser --session <s> eval "(() => {
 - Don't override the resolved property (`translate: 0 0 !important`) without also setting `transform: none` — see minifier gotcha above. Override the CSS variables instead.
 
 **Prevention:** Run `stray-absolute-check.sh` as part of Phase 4 / Step 8 verification. Cost is one page load — far cheaper than catching the bug later via screenshot review.
+
+## Root Cause J: Tailwind ↔ CSS `@media` Boundary Collision
+
+**Symptoms:** Layout looks correct at 375, 1280, 1440 — and broken at *exactly one* viewport (typically 768). Horizontal scrollbar appears, header nav and hamburger render simultaneously, fonts balloon to 2× their intended size, sections overflow `<body>` width by hundreds of pixels. Resizing 1px in either direction makes the bug disappear.
+
+**Root cause:** The project ships a CSS rule with `@media (max-width: <bp>px)` (typically for a fluid root `font-size`, mobile-only padding, or a vertical-stack override) and the JSX uses Tailwind's `md:` / `lg:` responsive prefixes whose breakpoint is `min-width: <bp>px`. **Both ranges are inclusive at the boundary** — so at *exactly* `<bp>` pixels, both rules match and apply simultaneously:
+
+| Width | `(max-width: 768px)` mobile rule | Tailwind `md:` (`min-width: 768px`) |
+|---|---|---|
+| 767 | ✅ active | ❌ inactive |
+| **768** | **✅ active** | **✅ active** ← collision |
+| 769 | ❌ inactive | ✅ active |
+
+The catastrophic case is when the mobile rule changes the **root font-size** (e.g. `html { font-size: 26.667vw }` for a `1rem = 100px @ 375` mobile design). At 768 the mobile mode resolves `1rem ≈ 204.8px`, while every Tailwind `md:` utility (`md:flex`, `md:gap-[0.24rem]`, `md:text-[0.14rem]`) snaps the layout into desktop mode — desktop columns + mobile-scale rems = unrecoverable horizontal overflow. The same bug class also fires for any project rule that exclusively expects mobile mode (vertical stack, hidden desktop nav, padding overrides).
+
+**Diagnosis** — at the exact boundary, are both rule sets active?
+
+```bash
+# Set viewport to the exact boundary, then probe both axes simultaneously.
+agent-browser --session <s> open <impl-url>
+agent-browser --session <s> set viewport 768 1024
+agent-browser --session <s> wait 800
+agent-browser --session <s> eval "(() => {
+  const html = document.documentElement;
+  const body = document.body;
+  // mobile-mode signal: root font-size in vw mode → big rem at this width
+  const rootFontSize = parseFloat(getComputedStyle(html).fontSize);
+  // desktop-mode signal: a Tailwind md:flex / md:hidden element actually displays per md: rule
+  const navMd = document.querySelector('nav.md\\\\:flex, header nav.lg\\\\:flex');
+  const hamburger = document.querySelector('button[aria-label=\"menu\"], [class*=md\\\\:hidden]');
+  return JSON.stringify({
+    width: window.innerWidth,
+    rootFontSize,                 // > ~30px at 768 = mobile mode active
+    bodyScrollWidth: body.scrollWidth,
+    htmlScrollWidth: html.scrollWidth,
+    overflowing: body.scrollWidth > window.innerWidth,
+    navVisible: navMd ? getComputedStyle(navMd).display !== 'none' : null,
+    hamburgerVisible: hamburger ? getComputedStyle(hamburger).display !== 'none' : null,
+    matchedMediaMaxBp: matchMedia('(max-width: 768px)').matches,
+    matchedMediaMinBp: matchMedia('(min-width: 768px)').matches,
+  }, null, 2);
+})()"
+```
+
+**Smoking gun:** `matchedMediaMaxBp === true` AND `matchedMediaMinBp === true` AND (`overflowing === true` OR `rootFontSize` jumps from ~16 to ~200). Both navs visible at once is a secondary tell.
+
+**Fix — pick ONE side:**
+
+**A. Make the project's CSS query exclusive (preferred for `font-size` / root rules)** — shift the upper bound below the Tailwind breakpoint by 0.02px. This is the canonical pattern Bootstrap uses for exactly this reason; subpixel values are honored by all evergreen browsers:
+
+```diff
+-@media screen and (max-width: 768px) and (orientation: portrait) {
++@media screen and (max-width: 767.98px) and (orientation: portrait) {
+   html:has([data-project='<name>']) { font-size: 26.667vw; }
+ }
+```
+
+Apply to **every** `(max-width: <bp>px)` rule that targets the same Tailwind boundary — leaving even one inclusive rule reproduces the bug only for that property.
+
+**B. Shift the Tailwind variant up one tier** — when the affected utilities are confined to a single component (header nav, hamburger). `md:` (768) → `lg:` (1024), `sm:` (640) → `md:` (768):
+
+```diff
+-<nav className="hidden md:flex items-center gap-[0.24rem] text-[0.14rem]">
++<nav className="hidden lg:flex items-center gap-[0.24rem] text-[0.14rem]">
+-<button className="relative w-[0.32rem] md:hidden">
++<button className="relative w-[0.32rem] lg:hidden">
+```
+
+Pick A when the mobile-mode CSS is broad (fluid root font-size, container padding, section padding) — one CSS edit fixes every utility on every page. Pick B when only one component (nav, hero) needs to switch and the rest of the layout is already correct at 768.
+
+**Don't:**
+- Don't paper over with `overflow-x: hidden` on `body` — it hides the symptom, not the bug; the broken layout is still there, just invisible. You'll discover it again the next time content extends below the fold.
+- Don't change Tailwind's `screens` config to `768.02px` — Tailwind utilities elsewhere in the host monorepo expect the standard breakpoint, breaking other apps.
+- Don't apply A and B together unless you've verified each fix in isolation. Two simultaneous shifts make it impossible to reason about which utility resolves at which width.
+
+**Prevention — boundary sweep is mandatory whenever a project mixes Tailwind and project-scoped `@media` rules.** Step 4-C2 measures only at 768/1280/1440 — exactly the points where collision is invisible (768 itself looks "wrong but consistent" because both sides apply uniformly across the page; only the *overflow* gives it away). Add a boundary ±1 viewport check at every detected breakpoint:
+
+```bash
+# For every CSS @media (max-width: <bp>) found in Step 4-A and every Tailwind breakpoint
+# the project uses, capture at <bp>-1, <bp>, <bp>+1. The bug shows as a body.scrollWidth
+# spike at exactly <bp> with no spike on either side.
+for W in 767 768 769; do
+  agent-browser --session <s> set viewport $W 900
+  agent-browser --session <s> wait 400
+  agent-browser --session <s> eval "(() => JSON.stringify({
+    w: innerWidth,
+    sw: document.body.scrollWidth,
+    overflow: document.body.scrollWidth > innerWidth,
+    rootFs: parseFloat(getComputedStyle(document.documentElement).fontSize)
+  }))()" > tmp/ref/<c>/responsive/boundary-$W.json
+done
+```
+
+A spike of `sw > w` at exactly `<bp>` (with `<bp>-1` and `<bp>+1` clean) is the unambiguous signature.

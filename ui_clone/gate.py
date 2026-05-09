@@ -26,16 +26,16 @@ from ui_clone.hooks._common import RED as _RED
 from ui_clone.hooks._common import YELLOW as _YELLOW
 from ui_clone.hooks._common import load_json_safe as _load_json_safe
 
-VALID_GATES = [
-    "reference",
-    "extraction",
-    "bundle",
-    "spec",
-    "pre-generate",
-    "post-implement",
-    "section-compare",
-    "all",
-]
+# Single source of truth: state.GATE_ORDER. Everything else (VALID_GATES,
+# dispatch dict, drift validators) is derived. Adding a gate = (1) add to
+# state.GATE_ORDER, (2) add a `gate_<name>` method to Gate (with `-` → `_`).
+# The import-time validator below catches any miss.
+VALID_GATES = list(_state.GATE_ORDER) + ["all"]
+
+
+def _gate_method_name(gate: str) -> str:
+    """Map gate name (kebab-case) to Gate method name (snake_case)."""
+    return f"gate_{gate.replace('-', '_')}"
 
 
 @dataclass
@@ -205,6 +205,257 @@ class Gate:
 
         return results
 
+    # Paid-font CDN hostnames — must stay in sync with PAID_FONT_HOSTS in
+    # skills/visual-debug/scripts/paid-features-detect.sh. Used both for
+    # cross-validation in gate_spec and for the defensive "agent skipped
+    # paid-features gate" check below.
+    _PAID_FONT_CDN_HOSTS = (
+        "use.typekit.net",
+        "p.typekit.net",
+        "use.edgefonts.net",
+        "fast.fonts.net",
+        "fast.fonts.com",
+        "cloud.typography.com",
+        "client.linotype.com",
+        "mit.fontplus.jp",
+        "webfont.fontplus.jp",
+        "typesquare.com",
+    )
+
+    def _check_paid_font_substitution(self) -> list[CheckResult]:
+        """FAIL early if any paid font is marked decision='substitute' but the
+        substitution is not declared in asset-substitution.json.
+
+        Why: 'substitute' is a promise — the agent picked a free family at 5c-c
+        and font-parity will verify the swap at runtime. Without an
+        asset-substitution.json fonts[] entry, font-parity FAILs much later
+        (after Step 7 generation and section-compare have already run). Surfacing
+        the missing declaration at spec time saves the wasted generation pass.
+
+        Only paid-features with decision='substitute' are checked. 'use' and
+        'skip' do not require asset-substitution.json. Empty findings pass.
+
+        Also defensively flags the "agent skipped the paid-features gate" case:
+        when paid-features.json is missing but extraction artifacts (fonts.json,
+        head.json) contain known paid CDN hostnames, fail spec gate with a
+        pointer to run paid-features-detect.sh.
+        """
+        results: list[CheckResult] = []
+        paid = self._load_json("paid-features.json")
+        if not paid:
+            # Defensive: if extraction artifacts already prove paid CDNs are
+            # in play, the paid-features gate should have run before spec.
+            corpus = ""
+            for fname in ("fonts.json", "head.json", "external-sdks.json"):
+                fp = self.ref_dir / fname
+                if fp.is_file():
+                    try:
+                        corpus += fp.read_text(encoding="utf-8")
+                    except OSError:
+                        pass
+            hits = [h for h in self._PAID_FONT_CDN_HOSTS if h in corpus]
+            if hits:
+                shown = ", ".join(hits[:3]) + ("..." if len(hits) > 3 else "")
+                results.append(
+                    CheckResult(
+                        "paid-features.json missing",
+                        "fail",
+                        f"Paid font CDN host(s) detected in extraction artifacts ({shown}) "
+                        "but paid-features.json is missing — the `paid-features` gate has not run.",
+                        fix=(
+                            "Run: bash skills/visual-debug/scripts/paid-features-detect.sh "
+                            "$(pwd)/tmp/ref/<component> — then re-run the `paid-features` gate "
+                            "before `spec` so substitution decisions are recorded."
+                        ),
+                    )
+                )
+            return results
+
+        substitutes = [
+            item
+            for item in paid.get("paidFonts", [])
+            if isinstance(item, dict) and item.get("decision") == "substitute"
+        ]
+        if not substitutes:
+            return results
+
+        sub_path = self.ref_dir / "asset-substitution.json"
+        cdns = ", ".join(str(item.get("cdn", "?")) for item in substitutes[:5]) + (
+            "..." if len(substitutes) > 5 else ""
+        )
+        if not sub_path.is_file():
+            results.append(
+                CheckResult(
+                    "paid-font substitution undeclared",
+                    "fail",
+                    f"{len(substitutes)} paid font(s) marked decision='substitute' "
+                    f"({cdns}) but asset-substitution.json is missing.",
+                    fix=(
+                        "Write tmp/ref/<c>/asset-substitution.json with a fonts[] entry "
+                        "for each substituted CDN. See ui-reverse-engineering/asset-substitution.md."
+                    ),
+                )
+            )
+            return results
+
+        sub_data = self._load_json("asset-substitution.json")
+        fonts = sub_data.get("fonts", []) if sub_data else []
+        if not (isinstance(fonts, list) and len(fonts) > 0):
+            results.append(
+                CheckResult(
+                    "paid-font substitution undeclared",
+                    "fail",
+                    f"asset-substitution.json exists but has no fonts[] entries — "
+                    f"{len(substitutes)} paid font(s) marked decision='substitute' "
+                    f"({cdns}) need declaration.",
+                    fix=(
+                        "Add a fonts[] entry to asset-substitution.json for each "
+                        "substituted CDN. See ui-reverse-engineering/asset-substitution.md."
+                    ),
+                )
+            )
+            return results
+
+        results.append(
+            CheckResult(
+                "paid-font substitution",
+                "pass",
+                f"{len(substitutes)} substitute decision(s) declared in asset-substitution.json",
+            )
+        )
+        return results
+
+    def gate_paid_features(self) -> list[CheckResult]:
+        """Verify the agent has *consciously decided* what to do about paid fonts.
+
+        Reads tmp/ref/<c>/paid-features.json (produced by paid-features-detect.sh).
+        The script greps downloaded bundles + CSS for paid font CDN domains and
+        writes findings with `decision: null`.
+
+        For every entry:
+          - decision == null  → FAIL (the agent has not made a choice yet)
+          - decision == "use"        → PASS (license is in place; agent confirmed)
+          - decision == "substitute" → PASS (using a free alternative; downstream
+                                        font-parity gate enforces declaration)
+          - decision == "skip"       → PASS (intentionally not replicating)
+
+        Why early: catches expensive scope problems BEFORE Step 7 generation.
+        Declaring paid-font substitution upfront avoids a section-compare loop
+        that can never close (every text-bearing section reports 100% mismatch
+        forever when the impl silently falls back to default sans-serif).
+
+        Note: GSAP plugins are no longer checked — GSAP became 100% free
+        following the Webflow acquisition. See paid-features-detect.sh header.
+        """
+        results = []
+        path = self.ref_dir / "paid-features.json"
+        fix_msg = (
+            "Run: bash skills/visual-debug/scripts/paid-features-detect.sh "
+            "$(pwd)/tmp/ref/<component>"
+        )
+        if not path.is_file():
+            results.append(
+                CheckResult(
+                    "paid-features.json",
+                    "fail",
+                    "paid-features.json — MISSING (paid-features-detect.sh has not been run)",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            results.append(
+                CheckResult(
+                    "paid-features.json",
+                    "fail",
+                    f"paid-features.json — unreadable ({e})",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        if not isinstance(data, dict):
+            results.append(
+                CheckResult(
+                    "paid-features.json",
+                    "fail",
+                    "paid-features.json — must be a JSON object",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        valid_decisions = {"use", "substitute", "skip"}
+        pending: list[str] = []
+        invalid: list[str] = []
+        total = 0
+        items = data.get("paidFonts", [])
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                total += 1
+                name = item.get("family") or item.get("cdn") or "?"
+                decision = item.get("decision")
+                label = f"paidFont:{name}"
+                if decision is None:
+                    pending.append(label)
+                elif decision not in valid_decisions:
+                    invalid.append(f"{label} (decision={decision!r})")
+
+        if total == 0:
+            results.append(
+                CheckResult(
+                    "paid-features",
+                    "pass",
+                    "No paid fonts detected",
+                )
+            )
+            return results
+
+        if invalid:
+            results.append(
+                CheckResult(
+                    "paid-features decisions",
+                    "fail",
+                    f"{len(invalid)} item(s) have invalid `decision`: {', '.join(invalid[:5])}"
+                    + ("..." if len(invalid) > 5 else ""),
+                    fix="Set `decision` to one of: 'use', 'substitute', 'skip'",
+                )
+            )
+            return results
+
+        if pending:
+            results.append(
+                CheckResult(
+                    "paid-features decisions",
+                    "fail",
+                    f"{len(pending)}/{total} paid item(s) have decision=null: "
+                    f"{', '.join(pending[:5])}"
+                    + ("..." if len(pending) > 5 else ""),
+                    fix=(
+                        "Edit paid-features.json — set each `decision` to one of: "
+                        "'use' (you have the license), "
+                        "'substitute' (using free alternative — must back with asset-substitution.json), "
+                        "'skip' (intentionally not replicating). "
+                        "Decide BEFORE generation to avoid wasted Step 7 work."
+                    ),
+                )
+            )
+            return results
+
+        results.append(
+            CheckResult(
+                "paid-features",
+                "pass",
+                f"All {total} paid item(s) have a decision recorded",
+            )
+        )
+        return results
+
     def gate_spec(self) -> list[CheckResult]:
         results = []
         results.append(
@@ -249,6 +500,11 @@ class Gate:
                             f"transitions[0] has id, trigger, bundle_branch ({len(transitions)} total)",
                         )
                     )
+
+        # Cross-validate against paid-features decisions: any font marked
+        # decision='substitute' at 5c-c MUST be declared in asset-substitution.json
+        # by spec time, otherwise font-parity will FAIL after generation.
+        results.extend(self._check_paid_font_substitution())
 
         # Capture verification frames
         verify_frames = (
@@ -537,6 +793,257 @@ class Gate:
         )
         return results
 
+    def gate_boundary(self) -> list[CheckResult]:
+        """Check that breakpoint-collision-check.sh has been run and reports no collisions.
+
+        Reads tmp/ref/<c>/responsive/boundary-collisions.json — must exist and be `[]`.
+        Catches the Tailwind ↔ project @media boundary collision class
+        (see diagnosis.md → Root Cause J). The bug only manifests at exactly the
+        breakpoint width and Step 4-C2 measurements happen to land on those widths,
+        so it never appears as a sweep change — only an isolated overflow spike.
+        """
+        results = []
+        path = self.ref_dir / "responsive" / "boundary-collisions.json"
+        fix_msg = (
+            "Run: bash skills/visual-debug/scripts/breakpoint-collision-check.sh "
+            "<session> <impl-url>"
+        )
+        if not path.is_file():
+            results.append(
+                CheckResult(
+                    "responsive/boundary-collisions.json",
+                    "fail",
+                    "responsive/boundary-collisions.json — MISSING (breakpoint-collision-check.sh has not been run)",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            results.append(
+                CheckResult(
+                    "responsive/boundary-collisions.json",
+                    "fail",
+                    f"responsive/boundary-collisions.json — unreadable ({e})",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        if not isinstance(data, list):
+            results.append(
+                CheckResult(
+                    "responsive/boundary-collisions.json",
+                    "fail",
+                    "responsive/boundary-collisions.json — must be a JSON array",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        if not data:
+            results.append(
+                CheckResult(
+                    "responsive/boundary-collisions.json",
+                    "pass",
+                    "No breakpoint collisions detected",
+                )
+            )
+            return results
+
+        bp_summary = ", ".join(str(d.get("bp", "?")) for d in data if isinstance(d, dict))
+        results.append(
+            CheckResult(
+                "boundary collisions",
+                "fail",
+                f"{len(data)} breakpoint collision(s) detected at: {bp_summary}. "
+                "See diagnosis.md → Root Cause J for fix patterns.",
+                fix=(
+                    "Pick ONE side: (A) shift project @media to (max-width: <bp - 0.02>px), "
+                    "or (B) bump Tailwind variant up one tier (md: → lg:). "
+                    "Re-run breakpoint-collision-check.sh until the array is []."
+                ),
+            )
+        )
+        return results
+
+    def gate_font_parity(self) -> list[CheckResult]:
+        """Check that the impl loads the same font as the ref, OR that the substitution is declared.
+
+        Reads tmp/ref/<c>/font-parity.json (produced by font-parity-check.sh).
+        - parity: "match" → PASS.
+        - parity: "mismatch" + asset-substitution.json with at least one font entry → PASS (declared).
+        - parity: "mismatch" + no asset-substitution.json → FAIL.
+
+        Catches the class of bug where commercial-font substitution makes section-compare
+        report 100% FAIL forever because every section renders the substituted asset.
+        See asset-substitution.md.
+        """
+        results = []
+        path = self.ref_dir / "font-parity.json"
+        fix_msg = (
+            "Run: bash skills/visual-debug/scripts/font-parity-check.sh "
+            "<session> <ref-url> <impl-url> $(pwd)/tmp/ref/<component>"
+        )
+        if not path.is_file():
+            results.append(
+                CheckResult(
+                    "font-parity.json",
+                    "fail",
+                    "font-parity.json — MISSING (font-parity-check.sh has not been run)",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            results.append(
+                CheckResult(
+                    "font-parity.json",
+                    "fail",
+                    f"font-parity.json — unreadable ({e})",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        if not isinstance(data, dict):
+            results.append(
+                CheckResult(
+                    "font-parity.json",
+                    "fail",
+                    "font-parity.json — must be a JSON object",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        parity = data.get("parity")
+        ref_obj = data.get("ref") or {}
+        impl_obj = data.get("impl") or {}
+        if parity == "match":
+            # Silent-fallback guard: ref and impl declare the same family, but the
+            # impl's FontFace failed to load (paid font 404'd, expired Typekit ID,
+            # CORS-blocked). computedStyle.fontFamily lies in this case — we use
+            # document.fonts.check() result captured by font-parity-check.sh.
+            ref_loaded = ref_obj.get("loaded", True)
+            impl_loaded = impl_obj.get("loaded", True)
+            family = (impl_obj.get("family") or ref_obj.get("family") or "?")
+            if not ref_loaded and not impl_loaded:
+                # Both sides report the FontFace is not loaded. The parity result
+                # is meaningless — neither side is actually rendering the declared
+                # family, so any "match" is matching two fallbacks. Could be a
+                # transient network issue (re-run) or a real config bug (paid
+                # font CDN unreachable from both deploys).
+                results.append(
+                    CheckResult(
+                        "font load failure (both sides)",
+                        "fail",
+                        f"Both ref and impl declare '{family}' but neither has the "
+                        "FontFace actually loaded — both are rendering with a fallback. "
+                        "The parity 'match' is between two fallbacks, not the declared font.",
+                        fix=(
+                            "Re-run font-parity-check.sh with WAIT_MS bumped (slow networks "
+                            "may not resolve the FontFace within 2.5s). If the failure persists, "
+                            "the declared font CDN is unreachable — fix the source, or substitute "
+                            "and declare via asset-substitution.json."
+                        ),
+                    )
+                )
+                return results
+            if ref_loaded and not impl_loaded:
+                results.append(
+                    CheckResult(
+                        "font load failure",
+                        "fail",
+                        f"Impl declares '{family}' (matches ref) but the FontFace is NOT actually loaded "
+                        "— browser is silently rendering with a fallback. Likely causes: 404, CORS, "
+                        "expired Typekit/Adobe Fonts ID, or missing license file in deploy.",
+                        fix=(
+                            "Open DevTools → Network → filter 'font' on the impl URL. "
+                            "Look for failed font requests. Either: (A) fix the loading issue "
+                            "(restore @font-face, add CDN auth, refresh Typekit kit ID), "
+                            "or (B) intentionally substitute and declare it in asset-substitution.json."
+                        ),
+                    )
+                )
+                return results
+            results.append(CheckResult("font-parity", "pass", "Ref and impl load the same primary font"))
+            return results
+
+        if parity != "mismatch":
+            results.append(
+                CheckResult(
+                    "font-parity.json",
+                    "fail",
+                    f"font-parity.json — `parity` must be 'match' or 'mismatch' (got {parity!r})",
+                    fix=fix_msg,
+                )
+            )
+            return results
+
+        # Mismatch — must be acknowledged via asset-substitution.json
+        sub_path = self.ref_dir / "asset-substitution.json"
+        ref_family = (data.get("ref") or {}).get("family", "?")
+        impl_family = (data.get("impl") or {}).get("family", "?")
+        if not sub_path.is_file():
+            results.append(
+                CheckResult(
+                    "font substitution undeclared",
+                    "fail",
+                    f"Ref loads '{ref_family}' but impl loads '{impl_family}'. "
+                    "If this is intentional (e.g. commercial-font replacement), declare it in "
+                    "asset-substitution.json. Otherwise fix the impl to load the original font.",
+                    fix=(
+                        "Either: (A) fix impl to load the same font as ref, "
+                        "or (B) write tmp/ref/<c>/asset-substitution.json per asset-substitution.md "
+                        "with a fonts[] entry covering the substitution."
+                    ),
+                )
+            )
+            return results
+
+        try:
+            sub_data = json.loads(sub_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            results.append(
+                CheckResult(
+                    "asset-substitution.json",
+                    "fail",
+                    f"asset-substitution.json — unreadable ({e})",
+                )
+            )
+            return results
+
+        fonts = sub_data.get("fonts", []) if isinstance(sub_data, dict) else []
+        if not (isinstance(fonts, list) and len(fonts) > 0):
+            results.append(
+                CheckResult(
+                    "font substitution undeclared",
+                    "fail",
+                    f"asset-substitution.json exists but has no fonts[] entry. "
+                    f"Ref loads '{ref_family}', impl loads '{impl_family}'.",
+                    fix=(
+                        "Add a fonts[] entry to asset-substitution.json describing the substitution, "
+                        "or fix the impl to load the original font."
+                    ),
+                )
+            )
+            return results
+
+        results.append(
+            CheckResult(
+                "font-parity",
+                "pass",
+                f"Font mismatch declared in asset-substitution.json ({ref_family} → {impl_family})",
+            )
+        )
+        return results
+
     def gate_section_compare(self) -> list[CheckResult]:
         """Check that section-compare.sh has been run and all sections passed."""
         results = []
@@ -585,35 +1092,14 @@ class Gate:
 
     # ── Dispatch ──
 
-    @staticmethod
-    def _gate_keys() -> frozenset[str]:
-        """Return the set of gate names handled by this class.
-
-        Used for import-time validation without instantiating Gate with a real path.
-        Must be kept in sync with _make_dispatch().
-        """
-        return frozenset(
-            {
-                "reference",
-                "extraction",
-                "bundle",
-                "spec",
-                "pre-generate",
-                "post-implement",
-                "section-compare",
-            }
-        )
-
     def _make_dispatch(self) -> dict[str, Any]:
-        return {
-            "reference": self.gate_reference,
-            "extraction": self.gate_extraction,
-            "bundle": self.gate_bundle,
-            "spec": self.gate_spec,
-            "pre-generate": self.gate_pre_generate,
-            "post-implement": self.gate_post_implement,
-            "section-compare": self.gate_section_compare,
-        }
+        """Build {gate_name: bound_method} from state.GATE_ORDER.
+
+        Method names follow the convention `gate_<name>` with `-` → `_`. The
+        import-time validator below ensures every gate in GATE_ORDER has a
+        matching method, so getattr() here cannot raise at runtime.
+        """
+        return {gate: getattr(self, _gate_method_name(gate)) for gate in _state.GATE_ORDER}
 
     def _dispatch(self, gate: str) -> list[CheckResult]:
         dispatch = self._make_dispatch()
@@ -694,21 +1180,17 @@ class Gate:
         return 0 if passed else 1
 
 
-# Validate dispatch coverage once at import — catches VALID_GATES drift without per-call overhead.
-# Uses Gate._gate_keys() (a staticmethod) to avoid instantiating Gate with a real path.
-_EXPECTED_DISPATCH_KEYS = set(VALID_GATES) - {"all"}
-_ACTUAL_DISPATCH_KEYS = Gate._gate_keys()
-if _ACTUAL_DISPATCH_KEYS != _EXPECTED_DISPATCH_KEYS:
+# Validate at import: every gate in state.GATE_ORDER has a matching `gate_<name>`
+# method on Gate. Catches drift the moment a gate is added to GATE_ORDER without
+# a corresponding implementation (or vice versa), with no runtime overhead.
+_missing_methods = [
+    gate for gate in _state.GATE_ORDER
+    if not callable(getattr(Gate, _gate_method_name(gate), None))
+]
+if _missing_methods:
     raise RuntimeError(
-        f"VALID_GATES mismatch: expected {_EXPECTED_DISPATCH_KEYS}, got {_ACTUAL_DISPATCH_KEYS}"
-    )
-
-# Also validate state.GATE_ORDER stays in sync — pipeline progress display and gate
-# dispatch share the same gate set; drift between them silently mis-counts progress.
-if set(_state.GATE_ORDER) != _ACTUAL_DISPATCH_KEYS:
-    raise RuntimeError(
-        f"state.GATE_ORDER drift: gates={_ACTUAL_DISPATCH_KEYS}, "
-        f"GATE_ORDER={set(_state.GATE_ORDER)}"
+        f"Gate methods missing for state.GATE_ORDER entries: {_missing_methods}. "
+        f"Expected method name: gate_<name> with '-' replaced by '_'."
     )
 
 

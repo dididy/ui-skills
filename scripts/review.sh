@@ -118,22 +118,29 @@ fi
 # ── 5. Gate-artifact timing ──
 section "Gate-artifact timing"
 
-# external-sdks.json must be in gate_spec, not gate_bundle
+# external-sdks.json must appear in gate_spec, not gate_bundle. Inspect each
+# method body via AST so the check stays correct as helper methods are added
+# between gate_bundle and gate_spec (string-slicing the file misclassified
+# the paid-features cross-validator that scans extraction artifacts).
 if uv run python -c "
 import ast, sys
 with open('ui_clone/gate.py') as f:
-    src = f.read()
-# Check gate_bundle does NOT contain external-sdks
-bundle_start = src.index('def gate_bundle')
-bundle_end = src.index('def gate_spec')
-bundle_body = src[bundle_start:bundle_end]
-spec_start = bundle_end
-spec_end = src.index('def gate_pre_generate')
-spec_body = src[spec_start:spec_end]
-if 'external-sdks' in bundle_body:
+    tree = ast.parse(f.read())
+gate_cls = next(
+    (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == 'Gate'),
+    None,
+)
+if gate_cls is None:
+    print('Gate class not found in ui_clone/gate.py', file=sys.stderr)
+    sys.exit(1)
+methods = {n.name: ast.unparse(n) for n in gate_cls.body if isinstance(n, ast.FunctionDef)}
+if 'gate_bundle' not in methods or 'gate_spec' not in methods:
+    print('gate_bundle / gate_spec missing from Gate class', file=sys.stderr)
+    sys.exit(1)
+if 'external-sdks' in methods['gate_bundle']:
     print('external-sdks.json is in gate_bundle (should be in gate_spec)', file=sys.stderr)
     sys.exit(1)
-if 'external-sdks' not in spec_body:
+if 'external-sdks' not in methods['gate_spec']:
     print('external-sdks.json missing from gate_spec', file=sys.stderr)
     sys.exit(1)
 " 2>/dev/null; then

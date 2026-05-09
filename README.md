@@ -15,7 +15,7 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 
 - **Real values, not guesses.** Every number — font-size, easing curve, scroll offset, stagger delay — comes from `getComputedStyle`, raw CSS, or a JS bundle grep. The plugin refuses to ship approximations.
 - **Near-zero vision tokens for comparison.** AE and SSIM CLI tools handle pixel diff — the LLM never reads ref vs impl screenshots side-by-side. Vision tokens are only used when: (1) reading a single diff image on AE/SSIM failure, (2) Phase E final semantic review (~44K tokens, mandatory).
-- **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules (~5.9K tokens total across 3 skills). Detailed procedures live in 37 focused sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
+- **Progressive-disclosure sub-docs.** Each SKILL.md contains only the pipeline and core rules (~5.9K tokens total across 3 skills). Detailed procedures live in 39 focused sub-docs loaded only when that step runs. Common paths stay lean; specialized paths expand on demand.
 - **Single source of truth for transitions.** `transition-spec.json` is produced once from bundle analysis. Implementation reads the spec, never re-greps the bundle — avoiding wasted work and the risk of picking the wrong conditional branch.
 - **Automation over introspection.** Python gates (`python -m ui_clone.gate`, `python -m ui_clone.pipeline`, `auto-verify.sh`) decide whether a step is complete. Agents don't self-certify "looks good enough."
 - **No judgment, data only.** Every decision must be backed by extracted data, captured screenshots, or script output. "Probably", "close enough", and "just a content difference" are forbidden — each has a documented failure case.
@@ -309,7 +309,7 @@ UI cloning sessions are token-intensive — DOM trees, computed styles, and JS b
 | Strategy | How |
 |---|---|
 | Zero vision tokens for verification | AE/SSIM CLI tools diff screenshots. LLM only reads a single diff image on FAIL |
-| Progressive-disclosure sub-docs | SKILL.md ~6K tokens. 37 sub-docs load only when their step runs |
+| Progressive-disclosure sub-docs | SKILL.md ~6K tokens. 39 sub-docs load only when their step runs |
 | Pipe-to-file rule | Large `eval` output goes to `tmp/ref/*.json`, then `Read`/`Grep` specific lines |
 | Single source of truth | `transition-spec.json` produced once — implementation reads it, never re-greps bundles |
 | Bash loop breaker | After 10+ consecutive Bash calls, stop and analyze before continuing |

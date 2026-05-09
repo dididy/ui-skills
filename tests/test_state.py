@@ -12,9 +12,12 @@ def test_gate_order_contains_all_gates():
         "reference",
         "extraction",
         "bundle",
+        "paid-features",
         "spec",
         "pre-generate",
         "post-implement",
+        "boundary",
+        "font-parity",
         "section-compare",
     ]
     assert GATE_ORDER == expected
