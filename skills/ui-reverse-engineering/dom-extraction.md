@@ -465,6 +465,46 @@ This produces per-section files in `tmp/ref/<component>/html/`:
 □ Video elements detected in hero section (if original has video background)
 ```
 
+### Lazy-load attribute rewrite (MANDATORY for sites that ship a runtime lazy-loader)
+
+Captured HTML often contains placeholder attributes that the original site's runtime lazy-loader rewrites *after* page load (`data-src`, `data-lazy`, `data-srcset`, `data-bg`, `lazyload` class, `loading="lazy"`). When this HTML is injected verbatim into the impl (e.g. via `dangerouslySetInnerHTML` per Step 7), there is no runtime to rewrite the attributes — `<img>` tags render with no `src` and stay broken. The bug is silent: the page renders, just with missing images, and `visible-images.json` (Step 2.5) doesn't catch it because that script collects from `img.src` not `img.dataset.src`.
+
+Two root causes overlap on the same page:
+1. **Captured before lazy-loader fired** — image is below the fold at capture time, only `data-src` is set
+2. **Captured after lazy-loader fired** — same `<img>` now has both `data-src` (placeholder) and `src` (real), so the attribute count differs by viewport/scroll position
+
+**Fix:** before writing any component, scan section HTML for these patterns and rewrite at extraction time:
+
+```bash
+# Detect — flags any section file with src-less <img> still carrying a data-src placeholder
+grep -lE '<(img|source|video)[^>]*\bdata-(src|srcset|lazy|bg)=' tmp/ref/<component>/html/*.json | while read f; do
+  python3 -c "import json,re,sys; d=json.load(open(sys.argv[1])); h=json.dumps(d); print(sys.argv[1], len(re.findall(r'data-(src|srcset|lazy|bg)=', h)))" "$f"
+done
+
+# Rewrite (per-section HTML strings) — data-src → src, drop data-lazy / lazyload class.
+# Use python (not sed) for portability + correct data-bg handling: BSD sed (`sed -i ''`)
+# and GNU sed (`sed -i`) take incompatible -i syntax, and the data-bg rewrite needs
+# to capture the URL value and emit a fully-closed `style="background-image:url(<v>)"`
+# (a sed one-liner with a pasted-in `style="background-image:url(` produces broken
+# output that swallows the trailing quote).
+python3 - <<'PY'
+import json, re, glob, pathlib
+RE_BG  = re.compile(r'\bdata-bg=(["\'])(.*?)\1')
+RE_SRC = re.compile(r'\bdata-(src|srcset)=')
+RE_LZ  = re.compile(r'\s+data-lazy=(["\']).*?\1')
+RE_CLS = re.compile(r'\s+class=(["\'])lazyload\1')
+for path in glob.glob("tmp/ref/<component>/html/*.json"):
+    text = pathlib.Path(path).read_text()
+    text = RE_BG.sub(lambda m: f'style="background-image:url({m.group(2)})"', text)
+    text = RE_SRC.sub(lambda m: f'{m.group(1)}=', text)
+    text = RE_LZ.sub('', text)
+    text = RE_CLS.sub('', text)
+    pathlib.Path(path).write_text(text)
+PY
+```
+
+Run an additional pre-scroll *before* this step on lazy-loaded pages so the captured HTML is in its post-lazy-load form everywhere — see `../visual-debug/comparison-fix.md` triage row D for the `scrollTo(0, document.body.scrollHeight)` warmup.
+
 ### Expected fields in extracted.json (assembled at Step 6b)
 
 At Step 6b, merge `head.json` and `assets.json` into `extracted.json` alongside other extraction data:

@@ -1,6 +1,6 @@
 ---
 name: ui-reverse-engineering
-description: Clone or replicate a live website URL as React + Tailwind. Triggers on "clone <URL>", "copy the hero from <URL>", "make it look like <URL>", "reverse-engineer this layout", "extract the animation from <URL>". Key signal — the user has a reference URL. Outputs React components with real extracted values (getComputedStyle, DOM, JS bundle analysis). Accepts screenshot/video as fallback (Claude Vision approximation). Does NOT apply to general CSS help or building UIs from scratch without a reference.
+description: Clone or replicate a live website URL as React + Tailwind. Triggers on "clone <URL>", "copy the hero from <URL>", "make it look like <URL>", "rebuild this in react", "remake this site", "match this design from <URL>", "reverse-engineer this layout", "extract the animation from <URL>". Adjacent tools (do NOT trigger this skill — different category): v0/Lovable (prompt → UI, no URL input), screenshot-to-code (screenshot → code, no live URL), Builder.io/Anima (Figma → code). Key signal — the user has a **reference URL**, not a prompt or screenshot. Outputs React components with real extracted values (getComputedStyle, DOM, JS bundle grep for GSAP/Framer/Lenis params, Webflow IX2 timelines). Accepts screenshot/video as fallback (Claude Vision approximation). Does NOT apply to general CSS help or building UIs from scratch without a reference.
 metadata:
   filePattern:
     - "**/tmp/ref/**/structure.json"
@@ -76,6 +76,22 @@ Example: /ui-reverse-engineering https://www.naver.com naver-main naver
 Do NOT proceed to the pipeline or any extraction until `<url>` is provided.
 
 ## First action — always
+
+**0. Preflight (run once per session — `npx skills add` install path skips system deps).** If anything is missing, halt and surface the bootstrap one-liner to the user; do **not** auto-execute `curl | bash` on their behalf — let the user run it themselves.
+
+```bash
+miss=""
+for c in agent-browser ffmpeg dssim uv; do command -v "$c" >/dev/null 2>&1 || miss+=" $c"; done
+{ command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; } || miss+=" imagemagick"
+# ui_clone/ python package must be reachable (npx skills route only copies skills/, not the package).
+find -L ~/.claude/skills ~/.local/share/ui-clone-skills /usr/local/share/ui-clone-skills -path '*/ui_clone/pipeline.py' 2>/dev/null | grep -q . || miss+=" ui_clone-package"
+if [ -n "$miss" ]; then
+  printf 'Missing:%s\n\nFastest fix (clones full repo to ~/.local/share/ui-clone-skills and installs deps):\n  curl -LsSf https://raw.githubusercontent.com/voidmatcha/ui-clone-skills/main/install.sh | bash\n\nOr install manually:\n  brew install ffmpeg imagemagick dssim   # macOS  (Linux: apt install ffmpeg imagemagick && cargo install dssim)\n  npm i -g agent-browser\n  curl -LsSf https://astral.sh/uv/install.sh | sh\n  git clone https://github.com/voidmatcha/ui-clone-skills.git ~/.local/share/ui-clone-skills   # for ui_clone-package\n' "$miss"
+  exit 1
+fi
+```
+
+**1. Pipeline status:**
 
 ```bash
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(find -L ~/.claude/skills -path '*/ui_clone/pipeline.py' 2>/dev/null | head -1 | xargs -I{} dirname "$(dirname "{}")")}"
@@ -177,6 +193,14 @@ Long sessions cause context decay — initial rules get diluted as the conversat
 3. Start a new session — Claude re-reads SKILL.md fresh, then runs `python -m ui_clone.pipeline ... status` to resume
 
 **Never skip to a later phase under context pressure.** Fewer sections done correctly > more sections done wrongly.
+
+**Compaction-survival rule — re-verify any "X is broken" claim before acting on it.**
+Compaction summaries flatten observation, hypothesis, and disproven-theory into one paragraph. A summary that asserts "REF shows A while IMPL shows B at scroll position N" is *a claim*, not *a fact* — earlier-in-session evidence has been compressed out. Before starting any non-trivial implementation in response to such a claim:
+1. Re-capture both ref and impl at the *exact* scroll position the summary names (`agent-browser ... eval "window.scrollTo(0, <sy>); 'ok'"` then screenshot, both sides).
+2. Compare the two fresh captures — confirm the asserted difference is real, not residue from an earlier wrong screenshot the prior session never re-took.
+3. Only then implement. The cost of a 30-second re-capture is far less than porting a complex animation that turns out to have already been correct.
+
+This bites hardest right after `<system-reminder>` summaries reactivate a long-running task — exactly when the urge to "just continue" is strongest.
 
 ## When something looks wrong — read these
 

@@ -25,6 +25,19 @@ WAIT_IMPL="${WAIT_IMPL:-6000}"
 WAIT_LAZY_LOAD="${WAIT_LAZY_LOAD:-2}"
 WAIT_SCROLL_SETTLE="${WAIT_SCROLL_SETTLE:-0.5}"
 
+# ── Dynamic-content exclusion ──
+# RAF-driven canvases (Three.js shaders, particles), <video>, and other
+# auto-running animations produce per-frame pixel noise that AE can never
+# match because ref and impl run on independent clocks. Hiding these
+# elements via `visibility: hidden` (applied identically to ref + impl)
+# removes the noise without affecting layout.
+#
+#   EXCLUDE_DYNAMIC=1                                     # opt in (default 0)
+#   DYNAMIC_SELECTORS="canvas, video, .ticker"            # override defaults
+#   transition-spec.json entries with `"dynamic": true`   # auto-augment
+EXCLUDE_DYNAMIC="${EXCLUDE_DYNAMIC:-0}"
+DYNAMIC_SELECTORS="${DYNAMIC_SELECTORS:-canvas, video}"
+
 ORIG_URL="${1:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 IMPL_URL="${2:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
 SESSION="${3:?Usage: section-compare.sh <orig-url> <impl-url> <session> [output-dir]}"
@@ -47,6 +60,37 @@ if [[ "$DIR" != /* ]]; then
 fi
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Augment DYNAMIC_SELECTORS from transition-spec.json — entries with `dynamic: true`
+# contribute their `target` selector. Ignored when EXCLUDE_DYNAMIC is off.
+DYNAMIC_PAUSE_EXTRA=""
+if [ "$EXCLUDE_DYNAMIC" = "1" ]; then
+  TSPEC_FILE="$DIR/transition-spec.json"
+  if [ -f "$TSPEC_FILE" ]; then
+    EXTRA_TARGETS=$(python3 -c "
+import json
+try:
+    d = json.loads(open('$TSPEC_FILE').read())
+    targets = [t.get('target','') for t in d.get('transitions', []) if t.get('dynamic') is True]
+    print(', '.join(t for t in targets if t and '\"' not in t))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+    if [ -n "$EXTRA_TARGETS" ]; then
+      DYNAMIC_SELECTORS="$DYNAMIC_SELECTORS, $EXTRA_TARGETS"
+    fi
+  fi
+  # Selectors must not contain quote characters of either kind:
+  #  - `"` would close the JS string inside the injected <style> textContent.
+  #  - `'` would close the surrounding Python r'...' raw string in pause_js below.
+  # Use bare attribute matchers (e.g. [data-canvas=hero]) or class/id selectors instead.
+  if [[ "$DYNAMIC_SELECTORS" == *'"'* || "$DYNAMIC_SELECTORS" == *\'* ]]; then
+    echo "ERROR: DYNAMIC_SELECTORS must not contain quote characters (\" or '). Use bare attribute matchers like [data-canvas=hero] or class/id selectors." >&2
+    exit 1
+  fi
+  DYNAMIC_PAUSE_EXTRA=" ${DYNAMIC_SELECTORS} { visibility: hidden !important; }"
+  echo "▸ EXCLUDE_DYNAMIC=1 — masking: $DYNAMIC_SELECTORS"
+fi
 
 # Guard: spaces in DIR path break Python one-liners that embed $DIR in string literals
 if [[ "$DIR" == *" "* ]]; then
@@ -112,12 +156,17 @@ echo "Implementation: $IMPL_URL"
 echo ""
 
 # ── Open both sites ──
+# Set viewport BEFORE opening so the page's init JS reads the correct
+# window.innerWidth. Bundles that compute one-shot mobile/desktop branches at
+# load time (e.g. `isMobile = window.innerWidth < 1024`) do not re-evaluate on
+# resize — opening at the default viewport then resizing leaves the page in a
+# broken half-mobile state that bears no resemblance to a real mobile load.
 echo "▸ Opening both sites..."
-agent-browser --session "$SESSION_REF" open "$ORIG_URL" 2>&1 | head -1
-agent-browser --session "$SESSION_IMPL" open "$IMPL_URL" 2>&1 | head -1
-
 agent-browser --session "$SESSION_REF" set viewport "$VIEW_W" "$VIEW_H" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" set viewport "$VIEW_W" "$VIEW_H" > /dev/null 2>&1
+
+agent-browser --session "$SESSION_REF" open "$ORIG_URL" 2>&1 | head -1
+agent-browser --session "$SESSION_IMPL" open "$IMPL_URL" 2>&1 | head -1
 
 agent-browser --session "$SESSION_REF" wait "$WAIT_REF" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" wait "$WAIT_IMPL" > /dev/null 2>&1
@@ -155,6 +204,7 @@ PAUSE_ANIMATIONS='(() => {
       animation-play-state: paused !important;
       transition-duration: 0s !important;
     }
+    '"$DYNAMIC_PAUSE_EXTRA"'
   `;
   document.head.appendChild(style);
 
@@ -210,10 +260,69 @@ FINISH_ANIMATIONS='(() => {
       if (n) found.push("waapi:" + n);
     }
   } catch (e) {}
+  // Webpack-bundled GSAP/ScrollTrigger — when ESM-imported and not exposed on window
+  // (Next.js, Vite, modern bundlers). Probe webpack module factories for ScrollTrigger
+  // and gsap source signatures, stash refs on window for the per-section finish_js.
+  try {
+    const wp = window.webpackChunk_N_E || window.webpackChunk;
+    if (wp && Array.isArray(wp) && !window.__sc_wp_probed) {
+      window.__sc_wp_probed = true;
+      let cap = null;
+      try { wp.push([["__sc_probe_" + Date.now()], {}, (r) => { cap = r; }]); } catch (e) {}
+      if (cap && cap.m) {
+        let stId = null, gsapId = null;
+        for (const id of Object.keys(cap.m)) {
+          try {
+            const src = cap.m[id].toString();
+            if (src.length < 1000) continue;
+            if (!stId && /scrollerProxy/.test(src) && /ScrollTrigger/.test(src)) stId = id;
+            if (!gsapId && /globalTimeline/.test(src) && /tweenLite/i.test(src)) gsapId = id;
+            if (stId && gsapId) break;
+          } catch (e) {}
+        }
+        if (stId) {
+          try {
+            const m = cap(stId);
+            const ST = (m && m.default && typeof m.default.getAll === "function") ? m.default
+                     : (m && typeof m.getAll === "function") ? m : null;
+            if (ST) window.__sc_st = ST;
+          } catch (e) {}
+        }
+        if (gsapId) {
+          try {
+            const m = cap(gsapId);
+            const cands = [m && m.default, m && m.gsap, m];
+            for (const c of cands) {
+              if (c && c.globalTimeline && typeof c.globalTimeline.getChildren === "function") {
+                window.__sc_gsap = c;
+                break;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {}
+  // GSAP ScrollTrigger — disable all triggers FIRST so progress(1) below
+  // is not immediately re-synced to current scroll position by scrub:true.
+  try {
+    const ST = (window.ScrollTrigger) || window.__sc_st || (window.gsap && window.gsap.core && window.gsap.core.globals && window.gsap.core.globals().ScrollTrigger);
+    if (ST && typeof ST.getAll === "function") {
+      let n = 0;
+      ST.getAll().forEach(st => {
+        try {
+          if (st.animation && typeof st.animation.progress === "function") st.animation.progress(1, false);
+          if (typeof st.disable === "function") { st.disable(false, false); n++; }
+        } catch (e) {}
+      });
+      if (n) found.push("scrollTrigger-disabled:" + n);
+    }
+  } catch (e) {}
   // GSAP — jump every active tween/timeline to its end
   try {
-    if (window.gsap && window.gsap.globalTimeline && typeof window.gsap.globalTimeline.getChildren === "function") {
-      const items = window.gsap.globalTimeline.getChildren(true, true, true);
+    const gs = window.gsap || window.__sc_gsap;
+    if (gs && gs.globalTimeline && typeof gs.globalTimeline.getChildren === "function") {
+      const items = gs.globalTimeline.getChildren(true, true, true);
       let n = 0;
       items.forEach(t => { try { if (typeof t.progress === "function") { t.progress(1, false); n++; } } catch (e) {} });
       found.push("gsap:" + n);
@@ -360,19 +469,46 @@ _scroll_js() {
 # for off-screen sections at load time. Scrolling through the full page forces
 # all lazy content to load before we build section fingerprints.
 # This prevents MATCH_COUNT=0 on sites with aggressive lazy loading.
+#
+# Round-trip + settle: previous version did `scrollTo(0, total)` then instantly
+# `scrollTo(0, 0)`. Sites whose scroll handler toggles body/progress classes
+# based on visited scroll thresholds (e.g. `body.-postManifest`, `-active`,
+# `--progress` CSS vars) often did NOT remove those classes when teleported
+# back to top, because the scroll handler is RAF-debounced and the round-trip
+# happened in a single frame. The captured ref then carried artifact state
+# (cards display:none, color overrides) that the impl correctly cleared,
+# producing huge AE that wasn't a real visual mismatch. New behavior:
+# scroll DOWN in steps, scroll UP in the same steps (so each intermediate
+# scroll position fires a handler tick), then a multi-frame settle dispatching
+# scroll events at y=0 to give handlers full opportunity to reset.
 echo "▸ Pre-scrolling to trigger lazy content..."
 _pre_scroll_js() {
   local sel="$1"
   if [ "$sel" = "__document__" ]; then
     cat <<'JSEOF'
 (() => {
+  window.__SC_PRESCROLL_DONE = 0;
   const total = document.documentElement.scrollHeight;
   const step = Math.max(window.innerHeight * 0.8, 400);
   let y = 0;
+  let dir = 1;
   const timer = setInterval(() => {
     window.scrollTo(0, y);
-    y += step;
-    if (y >= total) { clearInterval(timer); window.scrollTo(0, 0); }
+    y += step * dir;
+    if (dir === 1 && y >= total) { dir = -1; y = total; }
+    else if (dir === -1 && y <= 0) {
+      clearInterval(timer);
+      let n = 0;
+      const settle = () => {
+        window.scrollTo(0, 0);
+        window.dispatchEvent(new Event('scroll'));
+        document.dispatchEvent(new Event('scroll'));
+        n++;
+        if (n < 16) requestAnimationFrame(settle);
+        else { window.scrollTo(0, 0); window.__SC_PRESCROLL_DONE = 1; }
+      };
+      requestAnimationFrame(settle);
+    }
   }, 120);
   return total;
 })()
@@ -380,25 +516,60 @@ JSEOF
   else
     cat <<JSEOF
 (() => {
+  window.__SC_PRESCROLL_DONE = 0;
   const w = document.querySelector('$sel');
-  if (!w) { window.scrollTo(0, document.documentElement.scrollHeight); window.scrollTo(0, 0); return 0; }
+  if (!w) { window.scrollTo(0, document.documentElement.scrollHeight); window.scrollTo(0, 0); window.__SC_PRESCROLL_DONE = 1; return 0; }
   const total = w.scrollHeight;
   const step = Math.max(w.clientHeight * 0.8, 400);
   let y = 0;
+  let dir = 1;
   const timer = setInterval(() => {
     w.scrollTop = y;
     w.dispatchEvent(new Event('scroll'));
-    y += step;
-    if (y >= total) { clearInterval(timer); w.scrollTop = 0; w.dispatchEvent(new Event('scroll')); }
+    y += step * dir;
+    if (dir === 1 && y >= total) { dir = -1; y = total; }
+    else if (dir === -1 && y <= 0) {
+      clearInterval(timer);
+      let n = 0;
+      const settle = () => {
+        w.scrollTop = 0;
+        w.dispatchEvent(new Event('scroll'));
+        window.dispatchEvent(new Event('scroll'));
+        n++;
+        if (n < 16) requestAnimationFrame(settle);
+        else { w.scrollTop = 0; window.__SC_PRESCROLL_DONE = 1; }
+      };
+      requestAnimationFrame(settle);
+    }
   }, 120);
   return total;
 })()
 JSEOF
   fi
 }
+
+# Wait for the fire-and-forget setInterval round-trip + settle to complete on
+# both sessions. Polls for window.__SC_PRESCROLL_DONE === 1; bounded so a
+# single hung session can't block the whole comparison.
+_wait_prescroll_done() {
+  local session="$1"
+  local max_seconds="${PRESCROLL_TIMEOUT:-30}"
+  local i
+  for i in $(seq 1 "$max_seconds"); do
+    local out
+    out=$(agent-browser --session "$session" eval "(() => window.__SC_PRESCROLL_DONE || 0)()" 2>/dev/null | tail -1 | tr -d '"')
+    if [ "$out" = "1" ]; then return 0; fi
+    sleep 1
+  done
+  echo "  ⚠  Pre-scroll did not signal done within ${max_seconds}s on $session — proceeding anyway" >&2
+  return 1
+}
+
 agent-browser --session "$SESSION_REF" eval "$(_pre_scroll_js "$REF_SCROLLER_SEL")" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" eval "$(_pre_scroll_js "$IMPL_SCROLLER_SEL")" > /dev/null 2>&1
-sleep "$WAIT_LAZY_LOAD"  # Wait for lazy content to load and render after scroll
+_wait_prescroll_done "$SESSION_REF"
+_wait_prescroll_done "$SESSION_IMPL"
+sleep "$WAIT_LAZY_LOAD"  # Extra time for lazy content (images, IO callbacks) to render
 agent-browser --session "$SESSION_REF" eval "$(_scroll_js "$REF_SCROLLER_SEL" 0)" > /dev/null 2>&1
 agent-browser --session "$SESSION_IMPL" eval "$(_scroll_js "$IMPL_SCROLLER_SEL" 0)" > /dev/null 2>&1
 sleep "$WAIT_SCROLL_SETTLE"
@@ -734,12 +905,12 @@ for m in matches:
     # Re-apply animation pause after each scroll — scroll-triggered CSS transitions
     # (enter-reveal, GSAP ScrollTrigger) reset on scroll and can be mid-animation
     # at the screenshot moment if we only pause once at page load.
-    pause_js = r'(() => { const s = document.getElementById(\"__sc-pause__\"); if (!s) { const ns = document.createElement(\"style\"); ns.id = \"__sc-pause__\"; ns.textContent = \"*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }\"; document.head.appendChild(ns); } document.querySelectorAll(\"video\").forEach(v => { try { v.pause(); v.autoplay = false; if (v.readyState >= 1) v.currentTime = 0; } catch(e){} }); return \"paused\"; })()'
+    pause_js = r'(() => { const s = document.getElementById(\"__sc-pause__\"); if (!s) { const ns = document.createElement(\"style\"); ns.id = \"__sc-pause__\"; ns.textContent = \"*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }${DYNAMIC_PAUSE_EXTRA}\"; document.head.appendChild(ns); } document.querySelectorAll(\"video\").forEach(v => { try { v.pause(); v.autoplay = false; if (v.readyState >= 1) v.currentTime = 0; } catch(e){} }); document.querySelectorAll(\"#iubenda-cs-banner, [id^=iubenda-], [class*=iubenda], [id^=onetrust-], [class*=onetrust], [id^=osano-], [class*=osano], [id^=cky-], [class*=cookieconsent]\").forEach(el => el.remove()); return \"paused\"; })()'
 
     # Re-finish JS-driven entrance animations after scroll. Scroll fires
     # IntersectionObserver/ScrollTrigger callbacks that start fresh tweens —
     # CSS pause does not stop them. No-op when no animation lib is present.
-    finish_js = r'(() => { try { if (typeof document.getAnimations === \"function\") { document.getAnimations().forEach(a => { try { a.finish(); } catch(e){} }); } } catch(e){} try { if (window.gsap && window.gsap.globalTimeline && typeof window.gsap.globalTimeline.getChildren === \"function\") { window.gsap.globalTimeline.getChildren(true, true, true).forEach(t => { try { if (typeof t.progress === \"function\") t.progress(1, false); } catch(e){} }); } } catch(e){} try { if (window.anime && Array.isArray(window.anime.running)) { window.anime.running.slice().forEach(a => { try { a.seek(a.duration); a.pause(); } catch(e){} }); } } catch(e){} try { if (window.lottie && typeof window.lottie.getRegisteredAnimations === \"function\") { window.lottie.getRegisteredAnimations().forEach(a => { try { const last = (typeof a.totalFrames === \"number\" ? a.totalFrames : 1) - 1; a.goToAndStop(Math.max(0, last), true); } catch(e){} }); } document.querySelectorAll(\"lottie-player, dotlottie-player\").forEach(el => { try { if (typeof el.seek === \"function\") el.seek(\"100%\"); if (typeof el.pause === \"function\") el.pause(); } catch(e){} }); } catch(e){} try { var snapped = 0; document.querySelectorAll(\"[style*=translate3d]\").forEach(function(el){ try { var s = el.getAttribute(\"style\") || \"\"; var m = s.match(/translate3d\\(\\s*(-?[0-9.]+)px\\s*,\\s*(-?[0-9.]+)px\\s*,\\s*0(?:px)?\\s*\\)/); if (!m) return; var ax = Math.abs(parseFloat(m[1])); var ay = Math.abs(parseFloat(m[2])); if (ax >= 10 || ay >= 10) return; var op = parseFloat(el.style.opacity || \"1\"); if (!Number.isFinite(op) || op < 0.95) return; el.style.transform = \"translate3d(0px, 0px, 0px)\"; if (op > 0.999) el.style.opacity = \"1\"; snapped++; } catch(e){} }); } catch(e){} return \"finished\"; })()'
+    finish_js = r'(() => { try { if (typeof document.getAnimations === \"function\") { document.getAnimations().forEach(a => { try { a.finish(); } catch(e){} }); } } catch(e){} try { var __ST = window.ScrollTrigger || window.__sc_st || (window.gsap && window.gsap.core && window.gsap.core.globals && window.gsap.core.globals().ScrollTrigger); if (__ST && typeof __ST.getAll === \"function\") { __ST.getAll().forEach(function(st){ try { if (st.animation && typeof st.animation.progress === \"function\") st.animation.progress(1, false); if (typeof st.disable === \"function\") st.disable(false, false); } catch(e){} }); } } catch(e){} try { var __gs = window.gsap || window.__sc_gsap; if (__gs && __gs.globalTimeline && typeof __gs.globalTimeline.getChildren === \"function\") { __gs.globalTimeline.getChildren(true, true, true).forEach(t => { try { if (typeof t.progress === \"function\") t.progress(1, false); } catch(e){} }); } } catch(e){} try { if (window.anime && Array.isArray(window.anime.running)) { window.anime.running.slice().forEach(a => { try { a.seek(a.duration); a.pause(); } catch(e){} }); } } catch(e){} try { if (window.lottie && typeof window.lottie.getRegisteredAnimations === \"function\") { window.lottie.getRegisteredAnimations().forEach(a => { try { const last = (typeof a.totalFrames === \"number\" ? a.totalFrames : 1) - 1; a.goToAndStop(Math.max(0, last), true); } catch(e){} }); } document.querySelectorAll(\"lottie-player, dotlottie-player\").forEach(el => { try { if (typeof el.seek === \"function\") el.seek(\"100%\"); if (typeof el.pause === \"function\") el.pause(); } catch(e){} }); } catch(e){} try { var snapped = 0; document.querySelectorAll(\"[style*=translate3d]\").forEach(function(el){ try { var s = el.getAttribute(\"style\") || \"\"; var m = s.match(/translate3d\\(\\s*(-?[0-9.]+)px\\s*,\\s*(-?[0-9.]+)px\\s*,\\s*0(?:px)?\\s*\\)/); if (!m) return; var ax = Math.abs(parseFloat(m[1])); var ay = Math.abs(parseFloat(m[2])); if (ax >= 10 || ay >= 10) return; var op = parseFloat(el.style.opacity || \"1\"); if (!Number.isFinite(op) || op < 0.95) return; el.style.transform = \"translate3d(0px, 0px, 0px)\"; if (op > 0.999) el.style.opacity = \"1\"; snapped++; } catch(e){} }); } catch(e){} return \"finished\"; })()'
     skip_finish = '${SKIP_FINISH_ANIMATIONS:-0}' == '1'
 
     if ref:

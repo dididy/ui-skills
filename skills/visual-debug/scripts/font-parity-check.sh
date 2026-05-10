@@ -87,10 +87,12 @@ extract_family() {
   agent-browser --session "$session" open "$url" >/dev/null 2>&1
   agent-browser --session "$session" set viewport 1280 800 >/dev/null 2>&1
   agent-browser --session "$session" wait 2500 >/dev/null 2>&1
-  local raw
-  raw="$(agent-browser --session "$session" eval "$EVAL_PRIMARY_FAMILY" 2>/dev/null | tail -1)"
-  # agent-browser eval prints the JSON-stringified result; unwrap one layer
-  echo "$raw" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g'
+  # Return the raw stdout as-is. agent-browser prints the JSON-stringified
+  # eval result on its own line; downstream node call double-parses to recover
+  # the inner object. Avoid sed-based unwrap — it breaks on family names that
+  # contain quotes (e.g. `"Clash Grotesk"` collapses one too few escape
+  # levels and produces invalid JSON like `\\"Clash Grotesk\\"`).
+  agent-browser --session "$session" eval "$EVAL_PRIMARY_FAMILY" 2>/dev/null | tail -1
 }
 
 REF_RAW="$(extract_family "$SESSION-ref" "$REF_URL")"
@@ -104,9 +106,22 @@ fi
 OUT="$REF_DIR/font-parity.json"
 node -e "
 const fs = require('fs');
-let ref, impl;
-try { ref = JSON.parse(process.argv[1]); } catch (e) { console.error('ref parse failed:', e.message); process.exit(2); }
-try { impl = JSON.parse(process.argv[2]); } catch (e) { console.error('impl parse failed:', e.message); process.exit(2); }
+function parse(label, raw) {
+  // agent-browser eval emits a JSON-encoded *string* whose value is itself a
+  // JSON document. Try double-parse first, fall back to single-parse for the
+  // (theoretical) case where the in-page script returned a raw object.
+  let v;
+  try {
+    v = JSON.parse(raw);
+    if (typeof v === 'string') v = JSON.parse(v);
+  } catch (e) {
+    console.error(label + ' parse failed:', e.message, '\\n  raw=', raw);
+    process.exit(2);
+  }
+  return v;
+}
+const ref  = parse('ref',  process.argv[1]);
+const impl = parse('impl', process.argv[2]);
 const norm = s => (s || '').toLowerCase().trim();
 const parity = norm(ref.family) === norm(impl.family) ? 'match' : 'mismatch';
 const out = { ref, impl, parity, capturedAt: new Date().toISOString() };

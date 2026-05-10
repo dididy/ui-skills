@@ -127,6 +127,40 @@ When importing original CSS with `var(--foo)` references:
 
 **Rule:** when conflicts force different values, use inline `style={{}}` + comment explaining WHY.
 
+## Injecting captured HTML — preserve wrapper depth
+
+When pasting per-section `outerHTML` (from Step 2.6 `html/<section>.json`) into a component, the *captured* HTML already includes the section's outer element (`<section class="...">`, `<footer>`, etc.). Wrapping it in another React element changes the parent → child depth and silently breaks any selector that relied on that depth — `main > .hero` no longer matches because there's now an extra anonymous `<div>` between them. `section-compare`'s structure-diff catches the resulting "ref `<main>` had N children, impl had N+1" mismatch *after* generation; cheaper to avoid it up front.
+
+**Anti-pattern (silently breaks `main > .X` selectors and adds AE-invisible structural drift):**
+```tsx
+export function HeroSection() {
+  return <div dangerouslySetInnerHTML={{ __html: heroHtml }} />  // ← extra <div> wrapper
+}
+```
+
+**Correct — strip the captured outer element OR render via a sibling-flattening pattern:**
+```tsx
+// Option A: strip outer element from the captured HTML at extraction time, then re-render the outer in JSX
+export function HeroSection() {
+  return <section className="hero" dangerouslySetInnerHTML={{ __html: heroInner }} />
+}
+
+// Option B: render the captured HTML directly into <main> via a single fragment-style helper
+//   (set the outer element from the captured string by extracting `tagName` + `attributes`
+//   and injecting innerHTML — keeps depth identical to ref)
+```
+
+Verify after generation:
+```bash
+agent-browser --session <s> eval "document.querySelector('main').children.length" \
+  --on <ref-url> > /tmp/ref-children.txt
+agent-browser --session <s> eval "document.querySelector('main').children.length" \
+  --on <impl-url> > /tmp/impl-children.txt
+diff /tmp/ref-children.txt /tmp/impl-children.txt   # must be identical
+```
+
+`section-compare.sh` reports this as `ref children: N, impl children: M` in `sections/result.txt` — read those counts before chasing pixel diffs.
+
 ## Using `transition-spec.json`
 
 1. Find entry by `id`

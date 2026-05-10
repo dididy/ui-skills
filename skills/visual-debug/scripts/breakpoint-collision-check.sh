@@ -13,12 +13,17 @@
 #   measures at the boundary itself (where it looks "wrong but consistent").
 #
 #   This script captures impl at <bp>-1, <bp>, <bp>+1 for every requested
-#   breakpoint and reports any width where:
+#   breakpoint and reports any width where one of the following is true.
+#   Only signals 2 and 3 fail the gate; signal 1 alone is advisory because
+#   matchMedia overlap at the boundary is the W3C spec — it occurs on every
+#   page that contains both `(min-width: <bp>)` and `(max-width: <bp>)` rules
+#   regardless of whether the rules actually conflict.
 #     1. matchMedia(`max-width: <bp>`) AND matchMedia(`min-width: <bp>`)
-#        both match (the literal collision, by definition).
-#     2. body.scrollWidth > viewport at <bp> but NOT at <bp>±1 (isolated spike).
+#        both match (always true at the boundary by spec — advisory only).
+#     2. body.scrollWidth > viewport at <bp> but NOT at <bp>±1 (isolated
+#        spike — real visible defect, fails gate).
 #     3. rootFontSize jumps >4px between <bp>-1, <bp>, <bp>+1 (mobile-mode
-#        jitter — the rem scale is changing on the boundary).
+#        jitter — the rem scale is changing on the boundary, fails gate).
 #
 # Usage: bash breakpoint-collision-check.sh <session> <impl-url> [bps]
 #   bps: space-separated list (default: "640 768 1024 1280 1536")
@@ -133,7 +138,12 @@ for (const s of samples) {
   byBp[s.bp][s.width] = s;
 }
 
+// Only blocking signals (overflow, rem jitter) become findings. matchMedia
+// overlap at the boundary is W3C-spec behavior and fires on every project
+// that uses both min-width and max-width queries at the same bp; tracking
+// it as advisory keeps the diagnostic info without failing the gate.
 const findings = [];
+const advisories = [];
 for (const [bpStr, samplesAtBp] of Object.entries(byBp)) {
   const bp = +bpStr;
   const at = samplesAtBp[bp];
@@ -142,7 +152,8 @@ for (const [bpStr, samplesAtBp] of Object.entries(byBp)) {
   if (!at) continue;
 
   const reasons = [];
-  if (at.collision) reasons.push('matchMedia collision (both max-width and min-width match at ' + bp + ')');
+  const advisory = [];
+  if (at.collision) advisory.push('matchMedia overlap at ' + bp + ' (W3C spec — both max-width and min-width match at the boundary)');
   if (at.overflowing && !(before && before.overflowing) && !(after && after.overflowing)) {
     reasons.push('isolated overflow spike (' + at.bodyScrollWidth + ' > ' + at.width + ')');
   }
@@ -154,6 +165,7 @@ for (const [bpStr, samplesAtBp] of Object.entries(byBp)) {
     }
   }
   if (reasons.length) findings.push({ bp, before, at, after, reasons });
+  else if (advisory.length) advisories.push({ bp, advisory });
 }
 
 // Write the gate artifact when REF_DIR is provided.
@@ -168,6 +180,11 @@ if (refDir) {
 
 if (!findings.length) {
   console.log('✅ No collisions at any breakpoint.');
+  if (advisories.length) {
+    console.log('');
+    console.log('Advisory (matchMedia overlap — does not block gate):');
+    for (const a of advisories) console.log('  bp=' + a.bp + ': ' + a.advisory.join('; '));
+  }
   process.exit(0);
 }
 

@@ -12,6 +12,21 @@ open → set viewport → wait
 
 This matters most for mobile sweeps (375, 414, 768) where a wrong viewport silently passes desktop checks. The script `font-parity-check.sh`, `breakpoint-collision-check.sh`, and `section-compare.sh` all follow this order; reuse the pattern when writing new scripts.
 
+**Caveat — bundles with init-time viewport branching require the REVERSE order on the ref baseline.** Some bundles read `window.innerWidth` exactly once at load (`this.isMobile = window.innerWidth < 1024`, `matchMedia(...).matches` cached, GSAP `ScrollTrigger.matchMedia` with no resize handler) and apply mobile-only inline styles only on that one read. The default `open → set viewport 375` order opens at 1280 (desktop branch fires, mobile inline styles skipped), then resizes to 375 — the bundle never re-runs init, so the ref renders a half-mobile state — the desktop-branch inline styles are present, but the mobile-branch inline styles that should override or supplement them are missing (e.g. a multi-axis `transform` ends up with only some of the expected component values). The IMPL clones it correctly but section-compare's REF baseline is now a stale-init artifact, dominating AE.
+
+Symptoms that this caveat applies:
+- Mobile section-compare shows large AE on a section where the IMPL visually matches a real-mobile-load ref
+- The "missing" mobile inline style appears in the bundle's source but is absent from the captured REF DOM
+- Rendering at 375 in a real browser (not via `set viewport` after open) shows the IMPL is correct
+
+Fix in this case — set the viewport BEFORE `open` for the mobile run:
+
+```
+set viewport 375 812 → open <url> → wait
+```
+
+The originally-documented "silently dropped" behavior was observed under different agent-browser versions / page types; this caveat does NOT apply universally — verify per project. Rule of thumb: `open → set viewport` for general use; flip the order only when the symptom above appears.
+
 ## Shell-loop rule (zsh)
 
 zsh does NOT word-split unquoted variables by default, so `set -- $vp; W=$1; H=$2` leaves `W` and `H` empty when iterating `"375 812"`-style strings.
@@ -78,3 +93,24 @@ Gate validators look for `tmp/ref/<c>/static/ref/`, NOT `tmp/ref/<c>/capture/sta
 **Always invoke `/ui-capture` with the 3rd `[component]` arg** so it writes to `tmp/ref/<c>/` directly — `/ui-capture <url> "" <component>`. Pass `""` for the local-url slot when you only need ref capture.
 
 `tmp/ref/` lives **inside the project root** that owns the component, not under `~/`. If you've `cd`'d to `~/Documents/<repo>/apps/<app>/`, that's where `tmp/ref/` should be. Verify with `pwd && ls tmp/ref/<c>/` before each gate run — gates have no opinion about which directory is "the right one"; they validate the path you pass in.
+
+## Stale dev-server rule (agent-vs-user reproducibility delta)
+
+When the user reports a behavior the `agent-browser` session can NOT reproduce — splash frozen, animation jittery, click handler dead — and the impl source looks correct, the most expensive failure mode is debugging the source code instead of the runtime serving it.
+
+`agent-browser open <url>` cache-busts on each open; the user's tab does not. Long-running dev servers (Next.js + Turbopack / Vite / Webpack) accumulate state — HMR worker wedges, RSS climbs into multi-GB territory, module graph diverges from disk. After 1+ days uptime, the user's tab can be served stale chunks while the agent's fresh-open session sees the current code. The behaviors look like impl bugs but are environment ghosts.
+
+**Triage before opening source code:**
+```bash
+# Find the dev-server PID for the project port
+lsof -i :<port> -sTCP:LISTEN -t | head -1
+# Inspect uptime + memory
+ps -o etime,rss,command -p <pid>
+```
+
+**Decision rule:**
+- `etime` ≥ 1 day OR `rss` ≥ 2 GB → restart the dev server FIRST, then ask the user to re-test before any code investigation
+- The restart is cheap (≤10s); a wrong-direction debug session is not
+- If the bug reproduces after a fresh server, it is a real bug — proceed to diagnosis
+
+This rule applies to *any* user/agent reproducibility delta, not just splash issues. The asymmetry is structural: `agent-browser open` always gets fresh chunks, the user's tab depends on whatever the dev server's HMR worker last decided to serve.

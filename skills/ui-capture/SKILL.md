@@ -1,6 +1,6 @@
 ---
 name: ui-capture
-description: Capture or record visual behavior from a website — scroll transitions, hover, mousemove/parallax, auto-timers. Also for side-by-side comparison between a reference site and a local clone. Triggers on "take baseline screenshots of <URL>", "record the hover effects", "capture scroll animations", "compare <ref> vs <localhost>". Works standalone or from ui-reverse-engineering / ralph workflows.
+description: Capture or record visual behavior from a website — scroll transitions, hover, mousemove/parallax, auto-timers. Also for side-by-side comparison between a reference site and a local clone. Triggers on "take baseline screenshots of <URL>", "record the hover effects", "capture scroll animations", "record the parallax", "capture every transition on <URL>", "compare <ref> vs <localhost>", "diff against the reference". Works standalone or from ui-reverse-engineering / ralph workflows.
 metadata:
   filePattern:
     - "**/tmp/ref/**/regions.json"
@@ -62,11 +62,17 @@ Example: /ui-capture https://www.naver.com http://localhost:3000 naver-main
 
 Do NOT proceed to any capture phase until `<reference-url>` is provided.
 
-## Dependencies
+## Dependencies — preflight (run once per session)
+
+`npx skills add` installs the SKILL files but skips system tooling. Run this check at session start; if anything is missing, halt and surface the bootstrap one-liner to the user (do **not** auto-execute `curl | bash` on their behalf).
 
 ```bash
-agent-browser --version   # npm i -g agent-browser
-ffmpeg -version           # brew install ffmpeg
+miss=""
+for c in agent-browser ffmpeg; do command -v "$c" >/dev/null 2>&1 || miss+=" $c"; done
+if [ -n "$miss" ]; then
+  printf 'Missing system deps:%s\n\nFastest fix:\n  curl -LsSf https://raw.githubusercontent.com/voidmatcha/ui-clone-skills/main/install.sh | bash\n\nOr install manually:\n  brew install ffmpeg   # macOS  (Linux: apt install ffmpeg)\n  npm i -g agent-browser\n' "$miss"
+  exit 1
+fi
 ```
 
 ## Security
@@ -101,8 +107,30 @@ mkdir -p "$OUT_DIR/clip/diff"
 # Order matters: open → set viewport → wait. set viewport before open is silently dropped.
 agent-browser --session <name> open <url>
 agent-browser --session <name> set viewport 1440 900
-agent-browser --session <name> wait 3000
+agent-browser --session <name> wait 3000  # ← see "Splash-aware wait" below before keeping 3000
 ```
+
+**Splash-aware wait — CALIBRATE before recording.** `wait 3000` is the right default for *bare* sites (no preloader, instant content). It is the wrong default for any site with a timed splash, intro animation, or progress counter — and most modern marketing sites have one (Slater, Barba, GSAP intros, anime.js loaders, custom WebGL). Capturing during the splash records a transient state that will never match impl post-load, dominating AE forever.
+
+Calibrate the wait once per project, then reuse the value in `WAIT_REF`/`WAIT_IMPL` for `section-compare.sh`:
+
+```bash
+# 1. Detect splash class transitions (cheap — single eval pair)
+agent-browser --session <name> open <url>
+agent-browser --session <name> eval "(() => JSON.stringify({html:document.documentElement.className,body:document.body.className,t:0}))()" > /tmp/splash-t0.json
+agent-browser --session <name> wait 15000
+agent-browser --session <name> eval "(() => JSON.stringify({html:document.documentElement.className,body:document.body.className,t:15000}))()" > /tmp/splash-t15.json
+
+# 2. If t0 has `is-loading|loading|preloading|locked` and t15 doesn't → splash exists.
+#    Pick a wait equal to (splash visible duration) + 500ms buffer, NOT the framework
+#    init time. HMR/hydration finishing ≠ animation finishing.
+#
+# 3. For long splashes (>5s) ALSO pass NEXT_PUBLIC_SPLASH_TEST=true (or equivalent
+#    impl-side env) so the impl skips the splash during dev — otherwise every
+#    iteration burns 13+s on the loader.
+```
+
+Anti-pattern: bumping `wait` to 30000 "to be safe" — slows every capture in every iteration without solving the real question (when is content settled?). Measure once, set the smallest correct value.
 
 **Screenshot output rule:** `agent-browser --session <s> screenshot [path]` saves the file itself and prints `Screenshot saved to <path>` on stdout. Relative paths resolve against the *shell's* cwd at invocation time (verified). The failure mode to avoid: `cd` between commands inside a loop, or invoking via a wrapper that changes cwd, so half the screenshots land in one directory and half in another. Two safe patterns: (1) pass an absolute path — `agent-browser --session <s> screenshot "$(pwd)/$OUT_DIR/static/ref/section-${i}.png"`, or (2) keep the loop in one shell with a single `cd` up front. After the loop, sanity-check: `ls "$OUT_DIR/static/ref/" | wc -l` should equal the section count.
 

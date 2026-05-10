@@ -90,6 +90,24 @@ grep -lE 'new Lenis|smoothWheel|locomotive-scroll|ScrollSmoother' tmp/ref/<compo
 
 Record detected libraries in `bundle-map.json`. Full parameter extraction happens in `js-animation-extraction.md`.
 
+### Library-version pitfalls (silent fallbacks)
+
+Animation libraries that change parameter names across major versions tend to **silently ignore** the old key and fall back to the library default — no console warning, no thrown error. The animation runs, but with the wrong curve / wrong duration / wrong target. AE catches it at section-compare time but the diagnosis is non-obvious because the impl source code "matches" the spec.
+
+**Concrete pattern observed:** anime.js renamed the easing parameter (`easing` → `ease`) between major versions. A spec that reads `easing: 'easeOutCubic'` against a newer anime.js silently uses the default ease, not the requested cubic, and the entrance curve quietly becomes a quadratic. The fix is a one-character rename, but only if you know to look.
+
+**Rule of thumb:** before assembling `transition-spec.json`, verify the parameter names you transcribed against the *current* docs of the *exact* version detected in the bundle. Don't paste from a generic "GSAP / anime.js / Framer Motion" snippet without checking the version line in the bundle first.
+
+Cheap sanity check after the spec exists:
+
+```bash
+# Flag suspicious legacy-named keys; cross-reference the detected library version before fixing.
+grep -nE '"(easing|stagger_function|delay_in_ms)"\s*:' tmp/ref/<component>/transition-spec.json \
+  && echo "⚠️  legacy key(s) found — confirm the detected library version still accepts them"
+```
+
+The point is the *check*, not the specific key list — keys that are correct today get renamed tomorrow.
+
 ## Bundle values → DOM element mapping (MANDATORY)
 
 Extracting values without mapping to DOM elements is useless. Find selector strings near animation calls:

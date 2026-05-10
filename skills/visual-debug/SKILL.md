@@ -1,6 +1,6 @@
 ---
 name: visual-debug
-description: Compare original site vs implementation with automated AE/SSIM diff — near-zero vision tokens. Triggers on "it looks different", "doesn't match", "compare with original", "what's wrong". Uses auto-diagnose to find mismatched elements from diff images without vision tokens. Falls back to reading diff images only when auto-diagnose finds nothing.
+description: Compare original site vs implementation with automated AE/SSIM diff — near-zero vision tokens. Triggers on "it looks different", "doesn't match", "compare with original", "what's wrong", "why is the impl off", "diff against ref", "verify the clone". Uses auto-diagnose to find mismatched elements from diff images without vision tokens. Falls back to reading diff images only when auto-diagnose finds nothing.
 metadata:
   filePattern:
     - "**/tmp/ref/**/static/**"
@@ -41,11 +41,18 @@ agent-browser --session <s> eval "<script>" > tmp/ref/<name>.json
 ```
 Never let large JSON print to stdout — it wastes tokens.
 
-## Dependencies
+## Dependencies — preflight (run once per session)
+
+`npx skills add` installs the SKILL files but skips system tooling. Run this check at session start; if anything is missing, halt and surface the bootstrap one-liner to the user (do **not** auto-execute `curl | bash` on their behalf).
 
 ```bash
-brew install imagemagick ffmpeg dssim
-which agent-browser
+miss=""
+for c in agent-browser ffmpeg dssim; do command -v "$c" >/dev/null 2>&1 || miss+=" $c"; done
+{ command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; } || miss+=" imagemagick"
+if [ -n "$miss" ]; then
+  printf 'Missing system deps:%s\n\nFastest fix:\n  curl -LsSf https://raw.githubusercontent.com/voidmatcha/ui-clone-skills/main/install.sh | bash\n\nOr install manually:\n  brew install ffmpeg imagemagick dssim   # macOS  (Linux: apt install ffmpeg imagemagick && cargo install dssim)\n  npm i -g agent-browser\n' "$miss"
+  exit 1
+fi
 ```
 
 ## Scripts
@@ -82,6 +89,29 @@ SCRIPTS_DIR="${SCRIPTS_DIR:-$(find -L ~/.claude/skills -name 'ae-compare.sh' -ex
 
 **Reference selectors:** `common-selectors.md` — ready-to-use selector sets (typography, CSS reset canaries, Tailwind preflight issues, Naver.com specific, general e-commerce)
 
+## Cost ladder — cheapest detection first
+
+The diff tools below have a 100x cost spread (sub-second to multi-minute, plus token cost when their output gets read). The most common avoidable waste is jumping to L3/L4 when an L1/L2 check would have answered the same question. **Always start at L1 and stop as soon as a tier gives you the answer.**
+
+| Tier | Cost | What | Use when |
+|---|---|---|---|
+| **L1** | ≤1s, ~free | Read existing summary files: `tmp/ref/<c>/sections/result.txt`, `pipeline-state.json`, `_summary.json`, `pixel-perfect-diff.json` | A prior run already produced these — they answer "what FAILed" in 2KB instead of you re-reading 50KB per section |
+| **L2** | ≤5s, 1 page load | Structural checks: `stray-absolute-check.sh`, `transition-spec-coverage.sh`, `reveal-trigger-check.sh`, `layout-health-check.sh`, `computed-diff.sh` | Verifying transitions, checking for whole-class bugs (footer disappeared, reveal stuck, spec entry never wired) |
+| **L3** | 30–120s | Targeted runs: `auto-diagnose.sh` on a single FAIL `diff.png`, `computed-diff.sh` on a narrow selector list | Bug class is suspected universal — sample one before sweeping all |
+| **L4** | multi-minute | Full sweeps: full-page `section-compare.sh`, `transition-compare.sh`, `tree-diff.sh`, `hover-tree-diff.sh` | L1–L3 came back clean and you need exhaustive coverage |
+| **L5** | minutes + tokens | Subagent visual review (Phase E LLM gate) | All metric tools agree but you need semantic verification |
+
+**Read-summary-first rule (L1 specifics):** scripts that write per-section/per-element detail also write a summary. Read the summary, *then* drill into detail files only for entries marked FAIL.
+
+| Script | Summary (read first) | Detail (drill on FAIL only) |
+|---|---|---|
+| `section-compare.sh` | `<dir>/sections/result.txt` (~2KB) | `<dir>/sections/<name>.json` (~50KB each) |
+| `transition-compare.sh` | `<dir>/transitions/report.json` (per-element verdicts) | `<dir>/transitions/{ref,impl}-elements.json`, `hover-states.json` |
+| `tree-diff.sh` / `layout-tree-diff.sh` / `hover-tree-diff.sh` / `keyframes-diff.sh` | severity-sorted markdown (`<dir>/<script-name>.md`) | paired `<dir>/<script-name>.json` raw diff list |
+| Pipeline gates | `python -m ui_clone.pipeline ... status` | individual gate artifacts |
+
+Reading a 50KB per-section JSON when result.txt would have answered the question is the single most common token waste in this workflow. If you don't see a summary file, that's a sign no run has been done yet — go to L2/L3, don't manually grep raw artifacts.
+
 ## Pick the right diff tool
 
 Five computed-style/geometry diff tools exist; each answers a different question. Run the targeted tool first, then escalate if the answer is "nothing wrong" but AE still fails.
@@ -105,6 +135,32 @@ Five computed-style/geometry diff tools exist; each answers a different question
 - Don't run all five by default — they are slower and noisier than the standard `auto-diagnose` workflow.
 
 ## Workflow
+
+### Step 0-pre: pass the chrome-hidden impl URL to every script
+
+Before running ANY compare script (`stray-absolute-check`, `section-compare`, `transition-compare`, `batch-compare`, `auto-diagnose`), confirm the impl shell is not painting fixed-position chrome that the ref doesn't have — dev banners, attribution / "made with X" badges, Vite/Next dev-overlay buttons, devtools widgets, locale switchers, env labels. Any element with `position: fixed` and a non-trivial bounding box will dominate AE in its corner *every frame*, turning a passing clone into FAIL while the diff image points at the chrome — not at any code you wrote.
+
+**Quick scan:**
+```bash
+agent-browser --session <s> open <impl-url>
+agent-browser --session <s> wait 1500   # let chrome (dev banners, badges) mount
+agent-browser --session <s> eval "
+(() => {
+  const fixed = [...document.querySelectorAll('*')].filter(el => {
+    const st = getComputedStyle(el);
+    if (st.position !== 'fixed') return false;
+    const r = el.getBoundingClientRect();
+    return r.width >= 40 && r.height >= 20;
+  }).map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, cls: (el.className && el.className.toString) ? el.className.toString().slice(0,80) : '', w: el.getBoundingClientRect().width|0, h: el.getBoundingClientRect().height|0 }));
+  return JSON.stringify(fixed);
+})()
+" > tmp/fixed-scan.json
+```
+Pipe to a file (per the token rule) — chrome scans are small but writing through `Read` keeps the pattern uniform.
+
+If the scan returns elements that don't exist on the ref, the impl needs a hide-mechanism (query flag like `?embed=true`, env var like `NEXT_PUBLIC_HIDE_CHROME=1`, dev-only `NODE_ENV` guard, CSS `display:none` injected via a fixture stylesheet). Standardize on one and pass the *hidden* URL to every script. Document the flag in the impl repo's CLAUDE.md so it survives compaction.
+
+**Failure signature when you forget:** AE delta image shows a clean rectangular hotspot in one corner (top-right, bottom-right, etc.); `auto-diagnose.sh` reports the badge element as the only mismatch; section-compare passes for every section *except* the one that includes the chrome's vertical band. Fix is a query-flag swap, not a code change — verify before opening any source file.
 
 ### Step 0: structural checks FIRST (before AE)
 
@@ -228,6 +284,28 @@ After AE + DSSIM, read every position's ref+impl pair. Judge PASS / PARTIAL / FA
 | Computed style diff | 0 mismatches | > 0 |
 
 AE=500 allows anti-aliasing variance. Bump to 2000 for dynamic content.
+
+## Dynamic content (canvas/video) — `EXCLUDE_DYNAMIC=1`
+
+RAF-driven canvases (Three.js shaders, particle fields) and `<video>` elements run on independent clocks in ref vs impl, so their per-frame pixel diff is unmatchable — they dominate AE without indicating a real defect.
+
+`section-compare.sh` accepts an opt-in mask:
+
+```bash
+EXCLUDE_DYNAMIC=1 bash section-compare.sh <orig> <impl> <session> "$(pwd)/tmp/ref/<component>"
+```
+
+When set, the script injects `visibility: hidden !important` for the masked selectors into both ref and impl screenshots — identical hide rule on both sides, so layout is preserved while the noisy region drops out of AE.
+
+| Var | Default | Effect |
+|---|---|---|
+| `EXCLUDE_DYNAMIC` | `0` | `1` enables masking |
+| `DYNAMIC_SELECTORS` | `canvas, video` | Override the default mask list |
+| `transition-spec.json` entries with `"dynamic": true` | — | Auto-augment the mask list with each entry's `target` selector |
+
+**Spec-driven (recommended):** add `"dynamic": true` to every `transition-spec.json` entry whose visual is RAF-driven (auto-timer canvas, looping shader, `<video>` autoplay). Then `EXCLUDE_DYNAMIC=1` masks them all without enumerating selectors at the call site.
+
+**Selector caveat:** Selectors must not contain quote characters of either kind. `"` would close the injected JS string and `'` would close the surrounding Python r-string. Use bare attribute matchers (e.g. `[data-canvas=hero]`) or class/id selectors (e.g. `.canvas-hero`, `#hero-canvas`). The script aborts if it sees `"` or `'`.
 
 ## Full verification
 

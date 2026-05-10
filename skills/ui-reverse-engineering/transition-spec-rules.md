@@ -38,11 +38,14 @@ One entry per distinct transition. Each entry is **self-contained**:
         "duration": 1, "ease": "circ2 → cubic-bezier(0.08, 0.82, 0.17, 1)",
         "stagger": 0.1, "delay": 0.8
       },
-      "reference_frames": "verify/intro/f010.png to f030.png"
+      "reference_frames": "verify/intro/f010.png to f030.png",
+      "dynamic": false
     }
   ]
 }
 ```
+
+**`dynamic` field (optional, default `false`):** set to `true` for entries whose visual is RAF-driven and never settles to a deterministic frame — auto-timer canvases, looping shaders, `<video>` autoplay, Lottie loops. `EXCLUDE_DYNAMIC=1 bash section-compare.sh ...` reads `transition-spec.json` and auto-augments its mask list with each `"dynamic": true` entry's `target` selector, hiding those regions from AE diff on both ref and impl. Per-frame pixel parity for these is unmatchable; layout-only verification is the right bar. Leave `false` (or omit) for entries with a deterministic end state (page-load reveal, scroll trigger, hover settle).
 
 ## 3. Rules
 
@@ -63,6 +66,7 @@ $ cat tmp/ref/<c>/transition-spec.json
  □ Exists, ≥1 transition entry
  □ Each entry has: id, trigger, source_chunk, bundle_branch, target, animation
  □ Each entry has: reference_frames (or "none" if not yet captured)
+ □ Each RAF-driven entry (auto-timer canvas, looping shader, video) has: "dynamic": true
  □ GSAP easing converted to cubic-bezier
  □ Capture verification passed (Step 5e below)
 ```

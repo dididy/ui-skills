@@ -8,6 +8,33 @@
 
 **Token budget rule:** All image comparisons use AE/SSIM (zero tokens). Only read images with the Read tool for: (1) one-time spot-checks (Phase A gate), (2) diagnosing AE/SSIM failures via diff images, (3) the final VLM sanity check (1 pair). Never read ref+impl image pairs side-by-side for comparison — use pixel diff instead.
 
+## Triage — artifact vs real mismatch (BEFORE any code fix)
+
+When AE on a section comes back **unusually large** (≥ ~50K, or any number that "feels too big to be one CSS bug"), the most expensive failure mode is implementing a fix for a defect that doesn't exist. Reference + impl can both be correct while the *capture* is wrong. Rule out the four common artifact causes below before touching code:
+
+| Suspect | How to confirm in seconds | Fix at the harness, not in impl |
+|---|---|---|
+| **A. Capture-timing artifact** (snapshot taken mid-animation on one side, settled on the other) | Re-run with a longer settle: `WAIT_SCROLL_SETTLE=1.5 WAIT_REF=12000 WAIT_IMPL=12000 bash section-compare.sh ...`. AE drops by an order of magnitude → it was timing. | Raise the relevant `WAIT_*` env var permanently for this project. Do NOT add `setTimeout`s in impl to "wait for ref". |
+| **B. Programmatic scroll didn't fire custom-scroll handlers** (Lenis / Locomotive / smooth-scroll sites — `window.scrollTo()` skips their scroll-event pipeline, leaving section-state classes such as `is-loaded`, `is-active`, project-scoped `-postX` flags stale on one side and current on the other) | On the failing scroll position, eval `document.body.className` and `document.documentElement.className` on both ref and impl. If the state classes differ, the scroll never propagated. | Switch the harness to native scroll (`agent-browser mouse wheel`) for that target, or accept the desync and add the affected section to a substitute/skip list. |
+| **C. Per-viewport init lock** (bundle reads `window.innerWidth` once at init; resizing the session after `open` does not re-evaluate. Common with GSAP `ScrollTrigger`, `matchMedia` once-and-cache, container queries baked at boot) | Open a fresh session at the *target* viewport (not 1440 → resize 375). If AE collapses, init was the issue. | Always recreate the session per viewport in multi-viewport sweeps — never `set viewport` after `open` for the run that's compared. |
+| **D. Lazy-load not yet triggered on one side** (lazy `<img>` / `loading="lazy"` / IntersectionObserver-gated content was never scrolled past on one side, leaving height differences and missing pixels) | Force a full-page traverse (`window.scrollTo(0, document.body.scrollHeight); await wait(800); window.scrollTo(0, 0)`) before the section measurement. If heights now match, it was lazy load. | Add the traverse to `layout-health-check.sh` / pre-section-compare warmup; never measure section heights at `scroll=0` on lazy-load-heavy sites. |
+
+**Decision rule:** if any one of A–D explains the diff, fix the harness and re-run before reading the diff image. Reading a diff image first (or worse, editing impl CSS) wastes tokens and can introduce real bugs while chasing an artifact.
+
+If A–D all check out clean and AE is still large → it's a real mismatch; proceed to `auto-diagnose.sh` and the rest of the fix protocol below.
+
+### Forbidden fixes (don't game the metric)
+
+Once a real mismatch is confirmed, the temptation is to make the *number* go down by editing layout values until it does. Don't. The following "fixes" satisfy the metric while leaving the actual bug in place — they cost a re-discovery cycle later:
+
+- **Force impl total page height to match ref** by hardcoding `min-height` / `max-height` on a footer/spacer to close a 2px gap. `batch-scroll`'s percentage-based capture only makes sense when both sides have the same content at the same % offset; if heights diverge, the right answer is `section-compare.sh` (pairs by section identity), not `min-height: 38rem` on an `<img>`.
+- **Match a section by adding fixed pixel padding** to a container whose ref uses `dvh` / `clamp()` / a sticky pin. The pixel hack passes at one viewport and breaks at every other.
+- **Hardcode a section translate offset** to align scroll positions when the real mismatch is a missing pinned section above. The pin is doing the layout work; faking the offset hides the missing pin.
+- **Tighten AE thresholds** (raise the per-image cap from 500 to 5000) to make a section that "looks close enough" pass. The threshold is a contract — bump it only with explicit user approval and a one-line note in `pixel-perfect-diff.json` saying why.
+- **Crop the diff** to exclude a failing region. If a region is excluded from the gate, it is not verified — the gate hasn't passed, it's been narrowed.
+
+Rule: every layout / metric edit must answer "what does the **ref** do here?" with a measurement. If the answer is "I don't know, but this number makes the diff smaller," revert the edit and run `auto-diagnose.sh` on the failing region instead.
+
 **Three comparison tables — one per capture type.** All three must pass.
 
 ### C1: Static screenshot comparison (AE diff)

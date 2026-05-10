@@ -7,6 +7,16 @@ changes between frames.
 
 This protocol handles these sites so AE comparison remains meaningful.
 
+> **See also:** for section-compare specifically, the lighter-weight
+> `EXCLUDE_DYNAMIC=1` mask path (`../visual-debug/SKILL.md` → "Dynamic content
+> (canvas/video)") hides RAF-driven regions on both ref and impl via
+> `visibility: hidden !important`. Spec-driven: mark each entry in
+> `transition-spec.json` with `"dynamic": true` (see
+> `transition-spec-rules.md`) and `section-compare.sh` auto-augments the mask
+> list. Use this protocol's freeze + threshold approach when you need to keep
+> the dynamic region visible for AE (e.g. matched carousel slide); use the
+> EXCLUDE_DYNAMIC mask when per-frame parity is unattainable.
+
 ## Detection (Phase 2 Step 5)
 
 During interaction detection, flag the site:

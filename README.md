@@ -7,7 +7,21 @@ A [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/
 - **Extracts real values from JS bundles** — GSAP timelines, Framer Motion springs, Lenis scroll params, scroll-driven keyframes. No guessing.
 - **Falls back to `getComputedStyle`** when CSS is obfuscated (Tailwind, CSS-in-JS). Auto-detects site type.
 
-> **vs. screenshot-to-code tools:** Those copy what's visible. `ui-clone-skills` downloads the actual CSS, greps JS bundles for animation parameters, and uses the original class names — so the output matches the original's styles, transitions, and responsive behavior.
+## When to use this — decision tree
+
+Different inputs need different tools. Pick by what you have:
+
+| What you have | Use |
+|---|---|
+| **A live URL** and want pixel-faithful React (real CSS, real animation params, scroll/hover behavior) | `ui-clone-skills` ← you are here |
+| A **Figma file** | [Builder.io](https://www.builder.io/) / [Anima](https://www.animaapp.com/) |
+| A **screenshot** (no source available) | [screenshot-to-code](https://github.com/abi/screenshot-to-code) / [v0](https://v0.dev/) |
+| A **text description** (no reference) | [v0](https://v0.dev/) / [Lovable](https://lovable.dev/) |
+| A live URL and just want **static HTML mirror** (no React) | `wget --mirror` / [HTTrack](https://www.httrack.com/) |
+
+> **Why this exists:** prompt-/screenshot-driven tools approximate what's visible. `ui-clone-skills` downloads the actual stylesheet, runs `getComputedStyle` against the rendered DOM, greps the JS bundle for GSAP/Framer Motion/Lenis parameters, and verifies the result against the original via AE/SSIM — so the output matches transitions and responsive behavior, not just the static layout.
+
+**When NOT to use:** general "build me a UI from scratch" tasks (use v0/Lovable), Figma-driven workflows (use Builder/Anima), one-off CSS help (just ask Claude directly).
 
 ## Design principles
 
@@ -30,9 +44,14 @@ These are the decisions that shape how the plugin is structured. They aim to kee
 
 ## Requirements
 
+**Tested on:** macOS 14+ (primary), Ubuntu 22.04+ via WSL2 or native Linux. Windows native is **not supported** — use WSL2.
+
 ```bash
 # one-liner (macOS)
 brew install imagemagick dssim ffmpeg && npm i -g agent-browser && curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# one-liner (Linux / WSL2)
+sudo apt install -y ffmpeg imagemagick && cargo install dssim && npm i -g agent-browser && curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 <details>
@@ -89,6 +108,10 @@ cd ui-clone-skills
 ./install.sh --no-marketplace
 
 # npx skills (skills only — no marketplace registration, no deps)
+# WARNING: this path skips system tooling (agent-browser, ffmpeg, imagemagick, dssim, uv)
+# and the ui_clone/ Python package. Each SKILL.md opens with a preflight that detects
+# the gap and tells the agent to surface the bootstrap one-liner above. Recommended
+# when you want skills only and are wiring deps + python package yourself.
 npx skills add voidmatcha/ui-clone-skills
 ```
 
